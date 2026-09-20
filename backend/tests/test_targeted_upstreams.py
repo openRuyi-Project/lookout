@@ -74,7 +74,7 @@ def test_full_run_keeps_original_cli(config, tmp_path, monkeypatch):
         return subprocess.CompletedProcess(command, 0, '', '')
     monkeypatch.setattr(nv.subprocess, 'run', execute)
     tracks, _ = nv.run(config, {}, state.utcnow())
-    assert commands == [['nvchecker', '--logger=json', '--json-log-fd=1', '--tries', '2', '-c', str(original)]]
+    assert commands == [['nvchecker', '--logger=json', '--json-log-fd=1', '--tries', '3', '-c', str(original)]]
     assert set(tracks) == set(config['native'])
 
 
