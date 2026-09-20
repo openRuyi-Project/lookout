@@ -31,6 +31,7 @@ native_spec_fallback = true
 source_batch_size = 150
 source_workers = 4
 timeout_seconds = 20
+spec_fetch_retries = 2
 nvchecker_timeout_seconds = 7200
 
 # Identities only: revisions and hashes come from each OBS observation. A changed

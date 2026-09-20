@@ -37,11 +37,15 @@ def _git_bytes(args, git='git', timeout=60):
         return None
 
 
-def fetch(repo, git='git', timeout=300):
+def fetch(repo, git='git', timeout=300, retries=2):
     """Advance the managed full clone to origin HEAD. The configured refspec moves the
     local branch; the clone is complete, so history and blobs remain local afterwards."""
-    _, error = _git_text(['-C', repo, 'fetch', '--quiet', 'origin'], git, timeout)
-    return error is None, error
+    error = None
+    for attempt in range(max(1, retries + 1)):
+        _, error = _git_text(['-C', repo, 'fetch', '--quiet', 'origin'], git, timeout)
+        if error is None:
+            return True, None
+    return False, error
 
 
 def _bucket_log(stdout, limit):

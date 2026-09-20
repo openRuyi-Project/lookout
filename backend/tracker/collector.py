@@ -259,7 +259,10 @@ def check_specs(config, db, describe=native_spec.describe):
     repo, git = spec['repo'], spec.get('git', 'git')
     with state.writer_lock(str(db) + '.specs'):
         now = state.utcnow()
-        ok, fetch_error = spec_git.fetch(repo, git=git, timeout=spec['fetch_timeout_seconds'])
+        ok, fetch_error = spec_git.fetch(
+            repo, git=git, timeout=spec['fetch_timeout_seconds'],
+            retries=config['collector'].get('spec_fetch_retries', 2),
+        )
         logs, log_error = spec_git.changelogs(repo, spec['changelog_limit'], git=git)
         old = state.read(db)
         names = list(old.get('sources', {}))
