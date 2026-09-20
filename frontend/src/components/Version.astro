@@ -1,0 +1,22 @@
+---
+import type {Package} from '../lib/api';
+interface Props {pkg: Package; label?: boolean}
+const {pkg, label = false} = Astro.props;
+// Upstream tracking and OBS success are independent observations.
+const untracked = !pkg.track && pkg.relation !== 'not_applicable';
+const badge = untracked ? 'untracked' : pkg.relation;
+const failed = !untracked && pkg.current_build_success === false;
+const unavailable = !untracked && pkg.current_build_success == null;
+const buildTitle = untracked ? 'Upstream is not tracked' : failed
+  ? 'The current source revision has not succeeded on every active build target'
+  : unavailable ? 'Current-version build success is unavailable'
+  : 'The current source succeeded on every active build target';
+const observationTitle = !untracked && pkg.relation === 'unknown' ? `${buildTitle}. The source and tracked upstream versions cannot currently be compared.` : buildTitle;
+// The version arrow already communicates an available update.
+const LABELS: Record<string, string> = {ahead: 'Ahead', untracked: 'Untracked'};
+---
+<span class="version">
+<span class:list={['current-version', {failed, untracked, unavailable}]} title={observationTitle}>{pkg.current || '—'}</span>
+{pkg.relation === 'outdated' && <><span class="arrow" aria-label="update available">→</span><span class="new">{pkg.latest}</span></>}
+{label && LABELS[badge] && <span class:list={['rel', badge]}>{LABELS[badge]}</span>}
+</span>

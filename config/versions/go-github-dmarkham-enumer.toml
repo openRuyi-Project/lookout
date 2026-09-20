@@ -1,0 +1,8 @@
+# TODO(drop): openRuyi SPECS/go-github-dmarkham-enumer has Name=enumer.
+# Drop this compatibility rule after directory/Name agree and upstream tracking is verified.
+"source" = "jq"
+"url" = "https://proxy.golang.com.cn/github.com/dmarkham/enumer/@latest"
+"filter" = ".Version | select(test(\"^v[0-9]+([.][0-9]+){2}([+]incompatible)?$\"))"
+"prefix" = "v"
+"from_pattern" = "[+]incompatible$"
+"to_pattern" = ""

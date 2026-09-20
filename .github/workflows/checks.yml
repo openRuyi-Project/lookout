@@ -1,0 +1,21 @@
+name: Checks
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: python3 scripts/check-architecture.py
+      - run: git show --format= --check HEAD
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Build frontend and native runtime
+        run: docker build -t openruyi-monitor:test -f Containerfile .
+      - name: Native RPM, confinement, backend, API contract and SSR
+        env:
+          CONTAINER_ENGINE: docker
+        run: deploy/check-image.sh openruyi-monitor:test

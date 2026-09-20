@@ -1,0 +1,15 @@
+{
+  "observed_from": "https://build.openruyi.cn/public/build/openruyi/rva20/riscv64/trinity/trinity-1.9%2Bgit20260225.294c465-2.17.or20.src.rpm?view=fileinfo",
+  "success": {
+    "version": null,
+    "time": "2026-09-04T11:25:45+00:00",
+    "srcmd5": "3ae3ff416499ba3f32a2ad7c1a0f77c5",
+    "build_identity": {
+      "rev": "2",
+      "bcnt": "17",
+      "versrel": "1.9+git20260225.MACRO-2"
+    },
+    "version_error": "RPM version unavailable: ValueError"
+  },
+  "fileinfo_xml": "<fileinfo filename=\"trinity-1.9+git20260225.294c465-2.17.or20.src.rpm\"><version>1.9+git20260225.294c465</version>\n  <release>2.17.or20</release>\n  <arch>src</arch>\n  <disturl>obs://private/openruyi/rva20/3ae3ff416499ba3f32a2ad7c1a0f77c5-trinity</disturl>\n  <mtime>1788522904</mtime>\n  </fileinfo>"
+}

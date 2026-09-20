@@ -1,0 +1,248 @@
+// Render the production SSR bundle against deterministic API observations.
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {createServer, request} from 'node:http';
+import {gunzipSync, brotliDecompressSync} from 'node:zlib';
+
+const targets = ['rva23', 'rva20', 'x86_64'].map(id => ({id, label: id, repository: id, architecture: 'riscv64'}));
+const makePackage = (name, patch = {}) => ({
+  buildsystem: null, buildsystem_status: 'not_declared', maintenance: [], maintenance_findings: [], monitor_checks: [], presentation: {buildsystems: {}},
+  name, current: '2.0', latest: '2.1', relation: 'outdated', track: name, track_label: name,
+  current_build_success: true, last_successful_version: '2.0', stale: false,
+  needs_attention: false, upstream_updated_at: '2026-09-19T10:50:00Z', detail_url: `/packages/${name}`, version_error: null,
+  builds: targets.map(target => ({target: target.id, label: target.label, repository: target.repository,
+    architecture: target.architecture, raw_status: 'succeeded', text: '✓', kind: 'ok',
+    log_url: null, stale: false, updated_at: '2026-09-19T11:10:00Z', matches_source: true,
+    last_success: {version: '2.0', time: '2026-09-19T11:00:00+00:00', srcmd5: 'a'}, flavors: []})),
+  spec: {source_path: `SPECS/${name}`, source_url: `https://gitlab.example.org/team/packaging/-/tree/review/SPECS/${name}`, metadata: {summary: 'Fixture package', url: 'https://example.org/upstream'}, changelog: [], error: null},
+  ...patch,
+});
+const packages = [
+  makePackage('security', {maintenance_findings: [1, 2].map(i => ({
+    id: `CVE-2026-100${i}`, label: 'Security', title: `CVE-2026-100${i}`,
+    facts: [{key: 'Query version', value: '2.0', source: 'OSV', url: 'https://api.osv.dev/v1/query', status: 'observed'},
+      {key: 'EPSS probability · CVE', value: 0.00396, source: 'FIRST', url: 'https://api.first.org/data/v1/epss', status: 'observed'},
+      {key: 'Fixed events', value: ['3.0'], source: 'OSV', url: 'https://osv.dev/vulnerability/fixture', status: 'observed'},
+      {key: 'KEV', value: i === 1 ? false : null, source: 'CISA', url: 'https://www.cisa.gov/known-exploited-vulnerabilities-catalog', status: i === 1 ? 'observed' : 'unavailable'}],
+    evidence_url: `https://nvd.nist.gov/vuln/detail/CVE-2026-100${i}`,
+    scope: 'current', tags: [], stale: false,
+  }))}),
+  makePackage('success', {buildsystem: 'custom', buildsystem_status: 'declared', maintenance: [{label:'NewSignal', count:2, stale:false}]}),
+  makePackage('watch-preview', {watch: [
+    {id:'widget@preview',version:'2.2rc1',error:null,stale:false},
+    {id:'widget@nightly',version:'2.3dev1',error:'fetch failed',stale:false},
+    {id:'widget@missing',error:'no result',stale:true},
+  ]}),
+  makePackage('ahead', {relation: 'ahead'}),
+  ...[false, null].map(matches_source => makePackage(matches_source === false ? 'old-source' : 'unknown-source', {
+    builds: makePackage('base').builds.map(build => ({...build, matches_source})),
+  })),
+  makePackage('arch-version', {builds: makePackage('base').builds.map(build => ({...build, last_success: {...build.last_success, version: '2.0.arch'}}))}),
+  makePackage('failed-same-version', {builds: makePackage('base').builds.map(build => ({...build, kind: 'error', raw_status: 'failed', text: 'Failed', matches_source: false}))}),
+  makePackage('long-version', {current: '0.7+git20231216.05e79eb', latest: null, relation: 'untracked', track: null, builds: makePackage('base').builds.map(build => ({...build, last_success: {...build.last_success, version: '0.7+git20231216.05e79eb'}}))}),
+  makePackage('failed', {current_build_success: false, last_successful_version: '9.9-shared-should-not-render', stale: true, builds: makePackage('base').builds.map((build, i) => ({...build, text: 'Failed', kind: 'error', raw_status: 'failed', stale: true, matches_source: false, last_success: {version: ['1.9', '1.8', '1.7'][i], time: '2026-09-19T11:00:00Z', srcmd5: String(i)}}))}),
+  makePackage('untracked', {relation: 'untracked', track: null, current_build_success: false}),
+  makePackage('untracked-unavailable-source', {relation: 'unknown', track: null, current: null, current_build_success: null}),
+  makePackage('unknown', {relation: 'unknown', current_build_success: null, last_successful_version: null}),
+  makePackage('unresolved-version', {builds: [{...makePackage('base').builds[0], last_success: {version: null, time: '2026-09-19T11:00:00Z', srcmd5: 'macro'}}]}),
+  makePackage('multibuild', {builds: [{...makePackage('base').builds[0], last_success: null, flavors: [
+    {package: 'multibuild:one', text: '✓', kind: 'ok', raw_status: 'succeeded', stale: false, log_url: null, updated_at: '2026-09-19T11:10:00Z', last_success: {version: '1.1', time: '2026-09-19T10:00:00Z', srcmd5: 'one'}},
+    {package: 'multibuild:two', text: 'Failed', kind: 'error', raw_status: 'failed', stale: false, log_url: null, updated_at: '2026-09-19T11:10:00Z', last_success: {version: '1.0', time: '2026-09-18T10:00:00Z', srcmd5: 'two'}},
+  ]}]}),
+  makePackage('missing-history', {current_build_success: null, last_successful_version: null,
+    builds: targets.map(target => ({target: target.id, label: target.label, repository: target.repository,
+      architecture: target.architecture, raw_status: 'unknown', text: 'No result', kind: 'muted',
+      log_url: null, stale: false, updated_at: null, matches_source: null, last_success: null, flavors: []}))}),
+];
+let unavailable = false;
+const mock = createServer((req, res) => {
+  if (unavailable) { res.writeHead(503, {'Content-Type':'application/json'});res.end('{}');return; }
+  const url = new URL(req.url, 'http://localhost');
+  const selected = packages.find(pkg => url.pathname === `/api/v1/packages/${pkg.name}`);
+  const payload = url.pathname === '/api/v1/presentation' ? {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}} : selected ?? {presentation: {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}}, buildsystems: {custom: 1}, maintenance_labels: {NewSignal: 1}, items: url.searchParams.get('q') === 'quiet' ? packages.map(pkg=>({...pkg,maintenance:[]})) : packages, total: packages.length, page: 1, per_page: 100, pages: 1,
+    counts: {all: packages.length, updates: 3, problems: 1, attention: 1, untracked: 1}, targets,
+    collection: {obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
+      packages: packages.length, tracked_packages: packages.length - 1}};
+  res.writeHead(200, {'Content-Type': 'application/json'}); res.end(JSON.stringify(payload));
+});
+mock.listen(0, '127.0.0.1'); await once(mock, 'listening');
+const reserve = createServer(); reserve.listen(0, '127.0.0.1'); await once(reserve, 'listening');
+const port = reserve.address().port; await new Promise(resolve => reserve.close(resolve));
+const child = spawn(process.execPath, ['server.mjs'], {env: {...process.env,
+  HOST: '127.0.0.1', PORT: String(port), TRACKER_API_URL: `http://127.0.0.1:${mock.address().port}`}, stdio: ['ignore', 'pipe', 'pipe']});
+let logs = ''; child.stdout.on('data', chunk => logs += chunk); child.stderr.on('data', chunk => logs += chunk);
+async function read(path, cookie) {
+  const response = await fetch(`http://127.0.0.1:${port}${path}`, {headers: cookie ? {cookie} : {}});
+  assert.equal(response.status, 200, `${path}: ${logs}`); return response.text();
+}
+async function wire(path, headers = {}, method = 'GET') {
+  return new Promise((resolve, reject) => {
+    const req = request({host:'127.0.0.1',port,path,method,headers}, response => {
+      const chunks=[];response.on('data', chunk=>chunks.push(chunk));response.on('end',()=>resolve({status:response.statusCode,headers:response.headers,body:Buffer.concat(chunks)}));response.on('error',reject);
+    });req.on('error',reject);req.end();
+  });
+}
+try {
+  for (let retry = 0; retry < 100; retry++) {
+    try { await read('/healthz'); break; } catch (error) {
+      if (retry === 99 || child.exitCode !== null) throw new Error(`SSR did not start: ${logs}`, {cause: error});
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+  }
+  const quiet = await read('/?q=quiet');
+  assert.doesNotMatch(quiet, /class="maintenance-labels"/);
+  assert.doesNotMatch(quiet, /<th scope="col">Maintenance<\/th>/);
+  const listing = await read('/');
+  assert.doesNotMatch(listing, /<th scope="col">Maintenance<\/th>/);
+  assert.equal((listing.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 5);
+  assert.doesNotMatch(listing, /Unverified|Some checks are incomplete|Collection status|Upstream checks cover/);
+  assert.match(listing, />Untracked <b>/);
+  const row = name => listing.match(new RegExp(`<tr data-name="${name}"[^]*?</tr>`))?.[0] ?? '';
+  assert.match(row('success'), /class="current-version"/);
+  assert.match(row('success'), /buildsystem=custom/);
+  assert.match(row('success'), /data-buildsystem="custom"/);
+  assert.doesNotMatch(listing, / style=/);
+  assert.match(await read('/presentation.css'), /background-color:#123456/);
+  const presentationCSS = await wire('/presentation.css');
+  assert.equal((await wire('/presentation.css', {'If-None-Match':presentationCSS.headers.etag})).status, 304);
+  assert.match(row('success'), /maintenance=NewSignal/);
+  assert.match(row('success'), /NewSignal/);
+  assert.match(row('success').match(/<th scope="row">[^]*?<\/th>/)[0], /package-identity[^]*buildsystem-label[^]*maintenance-labels/);
+  assert.ok(row('success').indexOf('class="pkg"') < row('success').indexOf('class="buildsystem-line"'));
+  assert.doesNotMatch(row('ahead'), /buildsystem-label|maintenance-label/);
+  assert.match(row('success'), /class="new">2\.1/);
+  assert.doesNotMatch(row('success'), /class="pkg outdated"|class="last-success"/);
+  assert.match(row('failed'), /class="current-version failed"/);
+  const versionCell = name => row(name).match(/<td>[^]*?<\/td>/)?.[0] ?? '';
+  assert.doesNotMatch(versionCell('failed'), /1\.9|1\.8|1\.7|9\.9-shared|class="last-success"|Stale|Unavailable/);
+  for (const [target, version] of [['rva23', '1.9'], ['rva20', '1.8'], ['x86_64', '1.7']]) {
+    const cell = row('failed').match(new RegExp(`<td class="build" data-target="${target}">[^]*?<\\/td>`))?.[0] ?? '';
+    assert.ok(cell.includes(`>${version}</a>`), `${target} must show its own history: ${cell}`);
+    assert.match(cell, />Failed</);
+    assert.doesNotMatch(cell, /· last|>last /);
+    assert.doesNotMatch(cell, /9\.9-shared/);
+  }
+  assert.match(row('success'), /class="build-observation compact"/);
+  for (const name of ['success', 'long-version']) {
+    assert.doesNotMatch(row(name), /class="build-version/);
+    assert.equal((row(name).match(/>✓</g) || []).length, 3);
+    assert.match(row(name), /Last succeeded: .*2026-09-19 11:00:00 UTC/);
+  }
+  for (const name of ['old-source', 'unknown-source', 'arch-version', 'failed-same-version']) {
+    assert.equal((row(name).match(/class="build-version"/g) || []).length, 3, `${name}: do not infer current-source success`);
+  }
+  assert.match(row('arch-version'), />2\.0\.arch<\/a>/);
+  assert.match(listing, /Last updated: <span>OBS <time datetime="2026-09-19T11:10:00Z">2026-09-19 11:10:00/);
+  assert.match(listing, /Upstream <time datetime="2026-09-19T10:50:00Z">2026-09-19 10:50:00/);
+  assert.doesNotMatch(listing, />Stale<| · stale|>Unavailable<|9\.9-shared/);
+  assert.match(row('untracked'), /class="current-version untracked"/);
+  assert.doesNotMatch(row('untracked'), /class="last-success"/);
+  assert.match(row('untracked-unavailable-source'), /class="current-version untracked"/);
+  assert.match(row('unknown'), /class="current-version unavailable"/);
+  assert.doesNotMatch(versionCell('unknown'), />Unavailable<|>Stale</);
+  assert.match(versionCell('unknown'), /cannot currently be compared/);
+  assert.doesNotMatch(row('unknown'), />Untracked</);
+  const security = await read('/packages/security');
+  assert.equal((security.match(/Queried source component only/g) || []).length, 1);
+  assert.match(security, /0\.396%/);
+  assert.match(security, /<summary>Security 2/);
+  assert.doesNotMatch(security, /<details[^>]* open|Query version/);
+  assert.equal((security.match(/class="security-query"/g) || []).length, 1);
+  for (const id of ['CVE-2026-1001', 'CVE-2026-1002']) {
+    assert.ok(security.includes(`https://nvd.nist.gov/vuln/detail/${id}`));
+  }
+  assert.match(security, /Fixed events/);
+  assert.match(security, />No</);
+  assert.match(security, /unavailable/);
+  assert.doesNotMatch(security, /<th>Action<\/th>|SecurityReview|urgent/);
+  assert.ok(!security.includes('Review linked evidence.'));
+  const detail = await read('/packages/failed');
+  assert.doesNotMatch(detail, /Release track|class="track"|class="rel outdated"|>Outdated</);
+  assert.match(detail, /class="new">2\.1/);
+  assert.match(detail, /href="\/api\/v1\/packages\/failed">Raw data \(JSON\)<\/a>/);
+  assert.doesNotMatch(detail, /source version and revision, upstream observation/);
+  assert.match(await read('/packages/ahead'), /class="rel ahead">Ahead<\/span>/);
+  const successDetail = await read('/packages/success');
+  assert.doesNotMatch(successDetail, /Explicitly watched tracks|>Watching</);
+  const watchDetail = await read('/packages/watch-preview');
+  assert.match(watchDetail, /aria-label="Explicitly watched tracks"/);
+  assert.match(watchDetail, /href="\/api\/v1\/tracks\/widget%40preview"/);
+  assert.match(watchDetail, /<strong>2\.2rc1<\/strong>/);
+  assert.match(watchDetail, /2\.3dev1<\/strong>[^]*?\(last observed\)/);
+  assert.match(watchDetail, /widget@missing<\/a>: <strong>—<\/strong>/);
+  assert.match(watchDetail, /class="new">2\.1/); // Watch never replaces the release comparison.
+  assert.doesNotMatch(row('watch-preview'), /2\.2rc1|2\.3dev1|>Watching</);
+
+  assert.equal((successDetail.match(/<strong>2\.0<\/strong>/g) || []).length, 3);
+  assert.match(successDetail, /datetime="2026-09-19T11:00:00\+00:00"/);
+  assert.match(detail, /href="https:\/\/gitlab\.example\.org\/team\/packaging\/-\/tree\/review\/SPECS\/failed">\/SPECS\/failed<\/a>/);
+  assert.ok(detail.indexOf('<dt>SPEC Source</dt>') < detail.indexOf('<dt>Upstream</dt>'));
+  assert.match(detail, />Last successful version<\/th>/);
+  assert.match(detail, /datetime="2026-09-19T11:00:00Z">2026-09-19 11:00:00<\/time>/);
+  assert.match(await read('/packages/untracked-unavailable-source'), /class="rel untracked">Untracked<\/span>/);
+  assert.match(await read('/packages/untracked'), /class="rel untracked">Untracked<\/span>/);
+  const missing = await read('/packages/missing-history');
+  assert.match(missing, /<strong title="No last-success record is available for this observation.">—<\/strong>/);
+  assert.match(missing, /OBS —<\/span>/);
+  assert.match(detail, /OBS <time datetime="2026-09-19T11:10:00Z">2026-09-19 11:10:00/);
+  assert.match(detail, /Last updated: 2026-09-19 11:10:00 UTC/);
+  assert.doesNotMatch(detail, /<th scope="col">Last updated/);
+  assert.doesNotMatch(await read('/packages/untracked'), /Last updated:[^]*?Upstream <time/);
+  const unresolved = await read('/packages/unresolved-version');
+  assert.match(unresolved, /<strong title="OBS recorded a successful build, but its version could not be resolved.">—<\/strong>/);
+  assert.doesNotMatch(unresolved, />Version unavailable</);
+  assert.doesNotMatch(row('unresolved-version'), /class="build-version/);
+  assert.doesNotMatch(row('multibuild'), /class="build-version/);
+  assert.match(row('multibuild'), /href="\/packages\/multibuild"/);
+  assert.doesNotMatch(row('multibuild'), />1\.1<|>1\.0</);
+  assert.match(unresolved, /datetime="2026-09-19T11:00:00Z"/);
+  const flavors = await read('/packages/multibuild');
+  assert.match(flavors, />multibuild:one<\/span>/);
+  assert.match(flavors, />multibuild:two<\/span>/);
+  assert.match(flavors, /<strong>1\.1<\/strong>/);
+  assert.match(flavors, /<strong>1\.0<\/strong>/);
+  assert.match(await read('/', 'theme=dark'), /data-theme="dark"/);
+  assert.match(await read('/', 'theme=light'), /data-theme="light"/);
+  // Wire-level tests deliberately bypass fetch's automatic decompression/cache.
+  const identity = await wire('/');
+  assert.equal(identity.status,200);assert.equal(identity.headers['content-encoding'],undefined);
+  assert.equal(identity.headers['cache-control'],'private, no-cache');
+  assert.match(identity.headers['content-security-policy'], /script-src 'none'/);
+  assert.match(identity.headers.vary,/Cookie/);
+  const etag=identity.headers.etag;assert.match(etag,/^W\/"[0-9a-f]{64}"$/);
+  for (const coding of ['gzip','br']) {
+    const compressed=await wire('/',{'Accept-Encoding':coding});
+    assert.equal(compressed.headers['content-encoding'],coding);
+    assert.match(compressed.headers.vary,/Accept-Encoding/);
+    const decoded=(coding==='gzip'?gunzipSync:brotliDecompressSync)(compressed.body);
+    assert.deepEqual(decoded,identity.body);
+    assert.ok(compressed.body.length<identity.body.length/2);
+    assert.equal(compressed.headers.etag,etag);
+    console.log(`TRANSPORT ${coding}: ${identity.body.length} -> ${compressed.body.length} bytes`);
+  }
+  const prohibited=await wire('/',{'Accept-Encoding':'gzip;q=0, br;q=0, deflate;q=0, identity;q=1'});
+  assert.equal(prohibited.headers['content-encoding'],undefined);assert.deepEqual(prohibited.body,identity.body);
+  const validated=await wire('/',{'If-None-Match':etag,'Accept-Encoding':'gzip'});
+  assert.equal(validated.status,304);assert.equal(validated.body.length,0);assert.equal(validated.headers.etag,etag);
+  assert.equal(validated.headers['cache-control'],'private, no-cache');assert.match(validated.headers.vary,/Cookie/);
+  assert.equal((await wire('/',{'If-None-Match':'"not-this", '+etag.slice(2)})).status,304);
+  const themed=await wire('/',{'If-None-Match':etag,Cookie:'theme=dark'});assert.equal(themed.status,200);assert.notEqual(themed.headers.etag,etag);
+  assert.equal((await wire('/?q=success',{'If-None-Match':etag})).status,200);
+  packages[0].current='2.0.1';
+  const changed=await wire('/',{'If-None-Match':etag});assert.equal(changed.status,200);assert.notEqual(changed.headers.etag,etag);
+  packages[0].current='2.0';
+  const cssPath=identity.body.toString().match(/href="(\/_astro\/[^"]+\.css)"/)[1];
+  const css=await wire(cssPath,{'Accept-Encoding':'gzip'});assert.equal(css.status,200);assert.equal(css.headers['content-encoding'],'gzip');assert.match(css.headers['cache-control'],/immutable/);assert.ok(gunzipSync(css.body).length>css.body.length);
+  const range=await wire(cssPath,{'Accept-Encoding':'gzip',Range:'bytes=0-9'});assert.equal(range.status,206);assert.equal(range.headers['content-encoding'],undefined);assert.equal(range.body.length,10);
+  assert.equal((await wire('/',{},'HEAD')).body.length,0);
+  const json=await wire('/api/v1/packages',{'Accept-Encoding':'gzip'});assert.equal(json.status,200);assert.equal(json.headers['cache-control'],'no-store');assert.equal(json.headers['content-encoding'],'gzip');assert.ok(JSON.parse(gunzipSync(json.body)).items.length>0);
+  const redirect=await wire('/theme?to=dark&from=%2F');assert.equal(redirect.status,303);assert.equal(redirect.headers['cache-control'],'no-store');assert.ok(redirect.headers['set-cookie']);assert.equal(redirect.headers.etag,undefined);
+  unavailable=true;
+  const failure=await wire('/');assert.equal(failure.status,503);assert.equal(failure.headers['cache-control'],'no-store');assert.equal(failure.headers.etag,undefined);
+  unavailable=false;
+  console.log('PASS transport: gzip/br, identity/q=0, decoded equality, ETag304, changed data/theme/query, immutable CSS GET, ranges, HEAD, JSON, errors, cookies and CSP');
+  console.log('PASS SSR: inferred current-success duplicates omitted, exception histories retained, arrow replaces Outdated, concise raw-data link; per-target histories, clean source version, observation times, no false missing/multi-flavor values, SPEC links, light/dark themes');
+} finally {
+  child.kill('SIGTERM'); await once(child, 'exit'); await new Promise(resolve => mock.close(resolve));
+}

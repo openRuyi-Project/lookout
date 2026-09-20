@@ -1,0 +1,3 @@
+"source" = "pypi"
+"pypi" = "opentelemetry-semantic-conventions"
+"use_pre_release" = true

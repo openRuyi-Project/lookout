@@ -1,0 +1,4 @@
+# TODO(drop): openRuyi SPECS/python-discord has Name=python-discord.py.
+# Drop this compatibility rule after directory/Name agree and upstream tracking is verified.
+"source" = "pypi"
+"pypi" = "discord-py"

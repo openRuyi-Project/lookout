@@ -1,0 +1,4 @@
+"source" = "git"
+"git" = "https://github.com/ROCm/rocm-core.git"
+"prefix" = "rocm-"
+"include_regex" = "(?=rocm-\\d+\\.\\d+\\.\\d+$)rocm\\-[0-9]+(?:\\.[0-9]+){1,3}"

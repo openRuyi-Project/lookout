@@ -1,0 +1,27 @@
+{
+  "name": "openruyi-tracker-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MulanPSL-2.0",
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1",
+    "build": "astro build",
+    "start": "node server.mjs",
+    "check": "astro check",
+    "test": "npm run build && node tests/render.mjs"
+  },
+  "dependencies": {
+    "@astrojs/node": "11.1.5",
+    "astro": "7.3.2",
+    "compression": "1.8.1"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "@types/node": "24.13.5",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

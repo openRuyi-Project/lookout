@@ -1,0 +1,58 @@
+---
+import Base from '../layouts/Base.astro';
+import Version from '../components/Version.astro';
+import BuildStatus from '../components/BuildStatus.astro';
+import BuildSystem from '../components/BuildSystem.astro';
+import Maintenance from '../components/Maintenance.astro';
+import {utcTime} from '../lib/time';
+import {api, type Listing} from '../lib/api';
+
+// Filters and pagination are driven entirely by GET query parameters, so search and
+// navigation work without client-side JavaScript.
+const views = [['all', 'All'], ['updates', 'Updates'], ['problems', 'Build issues'], ['untracked', 'Untracked']] as const;
+const q = (Astro.url.searchParams.get('q') || '').trim().slice(0, 100);
+const requested = Astro.url.searchParams.get('view') || 'all';
+const view = views.some(([key]) => key === requested) ? requested : 'all';
+const rawPage = Number(Astro.url.searchParams.get('page') || '1');
+const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? Math.min(rawPage, 1000000) : 1;
+const buildsystem = (Astro.url.searchParams.get('buildsystem') || '').slice(0, 100);
+const maintenance = (Astro.url.searchParams.get('maintenance') || '').slice(0, 40);
+const query = new URLSearchParams({q, view, buildsystem, maintenance, page: String(page), per_page: '100'});
+const response = await api<Listing>('/api/v1/packages?' + query);
+const data = response.data;
+if (!data) Astro.response.status = 503;
+const href = (v: string, p = 1) => '/?' + new URLSearchParams({q, view: v, buildsystem, maintenance, page: String(p)});
+---
+<Base>
+  <section aria-label="Package list">
+    <div class="toolbar">
+      <nav class="filters" aria-label="Filter packages">{views.map(([key, label]) => <a href={href(key)} aria-current={view === key ? 'page' : undefined}>{label} <b>{data?.counts[key] ?? '—'}</b></a>)}</nav>
+      <form class="search-form" method="get" action="/" role="search"><input type="hidden" name="view" value={view}/><input type="hidden" name="buildsystem" value={buildsystem}/><input type="hidden" name="maintenance" value={maintenance}/><label class="sr-only" for="q">Find a package</label><input id="q" name="q" type="search" maxlength="100" placeholder="Find a package" value={q}/><button type="submit">Search</button></form>
+    </div>
+    {!data && <div role="alert" class="notice">The snapshot is unavailable. Please <a href={href(view, page)}>retry</a>. This does not mean the package list is empty.</div>}
+    {data?.collection.mode === 'fixture' && <div class="notice">Test fixture — not live openRuyi data.</div>}
+    {data && <>
+      <form class="secondary-filters" method="get" action="/">
+        <input type="hidden" name="q" value={q}/><input type="hidden" name="view" value={view}/>
+        <label for="buildsystem">Build system</label><select id="buildsystem" name="buildsystem">
+          <option value="">All</option>{Object.entries(data.buildsystems).sort(([a], [b]) => a.localeCompare(b)).map(([value, count]) => <option value={value} selected={value === buildsystem}>{value === '_not_detected' ? 'NotDetected' : value} ({count})</option>)}
+        </select>
+        {Object.keys(data.maintenance_labels).length > 0 && <><label for="maintenance">Maintenance</label><select id="maintenance" name="maintenance"><option value="">All</option>{Object.entries(data.maintenance_labels).sort(([a], [b]) => a.localeCompare(b)).map(([value, count]) => <option value={value} selected={value === maintenance}>{value} ({count})</option>)}</select></>}
+        <button type="submit">Apply</button>{(buildsystem || maintenance) && <a href={'/?' + new URLSearchParams({q, view})}>Clear filters</a>}
+      </form>
+      <div class="table-wrap" role="region" tabindex="0" aria-label="Package versions and build targets; scroll horizontally">
+        <table class="package-table"><caption class="sr-only">Version compares current source with upstream. Maintenance labels below package identity link to matching packages; open a package for evidence. Each architecture shows its build result, with last success only when not implied. rva23 uses the OBS riscv64 repository.</caption><colgroup><col/><col/><col/><col/><col/></colgroup>
+          <thead><tr><th scope="col">Package</th><th scope="col">Version</th>{data.targets.map(target => <th scope="col">{target.label}</th>)}</tr></thead>
+          <tbody>{data.items.map(pkg => <tr data-name={pkg.name} data-update={pkg.relation === 'outdated'} data-problem={pkg.builds.some(b => b.kind === 'error')}>
+            <th scope="row"><span class="package-identity"><a class="pkg" href={pkg.detail_url}>{pkg.name}</a><BuildSystem value={pkg.buildsystem} query={q} view={view} maintenance={maintenance}/></span><Maintenance labels={pkg.maintenance} query={q} buildsystem={buildsystem} view={view}/></th>
+            <td><Version pkg={pkg}/></td>
+            {pkg.builds.map(build => <td class="build" data-target={build.target}><BuildStatus build={build} name={pkg.name} current={pkg.current} detailURL={pkg.detail_url}/></td>)}
+          </tr>)}</tbody>
+        </table>
+      </div>
+      <p class="updated-note">Last updated: <span>OBS {data.collection.obs_updated_at ? <time datetime={data.collection.obs_updated_at}>{utcTime(data.collection.obs_updated_at)}</time> : '—'}</span> · <span>Upstream {data.collection.upstream_updated_at ? <time datetime={data.collection.upstream_updated_at}>{utcTime(data.collection.upstream_updated_at)}</time> : '—'}</span> <span class="time-zone">UTC</span></p>
+      {data.total === 0 && <p class="empty">No matching packages. <a href="/">Clear filters</a></p>}
+      <nav class="pagination" aria-label="Pages"><span>{data.total} packages · page {data.page} / {Math.max(data.pages, 1)}</span>{data.page > 1 && <a rel="prev" href={href(view, data.page - 1)}>Previous</a>}{data.page < data.pages && <a rel="next" href={href(view, data.page + 1)}>Next</a>}</nav>
+    </>}
+  </section>
+</Base>

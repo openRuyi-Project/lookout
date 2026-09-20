@@ -1,0 +1,4 @@
+"source" = "git"
+"git" = "https://gitlab.freedesktop.org/xorg/lib/libXv.git"
+"prefix" = "libXv-"
+"include_regex" = "^libXv\\-[0-9]+(?:\\.[0-9]+){1,3}$"

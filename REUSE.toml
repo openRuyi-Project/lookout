@@ -1,0 +1,14 @@
+version = 1
+
+# openRuyi Package Monitor follows the openRuyi repository's REUSE conventions.
+# Source files carry SPDX headers; data and lock files are annotated here.
+[[annotations]]
+path = [
+  "backend/requirements.in",
+  "backend/requirements.lock",
+  "config/tracker.toml",
+  "frontend/package.json",
+  "frontend/package-lock.json",
+]
+SPDX-FileCopyrightText = "(C) 2026 openRuyi Project Contributors"
+SPDX-License-Identifier = "MulanPSL-2.0"

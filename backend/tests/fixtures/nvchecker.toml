@@ -1,0 +1,14 @@
+# Only for offline end-to-end tests; URL is filled with the local fixture server port.
+["widget@3"]
+source = "jq"
+url = "http://127.0.0.1:FIXTURE_PORT/anitya.json"
+filter = ".stable_versions[]"
+include_regex = '^v?3\.[0-9]+(?:\.[0-9]+)*$'
+prefix = "v"
+
+["widget@4"]
+source = "jq"
+url = "http://127.0.0.1:FIXTURE_PORT/anitya.json"
+filter = ".stable_versions[]"
+include_regex = '^v?4\.[0-9]+(?:\.[0-9]+)*$'
+prefix = "v"

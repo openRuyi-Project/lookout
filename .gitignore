@@ -1,0 +1,15 @@
+# Build output and caches
+node_modules/
+dist/
+.astro/
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Runtime state: local SQLite snapshot and the managed SPEC clone live outside the repo
+state/
+runtime-config/
+data/
+.env
+github-api-keys.toml

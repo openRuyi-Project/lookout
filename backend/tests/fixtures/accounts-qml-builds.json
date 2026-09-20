@@ -1,0 +1,23 @@
+[
+  {
+    "repository": "riscv64",
+    "architecture": "riscv64",
+    "history_xml": "<jobhistlist>\n  <jobhist package=\"accounts-qml-module\" rev=\"6\" srcmd5=\"84530852fc754c87dd69519f708199a0\" versrel=\"0.7+git20231216.MACRO-6\" bcnt=\"13\" readytime=\"1788807667\" starttime=\"1788813257\" endtime=\"1788813623\" code=\"succeeded\" reason=\"new build\" verifymd5=\"7e0a236868f43250ba308ca2d1b5e17d\" />\n</jobhistlist>",
+    "fileinfo_xml": "<fileinfo filename=\"accounts-qml-module-0.7+git20231216.05e79eb-6.13.or.src.rpm\"><version>0.7+git20231216.05e79eb</version>\n  <release>6.13.or</release>\n  <arch>src</arch>\n  <disturl>obs://private/openruyi/riscv64/84530852fc754c87dd69519f708199a0-accounts-qml-module</disturl>\n  <mtime>1788813624</mtime>\n  </fileinfo>",
+    "observed_from": "https://build.openruyi.cn/public/build/openruyi/riscv64/riscv64/accounts-qml-module/accounts-qml-module-0.7%2Bgit20231216.05e79eb-6.13.or.src.rpm?view=fileinfo"
+  },
+  {
+    "repository": "rva20",
+    "architecture": "riscv64",
+    "history_xml": "<jobhistlist>\n  <jobhist package=\"accounts-qml-module\" rev=\"6\" srcmd5=\"84530852fc754c87dd69519f708199a0\" versrel=\"0.7+git20231216.MACRO-6\" bcnt=\"17\" readytime=\"1788785369\" starttime=\"1788785372\" endtime=\"1788785889\" code=\"succeeded\" reason=\"new build\" verifymd5=\"7e0a236868f43250ba308ca2d1b5e17d\" />\n</jobhistlist>",
+    "fileinfo_xml": "<fileinfo filename=\"accounts-qml-module-0.7+git20231216.05e79eb-6.17.or20.src.rpm\"><version>0.7+git20231216.05e79eb</version>\n  <release>6.17.or20</release>\n  <arch>src</arch>\n  <disturl>obs://private/openruyi/rva20/84530852fc754c87dd69519f708199a0-accounts-qml-module</disturl>\n  <mtime>1788785890</mtime>\n  </fileinfo>",
+    "observed_from": "https://build.openruyi.cn/public/build/openruyi/rva20/riscv64/accounts-qml-module/accounts-qml-module-0.7%2Bgit20231216.05e79eb-6.17.or20.src.rpm?view=fileinfo"
+  },
+  {
+    "repository": "x86_64",
+    "architecture": "x86_64",
+    "history_xml": "<jobhistlist>\n  <jobhist package=\"accounts-qml-module\" rev=\"6\" srcmd5=\"84530852fc754c87dd69519f708199a0\" versrel=\"0.7+git20231216.MACRO-6\" bcnt=\"32\" readytime=\"1788580450\" starttime=\"1788580452\" endtime=\"1788580519\" code=\"succeeded\" reason=\"new build\" verifymd5=\"7e0a236868f43250ba308ca2d1b5e17d\" />\n</jobhistlist>",
+    "fileinfo_xml": "<fileinfo filename=\"accounts-qml-module-0.7+git20231216.05e79eb-6.32.or.src.rpm\"><version>0.7+git20231216.05e79eb</version>\n  <release>6.32.or</release>\n  <arch>src</arch>\n  <disturl>obs://private/openruyi/x86_64/84530852fc754c87dd69519f708199a0-accounts-qml-module</disturl>\n  <mtime>1788580520</mtime>\n  </fileinfo>",
+    "observed_from": "https://build.openruyi.cn/public/build/openruyi/x86_64/x86_64/accounts-qml-module/accounts-qml-module-0.7%2Bgit20231216.05e79eb-6.32.or.src.rpm?view=fileinfo"
+  }
+]

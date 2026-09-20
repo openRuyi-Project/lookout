@@ -1,0 +1,3 @@
+"source" = "cpan"
+"cpan" = "Mozilla-PublicSuffix"
+"prefix" = "v"

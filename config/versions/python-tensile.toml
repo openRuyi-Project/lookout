@@ -1,0 +1,5 @@
+"source" = "git"
+"git" = "https://github.com/ROCm/Tensile.git"
+"prefix" = "rocm-"
+"exclude_regex" = "v.*"
+"include_regex" = "rocm\\-[0-9]+(?:\\.[0-9]+){1,3}"

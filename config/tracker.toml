@@ -1,0 +1,97 @@
+[obs]
+api_url = "https://build.openruyi.cn/public"
+web_url = "https://build.openruyi.cn"
+project = "openruyi"
+
+[[targets]]
+id = "rva23"
+label = "rva23"
+repository = "riscv64"
+architecture = "riscv64"
+
+[[targets]]
+id = "rva20"
+label = "rva20"
+repository = "rva20"
+architecture = "riscv64"
+
+[[targets]]
+id = "x86_64"
+label = "x86_64"
+repository = "x86_64"
+architecture = "x86_64"
+
+[collector]
+nvchecker_config = "versions/nvchecker.toml"
+obs_interval_seconds = 60
+nvchecker_interval_seconds = 21600
+stale_after_seconds = 86400
+obs_stale_after_seconds = 300
+native_spec_fallback = true
+source_batch_size = 150
+source_workers = 4
+timeout_seconds = 20
+nvchecker_timeout_seconds = 7200
+
+# Identities only: revisions and hashes come from each OBS observation. A changed
+# macro package invalidates the native fallback cache, even for unchanged SPECs.
+spec_macro_package = "rpm-config-openruyi"
+spec_macro_files = ["_service:obs_scm:macros.buildsystem", "_service:obs_scm:macros.aaa-buildsystem.rust"]
+# Release-line labels are derived from the package name (foo-N.N -> N.x).
+# Only genuine exceptions to that rule need an explicit binding here.
+
+
+["packages"."openssl"]
+"monitors" = {"eol" = {"product" = "openssl", "cycle_parts" = 2}, "security" = {"vendor" = "openssl", "product" = "openssl"}}
+[monitors]
+enabled = ["eol", "security", "license"]
+interval_seconds = 1800
+stale_after_seconds = 86400
+batch_size = 256
+workers = 4
+
+[packages.python]
+monitors = { eol = { product = "python", cycle_parts = 2 } }
+
+[packages.nodejs]
+monitors = { eol = { product = "nodejs", cycle_parts = 1 } }
+
+[packages.postgresql]
+monitors = { eol = { product = "postgresql", cycle_parts = 1 } }
+
+[packages.bash]
+monitors = { security = { vendor = "gnu", product = "bash" } }
+
+[packages.libxml2]
+monitors = { security = { vendor = "xmlsoft", product = "libxml2" } }
+
+[openruyi.buildsystems.rustcrates]
+background = "#8c3d19"
+foreground = "#ffffff"
+[openruyi.buildsystems.golangmodules]
+background = "#075f72"
+foreground = "#ffffff"
+[openruyi.buildsystems.pyproject]
+background = "#2856a0"
+foreground = "#ffffff"
+[openruyi.buildsystems.autotools]
+background = "#555b24"
+foreground = "#ffffff"
+[openruyi.buildsystems.cmake]
+background = "#6b3c91"
+foreground = "#ffffff"
+[openruyi.buildsystems.perlmaker]
+background = "#8d365e"
+foreground = "#ffffff"
+[openruyi.buildsystems.meson]
+background = "#276544"
+foreground = "#ffffff"
+[openruyi.buildsystems.perlbuild]
+background = "#664e87"
+foreground = "#ffffff"
+[openruyi.buildsystems.golang]
+background = "#36617c"
+foreground = "#ffffff"
+[openruyi.buildsystems.rust]
+background = "#785329"
+foreground = "#ffffff"

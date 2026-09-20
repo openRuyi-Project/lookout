@@ -1,0 +1,4 @@
+"source" = "git"
+"git" = "https://code.videolan.org/videolan/libdvdcss.git"
+"prefix" = ""
+"include_regex" = "^[0-9]+(?:\\.[0-9]+){1,3}$"

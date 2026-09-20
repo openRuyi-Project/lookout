@@ -1,0 +1,21 @@
+---
+import Base from '../layouts/Base.astro';
+---
+<Base title="About · openRuyi Packages"><article class="prose">
+<h1>About</h1>
+<h2>openRuyi Project</h2>
+<p>An open, rolling Linux distribution project for RISC-V.</p>
+<p>openRuyi is an open source Linux distribution, initiated and long-term maintained by Institute of Software, Chinese Academy of Sciences, to provide a technical foundation for the RISC-V software ecosystem and real-world adoption.</p>
+<p>Designed natively for RISC-V, it integrates new RISC-V features early and helps move them upstream, giving developers and industry partners a practical platform to build, validate, and deliver RISC-V software.</p>
+
+<h2>Reading the table</h2>
+<p>Each row is one source package. The version column shows the current source version and, when available, a green arrow to a newer tracked upstream version. Comparison uses RPM VERSION, not Epoch or Release.</p>
+<p>The current version is dark (light in dark mode) when its source has succeeded on every active target, red when a target has not succeeded, and muted with a dashed underline when upstream is <em>Untracked</em>. Muted text without an underline means build confirmation is unknown, not that upstream is untracked.</p>
+<p>Each architecture column shows its own OBS result and last successful version. A successful result and matching version fit on one line; other results show the previous success below. Open that version for its build time and per-flavor details. A dash means no single usable version is recorded, not that the current version should be substituted.</p>
+<p><code>rva23</code>, <code>rva20</code>, and <code>x86_64</code> are the three targets. A check mark is a reported build result, not a release or testing guarantee. An earlier success may share a version number with a different source revision.</p>
+<p><em>Last updated</em> shows when observations were successfully collected; <em>Succeeded at</em> is when a build succeeded. A failed collection retains the previous values and their timestamps. OBS and upstream checks run separately. Untracked packages have no upstream configuration and are not automatically up to date.</p>
+
+<h2>Data</h2>
+<p>Schedules, coverage, and collection errors are available as JSON at <a href="/api/v1/status">/api/v1/status</a>. Per-package observations are at <code>/api/v1/packages/&#123;name&#125;</code>.</p>
+<p><a href="/api">Query interface</a> · <a href="/LICENSE.txt">MulanPSL-2.0 license</a>.</p>
+</article></Base>

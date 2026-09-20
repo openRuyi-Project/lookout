@@ -1,0 +1,98 @@
+---
+import Base from '../../layouts/Base.astro';
+import Version from '../../components/Version.astro';
+import SecurityEvidence from '../../components/SecurityEvidence.astro';
+import BuildSystem from '../../components/BuildSystem.astro';
+import {api, type PackageDetail} from '../../lib/api';
+import {utcTime} from '../../lib/time';
+const name = Astro.params.name || '';
+const response = await api<PackageDetail>('/api/v1/packages/' + encodeURIComponent(name));
+const pkg = response.data;
+if (!pkg) Astro.response.status = response.status === 404 ? 404 : 503;
+const apiPath = '/api/v1/packages/' + encodeURIComponent(name);
+const meta = pkg?.spec?.metadata ?? null;
+const changelog = pkg?.spec?.changelog ?? [];
+const watched = pkg?.watch ?? [];
+const day = (iso: string) => iso.slice(0, 10);
+const observations = pkg?.builds.map(build => build.updated_at) ?? [];
+const obsUpdatedAt = observations.length && observations.every(value => value && Number.isFinite(Date.parse(value)))
+  ? observations.reduce((oldest, value) => Date.parse(value!) < Date.parse(oldest!) ? value : oldest) : null;
+const buildRows = (pkg?.builds ?? []).flatMap(build =>
+  (build.flavors && build.flavors.length > 1 ? build.flavors : [build]).map(observation => ({
+    ...observation, label: build.label, flavor: 'package' in observation ? observation.package : null,
+  })));
+---
+<Base title={`${name} · openRuyi Packages`}>
+  <section class="package-detail"><a class="back" href="/">← Packages</a>
+  {pkg ? <>
+    <h1>{pkg.name}</h1>
+    <BuildSystem value={pkg.buildsystem}/>
+    <Version pkg={pkg} label={true}/>
+
+    {watched.length > 0 && <dl class="general" aria-label="Explicitly watched tracks">
+      <dt>Watching</dt><dd><ul>{watched.map(w => <li>
+        <a href={`/api/v1/tracks/${encodeURIComponent(w.id)}`}>{w.id}</a>: <strong>{w.version || '—'}</strong>
+        {w.version && (w.error || w.stale) && <span title={w.error || 'Observation has expired'}> (last observed)</span>}
+      </li>)}</ul></dd>
+    </dl>}
+
+    {pkg.maintenance_findings.length > 0 && <section aria-labelledby="maintenance-heading">
+      <h2 id="maintenance-heading">Maintenance</h2>
+      {pkg.maintenance_findings.some(f => f.label === 'Security') && <SecurityEvidence findings={pkg.maintenance_findings.filter(f => f.label === 'Security')}/>}
+      {pkg.maintenance_findings.some(f => f.label !== 'Security') &&
+      <div class="table-wrap"><table class="maintenance-table"><thead><tr><th>Type</th><th>Evidence</th></tr></thead><tbody>
+        {pkg.maintenance_findings.filter(f => f.label !== 'Security').map(f => <tr id={'finding-' + encodeURIComponent(f.id)}>
+          <th><a href={'/?' + new URLSearchParams({maintenance: f.label})}>{f.label}</a>{f.tags.map(tag => <><br/><a class="state error" href={'/?' + new URLSearchParams({maintenance: tag})}>{tag}</a></>)}</th>
+          <td><a href={f.evidence_url}>{f.title}</a>{f.scope === 'upgrade' && <p>Target {f.target_version}</p>}
+            <dl class="evidence-facts">{f.facts.map(fact => <>
+              <dt>{fact.key} <a href={fact.url}>{fact.source}</a></dt>
+              <dd>{fact.status !== 'observed' ? fact.status.replaceAll('_', ' ')
+                : Array.isArray(fact.value) ? fact.value.join(', ') || '—'
+                : typeof fact.value === 'boolean' ? (fact.value ? 'Yes' : 'No')
+                : fact.value}</dd>
+            </>)}</dl>
+            {f.stale && <small>Earlier observation; check status below.</small>}
+          </td>
+        </tr>)}
+      </tbody></table></div>}
+    </section>}
+    {pkg.monitor_checks.length > 0 && <details class="monitor-checks"><summary>Checks</summary><dl>{pkg.monitor_checks.map(check => <><dt>{check.monitor}</dt><dd>{check.status}{check.checked_at && <> · <time datetime={check.checked_at}>{utcTime(check.checked_at)} UTC</time></>}{check.note && <p>{check.note}</p>}{check.error && <p>{check.error}</p>}</dd></>)}</dl></details>}
+
+    <h2 id="build-status">Build status</h2>
+    <p class="updated-note" title={pkg.version_error || undefined}>Last updated: <span>OBS {obsUpdatedAt ? <time datetime={obsUpdatedAt}>{utcTime(obsUpdatedAt)}</time> : '—'}</span>{pkg.track && <> · <span>Upstream {pkg.upstream_updated_at ? <time datetime={pkg.upstream_updated_at}>{utcTime(pkg.upstream_updated_at)}</time> : '—'}</span></>} <span class="time-zone">UTC</span></p>
+    <div class="table-wrap" role="region" tabindex="0" aria-label="Build status by target">
+      <table class="detail-table"><thead><tr><th scope="col">Target</th><th scope="col">Result</th><th scope="col">Last successful version</th><th scope="col">Succeeded at (UTC)</th></tr></thead>
+      <tbody>
+      {buildRows.map(b => <tr><th scope="row">{b.label}{b.flavor && <span class="build-flavor">{b.flavor}</span>}</th>
+        <td>{b.log_url
+          ? <a class:list={['state', b.kind]} href={b.log_url} title={`OBS ${b.raw_status}. Last updated: ${utcTime(b.updated_at)} UTC.`}>{b.text}</a>
+          : <span class:list={['state', b.kind]} title={`OBS ${b.raw_status}. Last updated: ${utcTime(b.updated_at)} UTC.`}>{b.text}</span>}</td>
+        <td><strong title={b.last_success ? (b.last_success.version ? undefined : 'OBS recorded a successful build, but its version could not be resolved.') : 'No last-success record is available for this observation.'}>{b.last_success?.version || '—'}</strong></td>
+        <td class="build-success-time">{b.last_success?.time ? <time datetime={b.last_success.time}>{utcTime(b.last_success.time)}</time> : '—'}</td></tr>)}
+      </tbody></table>
+    </div>
+
+    <h2>Package information</h2>
+    <dl class="general">
+      {meta?.summary && <><dt>Summary</dt><dd>{meta.summary}</dd></>}
+      {meta?.license && <><dt>License</dt><dd>{meta.license}</dd></>}
+      <dt>SPEC Source</dt><dd>{pkg.spec.source_url ? <a href={pkg.spec.source_url}>/{pkg.spec.source_path}</a> : <span>/{pkg.spec.source_path}</span>}</dd>
+      {meta?.url && <><dt>Upstream</dt><dd><a href={meta.url}>{meta.url}</a></dd></>}
+
+      {!pkg.buildsystem && <><dt>BuildSystem</dt><dd><abbr title={pkg.buildsystem_status === 'not_declared' ? 'The parsed SPEC does not declare BuildSystem.' : 'The SPEC observation is missing or failed; declaration is unknown.'}>NotDetected</abbr></dd></>}
+    </dl>
+    {meta?.description && <details class="description"><summary>Description</summary><p>{meta.description}</p></details>}
+
+    <h2>Changelog</h2>
+    {pkg.spec?.error && !changelog.length && <p class="detail-note">Changelog unavailable: {pkg.spec.error}</p>}
+    {changelog.length > 0
+      ? <ol class="changelog">{changelog.map(c => <li>
+          <div class="cl-head"><span class="cl-subject">{c.subject}</span><time class="cl-date">{day(c.date)}</time></div>
+          <div class="cl-meta">{c.author}{c.signed_off_by.length > 0 && <span class="cl-sob"> · Signed-off-by: {c.signed_off_by.join(', ')}</span>}</div>
+        </li>)}</ol>
+      : (!pkg.spec?.error && <p class="detail-note">No SPEC history recorded yet.</p>)}
+
+    <p class="provenance-link"><a href={apiPath}>Raw data (JSON)</a></p>
+  </> : <div role="alert" class="notice">{response.status === 404 ? 'No such source package.' : 'Snapshot unavailable. Please try again later.'}</div>}
+  </section>
+</Base>

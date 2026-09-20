@@ -1,0 +1,4 @@
+# TODO(drop): openRuyi SPECS/python-zmq has Name=python-pyzmq.
+# Drop this compatibility rule after directory/Name agree and upstream tracking is verified.
+"source" = "pypi"
+"pypi" = "pyzmq"

@@ -1,0 +1,4 @@
+"source" = "git"
+"git" = "https://github.com/OpenSCAP/openscap.git"
+"exclude_regex" = ".*(alpha|beta|rc|dev).*"
+"include_regex" = "[0-9]+(?:\\.[0-9]+){1,3}"

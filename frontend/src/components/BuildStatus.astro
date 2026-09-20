@@ -1,0 +1,20 @@
+---
+import type {Build} from '../lib/api';
+import {utcTime} from '../lib/time';
+interface Props {build: Build; name: string; current: string | null; detailURL: string}
+const {build, name, current, detailURL} = Astro.props;
+const last = build.last_success;
+// Omit only information already established by the current source and this target.
+const compact = build.kind === 'ok' && build.matches_source === true && !!last?.version && last.version === current;
+const observed = build.updated_at ? `${utcTime(build.updated_at)} UTC` : 'not recorded';
+const statusTitle = `${name}, ${build.label}: ${build.raw_status}. Last updated: ${observed}.`;
+const successTitle = last
+  ? `Last succeeded: ${last.version || 'version not recorded'}, ${utcTime(last.time)} UTC. See build details.`
+  : 'No single last-success version is available for this target. See build details for recorded results and flavors.';
+const Status = build.log_url ? 'a' : 'span';
+const resultTitle = compact ? `${statusTitle} ${successTitle}` : statusTitle;
+---
+<span class:list={['build-observation', {compact}]}>
+  <Status class:list={['state', build.kind]} href={build.log_url || undefined} title={resultTitle} aria-label={resultTitle}>{build.text}</Status>
+  {!compact && last?.version && <a class="build-version" href={`${detailURL}#build-status`} title={successTitle} aria-label={`${name}, ${build.label}. ${successTitle}`}>{last.version}</a>}
+</span>

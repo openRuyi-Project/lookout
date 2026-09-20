@@ -1,0 +1,4 @@
+"source" = "git"
+"git" = "https://github.com/libfuse/libfuse.git"
+"prefix" = "fuse-"
+"include_regex" = "(?=fuse-3.[\\d\\.]+$)fuse\\-[0-9]+(?:\\.[0-9]+){1,3}"

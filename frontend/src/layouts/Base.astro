@@ -1,0 +1,28 @@
+---
+import '../styles/base.css';
+import '../styles/app.css';
+interface Props {title?: string}
+const {title = 'openRuyi · Packages'} = Astro.props;
+
+// The theme is chosen server-side from a cookie so it works with script-src 'none'.
+// No cookie means follow the system preference, which the CSS handles on its own.
+const raw = Astro.cookies.get('theme')?.value;
+const theme = raw === 'light' || raw === 'dark' ? raw : 'auto';
+const order = ['auto', 'light', 'dark'] as const;
+const next = order[(order.indexOf(theme as typeof order[number]) + 1) % order.length];
+const icon = {auto: '\u25d0', light: '\u2600', dark: '\u263e'};
+const label = {auto: 'Auto', light: 'Light', dark: 'Dark'};
+// Return to the current page after switching; same-origin path only.
+const back = Astro.url.pathname + Astro.url.search;
+const themeHref = `/theme?to=${next}&from=${encodeURIComponent(back)}`;
+---
+<!doctype html>
+<!-- SPDX-License-Identifier: MulanPSL-2.0 -->
+<html lang="en" data-theme={theme === 'auto' ? undefined : theme}>
+  <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/><meta name="color-scheme" content="light dark"/><title>{title}</title><link rel="icon" href="data:,"/><link rel="stylesheet" href="/presentation.css"/></head>
+  <body><a class="skip" href="#main">Skip to content</a><div class="shell">
+    <header class="masthead"><a class="brand" href="/">openRuyi<small>/ packages</small></a><nav aria-label="Site links"><a class="theme-toggle" href={themeHref} aria-label={`Color theme: ${label[theme]}. Activate for ${label[next]}.`}><span aria-hidden="true">{icon[theme]}</span>{label[theme]}</a><a href="/api">API</a><a href="/about">About</a></nav></header>
+    <main id="main"><slot /></main>
+    <footer class="footer"><span class="count">openRuyi Package Monitor</span><a href="/api/v1/export" download="openruyi-packages.json">Download data</a><a href="/LICENSE.txt">License</a></footer>
+  </div></body>
+</html>

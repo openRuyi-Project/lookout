@@ -1,0 +1,6 @@
+"source" = "github"
+"github" = "weidai11/cryptopp"
+"use_latest_release" = true
+"prefix" = "CRYPTOPP_"
+"from_pattern" = "_"
+"to_pattern" = "."
