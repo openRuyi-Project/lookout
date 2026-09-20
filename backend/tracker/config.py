@@ -52,7 +52,12 @@ def load(path, snapshot=None):
         if lines:config['exception_notes'][file.stem]=''.join(lines)
     config['group_native'], config['group_origins'], _, _ = version_rules.expand(text)
     config['exception_native'] = {n:e for n,e in native.items() if rule_files[n] != str(nvpath)}
-    automatic, automatic_origins = version_rules.automatic(text,snapshot or {},native)
+    # Native nvchecker.toml is the executable source of truth.  Automatic
+    # discovery is a setup-time candidate generator, not a runtime rule
+    # synthesizer; promoted candidates are already explicit in this file.
+    automatic, automatic_origins = ({}, {}) if nvpath.name == 'nvchecker.toml' else version_rules.automatic(
+        text, snapshot or {}, native
+    )
     native.update(automatic); origins.update(automatic_origins)
     rule_files.update({n:str(nvpath) for n in automatic})
     config['automatic_rules'] = sorted(automatic)

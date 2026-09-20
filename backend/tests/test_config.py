@@ -17,7 +17,7 @@ def test_actual_native_config():
     c=cfg.load(ROOT/'config/tracker.toml', snapshot=snapshot)
     assert c['native'] and all(e.get('source') != 'manual' for e in c['native'].values())
     assert Path(c['nvpath']).name=='nvchecker.toml'
-    assert 'python-requests' not in c['native']  # discovery proposes native rules; runtime does not synthesize them
+    assert c['native']['python-requests']['source'] == 'pypi'  # promoted discovery candidate is explicit
     assert cfg.binding(c,'openssl')['track_label']=='3.x'
     assert not (ROOT/'config/nvchecker.d').exists()
     assert 'nvtext' not in c
