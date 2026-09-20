@@ -34002,3 +34002,9 @@
 "url" = "https://release-monitoring.org/api/v2/versions/?project_id=13802"
 "filter" = "first(.stable_versions[])"
 "prefix" = "v"
+
+["NetworkManager"]
+"source" = "jq"
+"url" = "https://release-monitoring.org/api/v2/versions/?project_id=21197"
+"filter" = "first(.stable_versions[])"
+"prefix" = "v"
