@@ -1,5 +1,5 @@
 ["__config__"]
-"max_concurrency" = 4
+"max_concurrency" = 16
 "http_timeout" = 300
 
 ["Catch2"]
@@ -17017,6 +17017,7 @@
 "source" = "pypi"
 "pypi" = "zlib-state"
 
+# TODO(drop): SPEC directory/name is python-zmq/python-pyzmq; retain explicit pyzmq identity until aligned.
 ["python-zmq"]
 "source" = "pypi"
 "pypi" = "pyzmq"
