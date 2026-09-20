@@ -203,10 +203,7 @@ def run(config, previous, now, tracks=None, on_results=None):
                      if on_results is not None and names is None else names)
     try:
         with command_config(config, command_names) as path:
-            # A complete pass covers thousands of tracks. Two provider attempts
-            # preserve retry tolerance while preventing one slow mirror from
-            # consuming the entire heartbeat window.
-            command = ['nvchecker', '--logger=json', '--json-log-fd=1', '--tries', '2', '-c', path]
+            command = ['nvchecker', '--logger=json', '--json-log-fd=1', '--tries', '3', '-c', path]
             if on_results is not None:
                 return stream_command(command, config['collector'].get('nvchecker_timeout_seconds', 180),
                                       native, previous, now, on_results)
