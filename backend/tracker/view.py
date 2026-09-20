@@ -194,7 +194,11 @@ def project(snapshot, now=None):
         buildsystem = metadata.get('buildsystem') if metadata and not spec_fact.get('error') else None
         buildsystem_status = ('declared' if buildsystem else 'not_declared') if metadata and 'buildsystem' in metadata and not spec_fact.get('error') else 'unknown'
         maintenance = monitor_model.project(snapshot, name, now, upstream.get('version'), relation == 'outdated')
-        rows.append(dict(upstream_updated_at=observed_at([upstream]) if track else None, current_build_success=combined_match(all_entries), last_successful_version=previous_version, name=name, current=source.get('version'), latest=upstream.get('version'), relation=relation,
+        # Package version is the SPEC-declared value.  OBS remains the build
+        # evidence below (matches_source/last_success), so a source mismatch
+        # cannot silently relabel the shipped artifact.
+        spec_version = (metadata or {}).get('version')
+        rows.append(dict(upstream_updated_at=observed_at([upstream]) if track else None, current_build_success=combined_match(all_entries), last_successful_version=previous_version, name=name, current=spec_version or source.get('version'), obs_version=source.get('version'), latest=upstream.get('version'), relation=relation,
                          track=track, track_label=binding.get('track_label') or cfg.derive_track_label(name), stale=old_data,
                          needs_attention=attention, builds=builds, detail_url=f'/packages/{quote(name, safe="")}',
                          source=source, upstream=upstream, version_error=version_error, last_known_relation=last_relation,
