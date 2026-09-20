@@ -260,7 +260,18 @@ def main(argv=None):
         identity = identity_url(row.get('source_repository') or row['homepage'])
         row['shared_repository'] = len(repo_packages.get(identity, ())) > 1
     shared_release_entries(config, snapshot, rows)
-    selected = [r for r in rows if not r['reason']][:args.limit]
+    # Spend the bounded verification budget on candidates with a concrete
+    # identity first.  This is data-driven: repository/component/release
+    # evidence comes from SPEC and provider responses, never package names.
+    eligible = [r for r in rows if not r['reason']]
+    eligible.sort(key=lambda r: (
+        not bool(r.get('entry')),
+        not bool(r.get('reuse_track')),
+        not bool(r.get('source_repository')),
+        not bool(r.get('archive_component')),
+        r['name'],
+    ))
+    selected = eligible[:args.limit]
     selected_names = {r['name'] for r in selected}
     for row in rows:
         if not row['reason'] and row['name'] not in selected_names:
