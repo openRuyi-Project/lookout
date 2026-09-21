@@ -19,6 +19,7 @@ API_PORT = os.environ.get("API_PORT", "18731")
 
 sys.path.insert(0, f"{APP}/backend")
 from tracker.config import load
+from tracker.runtime_checks import check_runtime
 
 _stop = threading.Event()
 _procs = {}
@@ -139,8 +140,12 @@ def terminate_children():
 def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
-    os.makedirs(os.path.dirname(DB), exist_ok=True)
     config = load(CONFIG)  # Fail visibly before serving if operator config is invalid.
+    try:
+        check_runtime(config, DB)
+    except Exception as error:
+        log(f"runtime preflight failed: {error}")
+        return 2
     base_env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     api_env = {**base_env, "TRACKER_DB": DB}
     web_env = {**base_env, "HOST": os.environ.get("HOST", "0.0.0.0"), "PORT": WEB_PORT,
@@ -176,4 +181,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -44,6 +44,9 @@ RUN dnf install -y \
         python-rpm-macros python3-rpm-macros pyproject-rpm-macros python3-rpm-generators \
         git nodejs libcurl openssl-libs libseccomp \
     && dnf clean all
+RUN install -d -m 0755 -o 10001 -g 10001 /home/tracker /data
+ENV HOME=/home/tracker
+USER 10001:10001
 COPY --from=python-builder /opt/venv/ /opt/venv/
 
 WORKDIR /app
