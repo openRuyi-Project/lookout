@@ -115,10 +115,10 @@ PYTHONPATH=backend python -m tracker.package apply \
 ## 正式发布与旁路
 
 主比较默认只追踪正式发布。需要预发布时，单独定义 `widget@prerelease.toml`，
-然后在 groups.toml 中关联；不要把 watch 写入 tracker.toml 的 packages 表：
+然后在 tracker.toml 的 packages 表中关联：
 
 ```toml
-[binding.widget]
+[packages.widget]
 watch = ["widget@prerelease"]
 ```
 

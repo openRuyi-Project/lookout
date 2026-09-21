@@ -31,7 +31,7 @@ curl --fail http://127.0.0.1:18730/healthz
 podman logs openruyi-tracker
 ```
 
-`/config/tracker.toml` and its sibling `versions/groups.toml` are operator-owned
+`/config/tracker.toml` and `versions/nvchecker.toml` are operator-owned
 and read-only in the container. `/data/state/tracker.sqlite3` and the full bare SPEC
 clone `/data/spec-full.git` persist independently of the image. Do not run native
 host collectors concurrently against that database. Use a dedicated volume
