@@ -67,6 +67,6 @@ EXPOSE 8080
 # The web server has no built-in auth; put access control in front of it if exposed.
 # Health check uses python (always present) rather than adding curl to the image.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD python3 -c "import os,urllib.request; host=os.environ.get('HOST') or '127.0.0.1'; host='127.0.0.1' if host in ('0.0.0.0','::') else host; host='['+host+']' if ':' in host and not host.startswith('[') else host; urllib.request.urlopen('http://%s:%s/healthz' % (host,os.environ['PORT'])).read()" || exit 1
+    CMD python3 -c "import os,urllib.request; host=os.environ.get('HOST') or '127.0.0.1'; host='127.0.0.1' if host in ('0.0.0.0','::') else host; host='['+host+']' if ':' in host and not host.startswith('[') else host; urllib.request.urlopen('http://%s:%s/livez' % (host,os.environ['PORT']), timeout=3).read()" || exit 1
 
 ENTRYPOINT ["/opt/venv/bin/python", "/app/deploy/container-entrypoint.py"]
