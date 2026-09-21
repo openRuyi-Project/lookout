@@ -9,3 +9,7 @@ state
 .git
 runtime-config
 data
+**/.env
+**/.env.*
+!**/.env.example
+backups
