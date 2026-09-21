@@ -52,7 +52,7 @@ def test_upstream_rolls_without_rewriting_toml(tmp_path):
         server.shutdown();server.server_close();thread.join()
 
 def test_native_sparse_index_excludes_yanked_and_other_streams(tmp_path):
-    native=__import__('tracker.version_rules',fromlist=['load']).load(Path(__file__).resolve().parents[2]/'config/versions/groups.toml').entries
+    native=__import__('tracker.version_rules',fromlist=['load']).load(Path(__file__).resolve().parents[2]/'config/versions/nvchecker.toml').entries
     sparse=[v for v in native.values() if v.get('source')=='regex' and v.get('url','').startswith('https://index.crates.io/')]
     assert sparse, 'the actual production index rule is the test input'
     regex=sparse[0]['regex']

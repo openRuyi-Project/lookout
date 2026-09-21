@@ -169,7 +169,7 @@ def test_cli_only_emits_actually_verified_rules_and_no_live_write(tmp_path, monk
 
 def test_reviewed_release_policy_uses_upstream_contract_not_pinned_version():
     import jq
-    native = __import__('tracker.version_rules',fromlist=['load']).load(Path(__file__).resolve().parents[2] / 'config/versions/groups.toml').entries
+    native = __import__('tracker.version_rules',fromlist=['load']).load(Path(__file__).resolve().parents[2] / 'config/versions/nvchecker.toml').entries
     rule = native['bind']
     payload = {'stable_versions': ['9.23.1', '9.22.2', '9.21.26', '9.20.29']}
     assert jq.compile(rule['filter']).input_value(payload).first() == '9.22.2'

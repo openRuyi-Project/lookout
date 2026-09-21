@@ -1,6 +1,6 @@
 # 监控配置
 
-[`versions/nvchecker.toml`](versions/groups.toml) 是原生 nvchecker 规则的编辑入口；同目录的 `包名.toml` 保存单包特例。每个表都是一个独立、可直接交给 nvchecker 的规则；不在运行时展开模板。旧 groups.toml 仅作为迁移期 binding 参考，不新增规则。
+[`versions/nvchecker.toml`](versions/nvchecker.toml) 是原生 nvchecker 规则的编辑入口；同目录的 `包名.toml` 保存单包特例。每个表都是一个独立、可直接交给 nvchecker 的规则；不在运行时展开模板。规则策略在 tracker.toml 的 [packages.<name>] 中维护。
 
 | 修改内容 | 位置 |
 |---|---|

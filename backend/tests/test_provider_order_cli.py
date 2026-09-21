@@ -19,7 +19,7 @@ from tracker.config import track_fingerprint
 from tracker.nv import import_events
 
 ROOT = Path(__file__).resolve().parents[2]
-NATIVE = __import__('tracker.version_rules',fromlist=['expand']).load((ROOT / 'config/versions/groups.toml')).entries
+NATIVE = __import__('tracker.version_rules',fromlist=['expand']).load((ROOT / 'config/versions/nvchecker.toml')).entries
 NOW = '2026-09-20T00:00:00+00:00'
 
 
@@ -116,7 +116,7 @@ def test_failed_new_rule_never_relabels_old_3100(native_check):
 
 
 def test_selection_config_is_not_rewritten_by_new_release(native_check):
-    path = ROOT / 'config/versions/groups.toml'
+    path = ROOT / 'config/versions/nvchecker.toml'
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     for version in ['4.8.0', '4.9.0']:
         native_check(NATIVE['cfitsio'], {'stable_versions': [version, '3100']}, version)

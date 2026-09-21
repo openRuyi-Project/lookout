@@ -108,7 +108,7 @@ main()
 
 def test_production_prerelease_is_an_explicit_watch_not_main_comparison():
     root = Path(__file__).resolve().parents[2]
-    native = __import__('tracker.version_rules',fromlist=['load']).load(root/'config/versions/groups.toml').entries
+    native = __import__('tracker.version_rules',fromlist=['load']).load(root/'config/versions/nvchecker.toml').entries
     operator = config.load(root/'config/tracker.toml')
     name = 'python-opentelemetry-semantic-conventions'
     assert not native[name].get('use_pre_release', False)
