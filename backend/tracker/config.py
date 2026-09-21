@@ -30,13 +30,6 @@ def load(path, snapshot=None):
     rule_files = {name: origin.file for name, origin in rules.origins.items()}
     overridden = sorted(name for name, origin in rules.origins.items() if origin.overrides_group)
     version_bindings, options = rules.bindings, rules.options
-    # Native rule files own executable nvchecker entries. During migration, retain
-    # only tracker-specific binding policy from the old generated source; it is
-    # not read as a second executable rule source.
-    if nvpath.name == 'nvchecker.toml':
-        legacy = nvpath.parent / 'groups.toml'
-        if legacy.is_file():
-            _, _, version_bindings, _ = version_rules.expand(legacy.read_text())
     config['nvpath'] = str(nvpath)
     config['native'] = native
     config['rule_origins'] = origins

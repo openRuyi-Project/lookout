@@ -42,8 +42,10 @@ spec_macro_files = ["_service:obs_scm:macros.buildsystem", "_service:obs_scm:mac
 # Only genuine exceptions to that rule need an explicit binding here.
 
 
+
 ["packages"."openssl"]
 "monitors" = {"eol" = {"product" = "openssl", "cycle_parts" = 2}, "security" = {"vendor" = "openssl", "product" = "openssl"}}
+"track_label" = "3.x"
 [monitors]
 enabled = ["eol", "security", "license"]
 interval_seconds = 1800
@@ -96,3 +98,102 @@ foreground = "#ffffff"
 [openruyi.buildsystems.rust]
 background = "#785329"
 foreground = "#ffffff"
+
+["packages"."avahi"]
+"comparable" = false
+
+["packages"."cloud-hypervisor"]
+"comparable" = false
+
+["packages"."gcc16"]
+"track_label" = "16.x"
+
+["packages"."go-github-campoy-embedmd-embedmd"]
+"comparable" = false
+
+["packages"."go-github-charmbracelet-glamour"]
+"comparable" = false
+
+["packages"."go-github-charmbracelet-ssh"]
+"comparable" = false
+
+["packages"."go-github-charmbracelet-x"]
+"comparable" = false
+
+["packages"."go-github-docker-go-events"]
+"comparable" = false
+
+["packages"."go-github-go-task-slim-sprig-v3"]
+"comparable" = false
+
+["packages"."go-github-google-martian-v3"]
+"comparable" = false
+
+["packages"."go-github-googleapis-gax-go-v2"]
+"comparable" = false
+
+["packages"."go-github-jlaffaye-ftp"]
+"comparable" = false
+
+["packages"."go-github-minio-kms-go-kms"]
+"comparable" = false
+
+["packages"."go-github-onsi-ginkgo-v2"]
+"comparable" = false
+
+["packages"."go-github-ryanuber-columnize"]
+"comparable" = false
+
+["packages"."go-github-segmentio-encoding-json"]
+"comparable" = false
+
+["packages"."go-github-stefanhaller-git-todo-parser"]
+"comparable" = false
+
+["packages"."go-github-syndtr-goleveldb"]
+"comparable" = false
+
+["packages"."go-github-xo-terminfo"]
+"comparable" = false
+
+["packages"."libiberty"]
+"track_label" = "16.x"
+
+["packages"."mkosi"]
+"comparable" = false
+
+["packages"."python-opentelemetry-semantic-conventions"]
+"watch" = ["python-opentelemetry-semantic-conventions@prerelease"]
+
+["packages"."rapidjson"]
+"comparable" = false
+
+["packages"."rust-arwen-0.0.5"]
+"track_label" = "0.0.5"
+
+["packages"."rust-ctor-proc-macro-0.0.7"]
+"track_label" = "0.0.7"
+
+["packages"."rust-dtor-proc-macro-0.0.6"]
+"track_label" = "0.0.6"
+
+["packages"."rust-malloc-buf-0.0.6"]
+"track_label" = "0.0.6"
+
+["packages"."rust-mutants-0.0.3"]
+"track_label" = "0.0.3"
+
+["packages"."rust-rtoolbox-0.0.3"]
+"track_label" = "0.0.3"
+
+["packages"."rust-unty-0.0.4"]
+"track_label" = "0.0.4"
+
+["packages"."rust-virtue-0.0.18"]
+"track_label" = "0.0.18"
+
+["packages"."rust-winsafe-0.0.19"]
+"track_label" = "0.0.19"
+
+["packages"."shim"]
+"comparable" = false
