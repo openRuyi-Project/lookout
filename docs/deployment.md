@@ -1,70 +1,81 @@
 # Deployment
 
-The primary deployment is one Linux container: the API, web server, and three
-periodic collectors run together, without host collection timers or an external
-scheduler. The Fedora 43 image supplies native RPM bindings and Node. Native SPEC
-parsing also requires host-kernel Landlock ABI 6 or newer and seccomp support; it
-fails closed when confinement is unavailable. Run rootless, or as a non-root
-container user with writable data mounts, with all capabilities dropped. The
-source checkout is build input, not mutable runtime state.
+This is the canonical deployment procedure for the single openRuyi-monitor container. Astro SSR, FastAPI, and the configurable `obs`, `upstreams`, `specs`, and `monitors` tasks run in one container. The web/API process does not wait for a complete SPEC clone; collection state is reported separately.
 
-Python wheels are built in a separate stage. The runtime keeps RPM bindings,
-macro packages and shared libraries, not the compiler/development toolchain.
+## Prerequisites
 
-Run from the repository root with Python 3.11+ and Podman. `--format docker` is required here:
-Podman's default OCI format discards the image HEALTHCHECK. Docker users should
-use `docker build` **without** `--format docker`, and replace `podman run/logs`
-with `docker run/logs`:
+Use a dedicated non-root Linux account, cgroup v2, a local persistent filesystem, Landlock ABI 6 or newer, seccomp, Python 3.11+ for host tools, and rootless Podman with Quadlet. Verify the actual host with the image checks; do not infer support from a kernel version string. The runtime image defaults to UID/GID `10001` and the data directory must be writable through the rootless `keep-id` mapping.
+
+## Build and test one immutable image
+
+Build and deploy the same tested image; do not rebuild from a moving branch after these checks:
 
 ```sh
-# Initialize once; an existing destination is an error.
-python3 deploy/init-config.py runtime-config
-mkdir -p data
-podman build --format docker -f Containerfile -t openruyi-tracker:local .
-podman run -d --name openruyi-tracker --restart=unless-stopped \
-  --stop-timeout=20 --cap-drop=all --security-opt=no-new-privileges \
-  --read-only --tmpfs /tmp:rw,nosuid,nodev,size=128m \
-  -p 127.0.0.1:18730:8080 \
-  -v "$PWD/runtime-config:/config:ro,Z" -v "$PWD/data:/data:Z" \
-  openruyi-tracker:local
-curl --fail http://127.0.0.1:18730/healthz
-podman logs openruyi-tracker
+IMAGE="localhost/openruyi-monitor:$(git rev-parse --short HEAD)"
+podman build --format docker -t "$IMAGE" -f Containerfile .
+CONTAINER_ENGINE=podman deploy/check-image.sh "$IMAGE"
+CONTAINER_ENGINE=podman python3 deploy/smoke-image.py "$IMAGE"
 ```
 
-`/config/tracker.toml` and `versions/nvchecker.toml` are operator-owned
-and read-only in the container. `/data/state/tracker.sqlite3` and the full bare SPEC
-clone `/data/spec-full.git` persist independently of the image. Do not run native
-host collectors concurrently against that database. Use a dedicated volume
-location; on SELinux hosts `:Z` labels it for this container. For a LAN-facing
-service, explicitly change the published host address and configure access control.
+Docker may be used for CI with `docker build`; the smoke command still uses the image's real entrypoint. These checks do not prove provider reachability, SELinux policy, HTTPS, or reboot recovery on a target host.
 
-The API/web start without waiting for a full git clone. Initialization is bounded
-by `[spec].fetch_timeout_seconds` (default 300 seconds) and retries after 60 seconds
-on failure; timeout and exit status remain visible in the container log. A new empty volume may
-return HTTP 503 until the first OBS snapshot is available. `/healthz` checks
-snapshot readiness, not whether every external source is fresh; inspect
-`/api/v1/status` and logs for collection state. Restart the container after editing
-configuration so its scheduler reloads interval changes. `TRACKER_CONFIG`,
-`TRACKER_DB`, and `TRACKER_SPEC_REPO` override the respective paths. `HOST` changes
-the web bind address (default `0.0.0.0`); networking and proxy environment variables
-remain deployment-owned. `[spec].url`
-and `[spec].branch` select the managed repository origin and branch; defaults are
-the official openRuyi repository and `main`. Network/proxy settings belong to the
-environment; the application contains no hard-coded proxy or private host address.
+## Configuration and preflight
 
-For an update, build a new image tag before stopping the existing container, then
-recreate it with the same mounts/port and new tag. Keep the old image and take a
-SQLite backup before upgrades. For **code rollback**, stop/remove only this
-application's container and rerun the command with the previous image tag, retaining
-both mounted directories. Never delete the data volume. Code rollback does not
-rewind collection observations; restoring a data backup is a separate explicit
-operator action. The command above needs the host container service enabled for
-reboot restart; this project does not install or alter host-global services.
+Create configuration outside the source checkout. The initializer refuses to overwrite an existing destination:
 
+```sh
+python3 deploy/init-config.py /srv/openruyi-monitor/config
+install -d -m 0750 /srv/openruyi-monitor/data /srv/openruyi-monitor/backups
+```
 
-The initializer validates the complete configuration before publishing it. See
-[configuration changes](../config/README.md#推广到运行配置) for upgrades to rules.
+Keep `tracker.toml` and `versions/nvchecker.toml` read-only in the container; keep data and backups in separate persistent directories. Before installing a service, run preflight with the same image, user mapping, mounts, and security options that production will use. It does not contact upstreams or create a database:
 
-Native SPEC confinement requires Landlock ABI 6+ and seccomp; unsupported kernels
-report an error rather than executing a SPEC without confinement. See
-[the security model](design.md#native-spec-confinement).
+```sh
+podman run --rm --network none --read-only --cap-drop=all \
+  --security-opt=no-new-privileges --userns=keep-id:uid=10001,gid=10001 \
+  -v /srv/openruyi-monitor/config:/config:ro,Z \
+  -v /srv/openruyi-monitor/data:/data:Z \
+  "$IMAGE" python -m tracker.runtime_checks \
+    --config /config/tracker.toml --db /data/state/tracker.sqlite3
+```
+
+## Rootless Quadlet
+
+Render `deploy/quadlet/openruyi-monitor.container.in` by replacing exactly `@IMAGE@`, `@CONFIG_DIR@`, and `@DATA_DIR@` with absolute paths and the tested image tag. Refuse to overwrite an existing unit and verify no placeholder remains. Run the user generator in dry-run mode, then have the operator copy the rendered unit to `~/.config/containers/systemd/openruyi-monitor.container`:
+
+```sh
+QUADLET_UNIT_DIRS="$TMP_QUADLET_DIR" \
+  /usr/lib/systemd/system-generators/podman-system-generator --user --dryrun
+systemctl --user daemon-reload
+systemctl --user start openruyi-monitor.service
+journalctl --user -u openruyi-monitor.service -f
+```
+
+Do not run ordinary `systemctl enable` on the generated service. Configure linger and the user service directory as an operator/administrator task. Do not run a second full collector instance or a host collection timer against the same SQLite database.
+
+The unit binds only `127.0.0.1:18730`. For HTTPS, use the host Caddy example in [`deploy/Caddyfile.example`](../deploy/Caddyfile.example), replace the domain, and configure DNS and access control on the host. Port 18731 is not published.
+
+## Health acceptance
+
+`/livez` only proves the Node-to-FastAPI liveness path. `/readyz` and the compatibility `/healthz` report whether a readable snapshot exists. The status API and logs report freshness, coverage, failures, and degraded collection. An empty data directory may be live but not ready; degraded must not be reported as fully healthy.
+
+The optional cve-bin-tool integration is unavailable until its controlled scanner and fresh database are installed under the configured `/data/cve` location. Do not turn unavailable into “no vulnerabilities”; other OSV-based evidence remains independent.
+
+## Backup
+
+Never copy a live SQLite file with `cp`. Use the atomic SQLite Backup API command and store the result independently:
+
+```sh
+python3 deploy/backup-snapshot.py \
+  --db /srv/openruyi-monitor/data/state/tracker.sqlite3 \
+  --output /srv/openruyi-monitor/backups/tracker-YYYYMMDDTHHMMSSZ.sqlite3 \
+  --timeout-seconds 30
+```
+
+Back up the matching configuration and image identifier as well. Arrange at least one independent copy and periodically restore a backup into a separate test directory.
+
+## Upgrade and rollback
+
+Record the image tag, configuration directory, data directory, and backup path. Build and test the new image, run preflight, take a backup, stop the old service, and switch the unit to the new image while retaining the data directory. For a code rollback, restore the previous image and matching configuration; do not delete or automatically restore the database. A data restore is a separate explicit operation, and schema compatibility must be checked before using an older image.
+
+The operator must finally verify real provider data progression, HTTPS, continued operation after logout, host reboot recovery, and a backup restore on the target host. These host and production-data checks are not performed by the repository test suite or by this deployment procedure.
