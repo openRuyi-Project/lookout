@@ -1,5 +1,6 @@
 ---
 import type {Finding} from '../lib/api.generated';
+import EvidenceFacts from './EvidenceFacts.astro';
 interface Props {findings: Finding[]}
 const {findings} = Astro.props;
 const common = (findings[0]?.facts ?? []).filter(f => f.key.startsWith('Query ') &&
@@ -10,9 +11,7 @@ const fixed = (finding: Finding) => [...new Set(finding.facts.filter(f => f.key 
 const probabilities = (finding: Finding) => finding.facts.filter(f =>
   f.key.startsWith('EPSS probability') && f.status === 'observed' && typeof f.value === 'number');
 const incomplete = (finding: Finding) => finding.facts.some(f => f.status === 'unavailable');
-const value = (fact: Finding['facts'][number]) => fact.status !== 'observed' ? fact.status.replaceAll('_', ' ')
-  : Array.isArray(fact.value) ? fact.value.join(', ') || '—'
-  : typeof fact.value === 'boolean' ? (fact.value ? 'Yes' : 'No') : fact.value;
+
 ---
 <details class="security-evidence">
   <summary>Security {findings.length}{findings.some(incomplete) && <small> · Incomplete evidence</small>}{findings.some(f => f.stale) && <small> · Earlier observations</small>}</summary>
@@ -22,9 +21,7 @@ const value = (fact: Finding['facts'][number]) => fact.status !== 'observed' ? f
       <td><a href={f.evidence_url}>{f.title}</a>{f.tags.includes('KEV') && <> · <a href="/?maintenance=KEV">KEV</a></>}
         {incomplete(f) && <small> · Incomplete</small>}
         <details class="advisory-evidence"><summary>Evidence</summary>
-          <dl class="evidence-facts">{f.facts.filter(fact => !commonKeys.has(JSON.stringify(fact))).map(fact => <>
-            <dt>{fact.key} <a href={fact.url}>{fact.source}</a></dt><dd>{value(fact)}</dd>
-          </>)}</dl>
+          <EvidenceFacts facts={f.facts.filter(fact => !commonKeys.has(JSON.stringify(fact)))}/>
           {f.stale && <small>Earlier observation; check status below.</small>}
         </details>
       </td>

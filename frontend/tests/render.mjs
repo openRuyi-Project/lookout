@@ -29,6 +29,15 @@ const packages = [
     evidence_url: `https://nvd.nist.gov/vuln/detail/CVE-2026-100${i}`,
     scope: 'current', tags: [], stale: false,
   }))}),
+  makePackage('license-evidence', {maintenance_findings: [{
+    id: 'license-target', label: 'LicenseChange', title: 'Target license metadata',
+    evidence_url: 'https://example.org/license', scope: 'upgrade', target_version: '2.1',
+    tags: [], stale: false, facts: [
+      {key: 'Licenses', value: ['MIT', 'Apache-2.0'], source: 'Registry', url: 'https://example.org/license', status: 'observed'},
+      {key: 'Unavailable field', value: null, source: 'Registry', url: 'https://example.org/license', status: 'unavailable'},
+      {key: 'False field', value: false, source: 'Registry', url: 'https://example.org/license', status: 'observed'},
+    ],
+  }]}),
   makePackage('success', {buildsystem: 'custom', buildsystem_status: 'declared', maintenance: [{label:'NewSignal', count:2, stale:false}]}),
   makePackage('watch-preview', {watch: [
     {id:'widget@preview',version:'2.2rc1',error:null,stale:false},
@@ -140,6 +149,14 @@ try {
   assert.doesNotMatch(listing, /Unverified|Some checks are incomplete|Collection status|Upstream checks cover/);
   assert.match(listing, />Untracked <b>/);
   assert.match(listing, /data-auto-submit/);
+  const filterForms = [...listing.matchAll(/<form\b[^]*?<\/form>/g)];
+  assert.equal(filterForms.length, 1, 'search and selections must share one GET form');
+  const filterForm = filterForms[0][0];
+  assert.match(filterForm, /name="q"/);
+  assert.equal((filterForm.match(/<select\b/g) || []).length, targets.length + 2);
+  assert.doesNotMatch(filterForm, /type="hidden" name="(?:q|buildsystem|maintenance|build)"/);
+  assert.equal((filterForm.match(/aria-describedby="filter-behavior"/g) || []).length, targets.length + 2);
+
   assert.match(listing, /<script[^>]*src="\/filters.js"[^>]*defer/);
   const script = await wire('/filters.js');
   assert.equal(script.status, 200);
@@ -171,6 +188,15 @@ try {
     assert.deepEqual(link.searchParams.getAll('build'), ['rva23:blocked', 'rva20:issues']);
   }
   assert.doesNotMatch(linked.match(/<nav class="filters"[^]*?<\/nav>/)[0], /Build issues/);
+  await read('/?q=%20%20test%20%20&page=-20&view=invalid&build=rva23:&maintenance=NewSignal');
+  assert.equal(lastQuery.get('q'), 'test');
+  assert.equal(lastQuery.get('page'), '1');
+  assert.equal(lastQuery.get('view'), 'all');
+  assert.equal(lastQuery.get('maintenance'), 'NewSignal');
+  assert.deepEqual(lastQuery.getAll('build'), []);
+  await read('/?page=999999999');
+  assert.equal(lastQuery.get('page'), '1000000');
+
   assert.match(row('success'), /buildsystem=custom/);
   assert.match(row('success'), /data-buildsystem="custom"/);
   assert.doesNotMatch(listing, / style=/);
@@ -228,6 +254,12 @@ try {
   assert.match(security, /unavailable/);
   assert.doesNotMatch(security, /<th>Action<\/th>|SecurityReview|urgent/);
   assert.ok(!security.includes('Review linked evidence.'));
+  const licenseEvidence = await read('/packages/license-evidence');
+  assert.match(licenseEvidence, /maintenance=LicenseChange/);
+  assert.match(licenseEvidence, /Target 2\.1/);
+  assert.match(licenseEvidence, /MIT, Apache-2\.0/);
+  assert.match(licenseEvidence, />unavailable<\/dd>/);
+  assert.match(licenseEvidence, />No<\/dd>/);
   const detail = await read('/packages/failed');
   assert.doesNotMatch(detail, /Release track|class="track"|class="rel outdated"|>Outdated</);
   assert.match(detail, /class="new">2\.1/);

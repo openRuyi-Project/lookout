@@ -1,0 +1,74 @@
+---
+import type {Listing} from '../lib/api';
+import {listingURL, views} from '../lib/listing';
+
+interface Props {data: Listing | null; query: URLSearchParams}
+const {data, query} = Astro.props;
+const view = query.get('view') || 'all';
+const buildsystem = query.get('buildsystem') || '';
+const maintenance = query.get('maintenance') || '';
+const builds = query.getAll('build');
+const selectedBuild = (target: string) => builds.find(value => value.startsWith(target + ':')) || target + ':';
+const selected = !!(buildsystem || maintenance || builds.length || ['problems', 'attention'].includes(view));
+const clearQuery = new URLSearchParams({q: query.get('q') || '', view: ['problems', 'attention'].includes(view) ? 'all' : view});
+const options = (counts: Record<string, number>) => Object.entries(counts).sort(([a], [b]) => a.localeCompare(b));
+---
+<form class="package-filters" data-auto-submit method="get" action="/">
+  <input type="hidden" name="view" value={view}/>
+  <div class="toolbar">
+    <nav class="filters" aria-label="Filter packages">
+      {views.map(([key, label]) => (
+        <a href={listingURL(query, {view: key})} aria-current={view === key ? 'page' : undefined}>
+          {label} <b>{data?.counts[key] ?? '—'}</b>
+        </a>
+      ))}
+    </nav>
+    <div class="search-form" role="search">
+      <label class="sr-only" for="q">Find a package</label>
+      <input id="q" name="q" type="search" maxlength="100" placeholder="Find a package" value={query.get('q') || ''}/>
+      <button type="submit">Search</button>
+    </div>
+  </div>
+  {data && (
+    <div class="secondary-filters">
+      <p id="filter-behavior" class="sr-only">Selections update the results immediately. Without scripting, use Apply.</p>
+      <div class="filter-field">
+        <label for="buildsystem">Build system</label>
+        <select id="buildsystem" name="buildsystem" aria-describedby="filter-behavior">
+          <option value="">All</option>
+          {options(data.buildsystems).map(([value, count]) => (
+            <option value={value} selected={value === buildsystem}>
+              {value === '_not_detected' ? 'NotDetected' : value} ({count})
+            </option>
+          ))}
+        </select>
+      </div>
+      <div class="filter-field">
+        <label for="maintenance">Maintenance</label>
+        <select id="maintenance" name="maintenance" aria-describedby="filter-behavior">
+          <option value="">All</option>
+          {options(data.maintenance_labels).map(([value, count]) => (
+            <option value={value} selected={value === maintenance}>{value} ({count})</option>
+          ))}
+        </select>
+      </div>
+      {data.targets.map(target => (
+        <div class="filter-field">
+          <label for={'build-' + target.id}>{target.label}</label>
+          <select id={'build-' + target.id} name="build" aria-label={target.label + ' build status'} aria-describedby="filter-behavior">
+            <option value={target.id + ':'}>All</option>
+            {(data.build_statuses[target.id] || []).map(option => (
+              <option value={target.id + ':' + option.value} selected={selectedBuild(target.id) === target.id + ':' + option.value}>
+                {option.label} ({option.count})
+              </option>
+            ))}
+          </select>
+        </div>
+      ))}
+      <button type="submit" data-filter-submit>Apply</button>
+      {selected && <a class="filter-clear" href={listingURL(clearQuery)}>Clear filters</a>}
+      {view === 'problems' && <span class="filter-context">Build issues · all targets</span>}
+      {view === 'attention' && <span class="filter-context">Observation gaps</span>}
+    </div>
+  )}
+</form>

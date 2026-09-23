@@ -1,0 +1,49 @@
+---
+import type {Listing} from '../lib/api';
+import Version from './Version.astro';
+import BuildStatus from './BuildStatus.astro';
+import BuildSystem from './BuildSystem.astro';
+import Maintenance from './Maintenance.astro';
+
+interface Props {data: Listing; query: URLSearchParams}
+const {data, query} = Astro.props;
+---
+<div class="table-wrap" role="region" tabindex="0" aria-label="Package versions and build targets; scroll horizontally">
+  <table class="package-table">
+    <caption class="sr-only">Source packages, versions and OBS build results</caption>
+    <colgroup>
+      <col class="identity-column"/>
+      <col class="version-column"/>
+      {data.targets.map(() => <col/>)}
+    </colgroup>
+    <thead>
+      <tr>
+        <th scope="col">Package</th>
+        <th scope="col">Version</th>
+        {data.targets.map(target => <th scope="col">{target.label}</th>)}
+      </tr>
+    </thead>
+    <tbody>
+      {data.items.map(pkg => (
+        <tr data-name={pkg.name}>
+          <th scope="row">
+            <span class="package-identity">
+              <a class="pkg" href={pkg.detail_url}>{pkg.name}</a>
+              <BuildSystem value={pkg.buildsystem} filters={query}/>
+            </span>
+            <Maintenance labels={pkg.maintenance} filters={query}/>
+          </th>
+          <td><Version pkg={pkg}/></td>
+          {pkg.builds.map(build => (
+            <td class="build" data-target={build.target}>
+              <BuildStatus build={build} name={pkg.name} current={pkg.current} detailURL={pkg.detail_url}/>
+            </td>
+          ))}
+        </tr>
+      ))}
+      {data.total === 0 && (
+        <tr><td class="empty" colspan={data.targets.length + 2}>No matching packages.</td></tr>
+      )}
+    </tbody>
+  </table>
+</div>

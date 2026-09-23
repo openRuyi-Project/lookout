@@ -1,0 +1,56 @@
+---
+import type {PackageDetail} from '../lib/api';
+import {utcTime} from '../lib/time';
+
+interface Props {pkg: PackageDetail}
+const {pkg} = Astro.props;
+const observations = pkg.builds.map(build => build.updated_at);
+const obsUpdatedAt = observations.length && observations.every(value => value && Number.isFinite(Date.parse(value)))
+  ? observations.reduce((oldest, value) => Date.parse(value!) < Date.parse(oldest!) ? value : oldest) : null;
+const rows = pkg.builds.flatMap(build =>
+  (build.flavors && build.flavors.length > 1 ? build.flavors : [build]).map(observation => ({
+    ...observation, label: build.label, flavor: 'package' in observation ? observation.package : null,
+  })));
+---
+<section aria-labelledby="build-status">
+  <h2 id="build-status">Build status</h2>
+  <p class="updated-note" title={pkg.version_error || undefined}>Last updated: <span>OBS {obsUpdatedAt ? <time datetime={obsUpdatedAt}>{utcTime(obsUpdatedAt)}</time> : '—'}</span>{pkg.track && <> · <span>Upstream {pkg.upstream_updated_at ? <time datetime={pkg.upstream_updated_at}>{utcTime(pkg.upstream_updated_at)}</time> : '—'}</span></>} <span class="time-zone">UTC</span></p>
+  <div class="table-wrap" role="region" tabindex="0" aria-label="Build status by target">
+    <table class="detail-table">
+      <thead>
+        <tr>
+          <th scope="col">Target</th>
+          <th scope="col">Result</th>
+          <th scope="col">Last successful version</th>
+          <th scope="col">Succeeded at (UTC)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(build => {
+          const Status = build.log_url ? 'a' : 'span';
+          const missingVersion = build.last_success
+            ? 'OBS recorded a successful build, but its version could not be resolved.'
+            : 'No last-success record is available for this observation.';
+          return (
+            <tr>
+              <th scope="row">
+                {build.label}
+                {build.flavor && <span class="build-flavor">{build.flavor}</span>}
+              </th>
+              <td>
+                <Status class:list={['state', build.kind]} href={build.log_url || undefined}
+                  title={`OBS ${build.raw_status}. Last updated: ${utcTime(build.updated_at)} UTC.`}>
+                  {build.text}
+                </Status>
+              </td>
+              <td><strong title={build.last_success?.version ? undefined : missingVersion}>{build.last_success?.version || '—'}</strong></td>
+              <td class="build-success-time">
+                {build.last_success?.time ? <time datetime={build.last_success.time}>{utcTime(build.last_success.time)}</time> : '—'}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</section>

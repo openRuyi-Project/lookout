@@ -1,21 +1,27 @@
 ---
 import Base from '../layouts/Base.astro';
 ---
-<Base title="About · openRuyi Packages"><article class="prose">
-<h1>About</h1>
-<h2>openRuyi Project</h2>
-<p>An open, rolling Linux distribution project for RISC-V.</p>
-<p>openRuyi is an open source Linux distribution, initiated and long-term maintained by Institute of Software, Chinese Academy of Sciences, to provide a technical foundation for the RISC-V software ecosystem and real-world adoption.</p>
-<p>Designed natively for RISC-V, it integrates new RISC-V features early and helps move them upstream, giving developers and industry partners a practical platform to build, validate, and deliver RISC-V software.</p>
+<Base title="About · openRuyi Packages">
+  <article class="prose">
+    <h1>About</h1>
+    <p>A read-only package tracker for <a href="https://github.com/openRuyi-Project/openRuyi">openRuyi</a>, a rolling Linux distribution for RISC-V.</p>
 
-<h2>Reading the table</h2>
-<p>Each row is one source package. The version column shows the current source version and, when available, a green arrow to a newer tracked upstream version. Comparison uses RPM VERSION, not Epoch or Release.</p>
-<p>The current version is dark (light in dark mode) when its source has succeeded on every active target, red when a target has not succeeded, and muted with a dashed underline when upstream is <em>Untracked</em>. Muted text without an underline means build confirmation is unknown, not that upstream is untracked.</p>
-<p>Each architecture column shows its own OBS result and last successful version. A successful result and matching version fit on one line; other results show the previous success below. Open that version for its build time and per-flavor details. A dash means no single usable version is recorded, not that the current version should be substituted.</p>
-<p><code>rva23</code>, <code>rva20</code>, and <code>x86_64</code> are the three targets. A check mark is a reported build result, not a release or testing guarantee. An earlier success may share a version number with a different source revision.</p>
-<p><em>Last updated</em> shows when observations were successfully collected; <em>Succeeded at</em> is when a build succeeded. A failed collection retains the previous values and their timestamps. OBS and upstream checks run separately. Untracked packages have no upstream configuration and are not automatically up to date.</p>
+    <h2>Reading the table</h2>
+    <dl class="api-list">
+      <dt>Version</dt>
+      <dd>The RPM-expanded SPEC version, followed by a green arrow when a newer upstream release is tracked. Comparison uses VERSION, not Epoch or Release.</dd>
+      <dt>Build confirmation</dt>
+      <dd>Red means the current source has not succeeded on every active target. A check mark belongs to its OBS target, not a release guarantee. A previous successful version appears below a result only when it cannot be inferred from the current version.</dd>
+      <dt>Untracked</dt>
+      <dd>A dashed underline means no upstream rule is configured. Muted text without that underline means build confirmation is unknown.</dd>
+      <dt>Maintenance</dt>
+      <dd>Labels link to packages with the same signal. Open a package for the provider evidence and collection checks; a security match does not evaluate local patches.</dd>
+      <dt>Observation time</dt>
+      <dd>Last updated is collection time; Succeeded at is build time. Failed checks retain earlier observations and their timestamps.</dd>
+    </dl>
 
-<h2>Data</h2>
-<p>Schedules, coverage, and collection errors are available as JSON at <a href="/api/v1/status">/api/v1/status</a>. Per-package observations are at <code>/api/v1/packages/&#123;name&#125;</code>.</p>
-<p><a href="/api">Query interface</a> · <a href="/LICENSE.txt">MulanPSL-2.0 license</a>.</p>
-</article></Base>
+    <h2>Data</h2>
+    <p><a href="/api/v1/status">Collection status</a> includes schedules, coverage and errors. The <a href="/api">query interface</a> exposes package observations as JSON.</p>
+    <p><a href="/LICENSE.txt">MulanPSL-2.0 license</a></p>
+  </article>
+</Base>

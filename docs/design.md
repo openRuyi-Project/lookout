@@ -28,6 +28,13 @@ independent of the observed status. The frontend renders API choices and preserv
 selections in links. A small same-origin script submits the GET form immediately
 on selection; it does not fetch, filter or count data. Without scripting, the form
 retains a submit button.
+Search and selections share one GET form. `listingQuery` normalizes its URL;
+`PackageFilters` renders controls and `PackageTable` renders rows. Detail sections
+reuse `EvidenceFacts` to format provider facts.
+
+`base.css` owns theme pairs, native controls and focus defaults; `app.css` owns
+shell and page layouts. Themes use CSS `light-dark()` (Baseline 2024). Wide tables
+scroll horizontally; the document owns vertical scrolling.
 
 ## Native SPEC confinement
 
