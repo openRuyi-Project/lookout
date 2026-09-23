@@ -18,8 +18,7 @@ WEB_PORT = os.environ.get("PORT", "8080")
 API_PORT = os.environ.get("API_PORT", "18731")
 
 sys.path.insert(0, f"{APP}/backend")
-from tracker.config import load
-from tracker.runtime_checks import check_runtime
+from tracker.runtime_checks import load_runtime
 
 _stop = threading.Event()
 _procs = {}
@@ -140,9 +139,8 @@ def terminate_children():
 def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
-    config = load(CONFIG)  # Fail visibly before serving if operator config is invalid.
     try:
-        check_runtime(config, DB)
+        config = load_runtime(CONFIG, DB)
     except Exception as error:
         log(f"runtime preflight failed: {error}")
         return 2
@@ -178,6 +176,7 @@ def main():
         terminate_children()
         for thread in threads:
             thread.join(timeout=1)
+    return 0
 
 
 if __name__ == "__main__":

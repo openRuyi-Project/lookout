@@ -56,9 +56,21 @@ const packages = [
       log_url: null, stale: false, updated_at: null, matches_source: null, last_success: null, flavors: []}))}),
 ];
 let unavailable = false;
+let health = 'ok';
+let ready = {status: 200, body: {status: 'degraded', generation: 1}};
 const mock = createServer((req, res) => {
   if (unavailable) { res.writeHead(503, {'Content-Type':'application/json'});res.end('{}');return; }
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === '/healthz') {
+    if (health === 'stall') return;
+    if (health === 'disconnected') { req.socket.destroy(); return; }
+    res.writeHead(health === 'error' ? 503 : 200, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify({status: health === 'ok' ? 'ok' : 'not-ok'})); return;
+  }
+  if (url.pathname === '/readyz') {
+    res.writeHead(ready.status, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify(ready.body)); return;
+  }
   const selected = packages.find(pkg => url.pathname === `/api/v1/packages/${pkg.name}`);
   const payload = url.pathname === '/api/v1/presentation' ? {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}} : selected ?? {presentation: {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}}, buildsystems: {custom: 1}, maintenance_labels: {NewSignal: 1}, items: url.searchParams.get('q') === 'quiet' ? packages.map(pkg=>({...pkg,maintenance:[]})) : packages, total: packages.length, page: 1, per_page: 100, pages: 1,
     counts: {all: packages.length, updates: 3, problems: 1, attention: 1, untracked: 1}, targets,
@@ -85,11 +97,37 @@ async function wire(path, headers = {}, method = 'GET') {
 }
 try {
   for (let retry = 0; retry < 100; retry++) {
-    try { await read('/healthz'); break; } catch (error) {
+    try { await read('/livez'); break; } catch (error) {
       if (retry === 99 || child.exitCode !== null) throw new Error(`SSR did not start: ${logs}`, {cause: error});
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   }
+  async function probe(path, expected, body) {
+    const result = await fetch(`http://127.0.0.1:${port}${path}`, {signal: AbortSignal.timeout(5000)});
+    assert.equal(result.status, expected, path);
+    assert.equal(result.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await result.json(), body, path);
+  }
+  ready = {status: 503, body: {status: 'unavailable'}};
+  await probe('/livez', 200, {status: 'ok'});
+  for (const path of ['/readyz', '/healthz']) await probe(path, 503, ready.body);
+  ready = {status: 200, body: {status: 'degraded', generation: 1}};
+  for (const path of ['/readyz', '/healthz']) await probe(path, 200, ready.body);
+  for (const failure of ['error', 'not-ok', 'disconnected', 'stall']) {
+    health = failure;
+    const start = performance.now();
+    await probe('/livez', 503, {status: 'unavailable'});
+    assert.ok(performance.now() - start < 4500, 'liveness has a finite failure budget');
+  }
+  health = 'ok';
+  unavailable = true;
+  for (const path of ['/livez', '/readyz', '/healthz']) {
+    const result = await fetch(`http://127.0.0.1:${port}${path}`);
+    assert.equal(result.status, 503);
+    assert.equal(result.headers.get('cache-control'), 'no-store');
+  }
+  unavailable = false;
+  console.log('PASS health: liveness, readiness/compatibility, degraded, no snapshot, failure, timeout, no-store');
   const quiet = await read('/?q=quiet');
   assert.doesNotMatch(quiet, /class="maintenance-labels"/);
   assert.doesNotMatch(quiet, /<th scope="col">Maintenance<\/th>/);
@@ -244,5 +282,5 @@ try {
   console.log('PASS transport: gzip/br, identity/q=0, decoded equality, ETag304, changed data/theme/query, immutable CSS GET, ranges, HEAD, JSON, errors, cookies and CSP');
   console.log('PASS SSR: inferred current-success duplicates omitted, exception histories retained, arrow replaces Outdated, concise raw-data link; per-target histories, clean source version, observation times, no false missing/multi-flavor values, SPEC links, light/dark themes');
 } finally {
-  child.kill('SIGTERM'); await once(child, 'exit'); await new Promise(resolve => mock.close(resolve));
+  child.kill('SIGTERM'); await once(child, 'exit'); mock.closeAllConnections(); await new Promise(resolve => mock.close(resolve));
 }

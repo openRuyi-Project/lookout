@@ -54,7 +54,7 @@ class ContainerTests(unittest.TestCase):
                   'spec': {'repo': '/data/spec-full.git', 'url': 'https://example.invalid/spec.git',
                            'branch': 'main', 'interval_seconds': 3600}}
         entrypoint._stop.set()
-        with patch.object(entrypoint, 'load', return_value=config), \
+        with patch.object(entrypoint, 'load_runtime', return_value=config), \
              patch.object(entrypoint.threading, 'Thread', Thread), \
              patch.object(entrypoint.os, 'makedirs'), patch.object(entrypoint.signal, 'signal'), \
              patch.object(entrypoint.subprocess, 'Popen') as popen, \
@@ -78,7 +78,7 @@ class ContainerTests(unittest.TestCase):
         config = {'collector': {'obs_interval_seconds':60, 'nvchecker_interval_seconds':3600},
                   'spec': {'repo':None}, 'monitors': {'enabled':['security'], 'interval_seconds':1800}}
         entrypoint._stop.set()
-        with patch.object(entrypoint, 'load', return_value=config), \
+        with patch.object(entrypoint, 'load_runtime', return_value=config), \
              patch.object(entrypoint.threading, 'Thread', Thread), \
              patch.object(entrypoint.os, 'makedirs'), patch.object(entrypoint.signal, 'signal'):
             entrypoint.main()
@@ -89,8 +89,8 @@ class ContainerTests(unittest.TestCase):
                     if line.strip().startswith('CMD python3 -c '))
         command = shlex.split(line[len('CMD '):])
         self.assertEqual(command[:2], ['python3', '-c'])
-        wrapper = "import io,sys,urllib.request; urllib.request.urlopen=lambda url:(print(url),io.BytesIO(b'ok'))[1]; exec(sys.argv[1])"
-        cases = [(None, '127.0.0.1'), ('0.0.0.0', '127.0.0.1'), ('192.0.2.10', '192.0.2.10')]
+        wrapper = "import io,sys,urllib.request; urllib.request.urlopen=lambda url,timeout:(print(url,timeout),io.BytesIO(b'ok'))[1]; exec(sys.argv[1])"
+        cases = [(None, '127.0.0.1'), ('0.0.0.0', '127.0.0.1'), ('192.0.2.10', '192.0.2.10'), ('::1', '[::1]')]
         for host, expected in cases:
             env = {**os.environ, 'PORT': '18730'}
             env.pop('HOST', None)
@@ -99,7 +99,7 @@ class ContainerTests(unittest.TestCase):
             result = subprocess.run([sys.executable, '-c', wrapper, command[2]],
                                     env=env, text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout.strip(), f'http://{expected}:18730/healthz')
+            self.assertEqual(result.stdout.strip(), f'http://{expected}:18730/livez 3')
 
     def test_collector_uses_external_config_and_bounded_batch(self):
         with patch.object(entrypoint, 'run_child', return_value=2) as child:

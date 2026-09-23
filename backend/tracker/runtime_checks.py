@@ -2,6 +2,7 @@
 import argparse
 import os
 import sqlite3
+import sys
 import tempfile
 from pathlib import Path
 
@@ -21,20 +22,33 @@ Runtime probe.
 
 def _writable(directory):
     directory.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(dir=directory, prefix='.runtime-check-', delete=True):
-        pass
+    with tempfile.NamedTemporaryFile(dir=directory, prefix='.runtime-check-', delete=True) as probe:
+        probe.write(b'openruyi runtime probe\n')
+        probe.flush()
+        os.fsync(probe.fileno())
+
+
+def _check_identity():
+    if os.geteuid() == 0:
+        raise RuntimeError('runtime must run as a non-root UID')
+
+
+def load_runtime(path, db):
+    _check_identity()
+    config = load(Path(path))
+    check_runtime(config, db)
+    return config
 
 
 def check_runtime(config, db):
-    if os.geteuid() == 0:
-        raise RuntimeError('runtime must run as a non-root UID')
+    _check_identity()
     data = Path(db)
     _writable(data.parent)
     spec = config.get('spec', {})
     repo = spec.get('repo')
     if repo:
         _writable(Path(repo).parent)
-    if data.exists():
+    if data.exists() or data.is_symlink():
         if not data.is_file():
             raise RuntimeError('tracker database is not a regular file')
         try:
@@ -58,9 +72,9 @@ def main(argv=None):
     parser.add_argument('--db', required=True)
     args = parser.parse_args(argv)
     try:
-        check_runtime(load(Path(args.config)), args.db)
+        load_runtime(args.config, args.db)
     except Exception as error:
-        print(f'runtime preflight failed: {error}')
+        print(f'runtime preflight failed: {error}', file=sys.stderr)
         return 2
     return 0
 

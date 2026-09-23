@@ -1,81 +1,180 @@
 # Deployment
 
-This is the canonical deployment procedure for the single openRuyi-monitor container. Astro SSR, FastAPI, and the configurable `obs`, `upstreams`, `specs`, and `monitors` tasks run in one container. The web/API process does not wait for a complete SPEC clone; collection state is reported separately.
+## Architecture and prerequisites
 
-## Prerequisites
+One container runs Astro SSR, FastAPI, and the configurable `obs`, `upstreams`,
+`specs`, and `monitors` tasks. Web/API startup does not wait for a full Git clone;
+collection updates do not require rebuilding the frontend. There are no host
+collection timers or additional application replicas.
 
-Use a dedicated non-root Linux account, cgroup v2, a local persistent filesystem, Landlock ABI 6 or newer, seccomp, Python 3.11+ for host tools, and rootless Podman with Quadlet. Verify the actual host with the image checks; do not infer support from a kernel version string. The runtime image defaults to UID/GID `10001` and the data directory must be writable through the rootless `keep-id` mapping.
+Use a dedicated non-root Linux account, cgroup v2, rootless Podman with Quadlet,
+Python 3.11+ for host tools, and local persistent storage. Native SPEC parsing
+requires Landlock ABI 6+ and seccomp. Run the actual native gate on the target
+host; a kernel version string alone does not prove isolation works.
 
-## Build and test one immutable image
+## Build and test
 
-Build and deploy the same tested image; do not rebuild from a moving branch after these checks:
+From a clean checkout at an explicit commit:
 
 ```sh
-IMAGE="localhost/openruyi-monitor:$(git rev-parse --short HEAD)"
+test -z "$(git status --porcelain)"
+IMAGE="localhost/openruyi-monitor:$(git rev-parse --short=12 HEAD)"
 podman build --format docker -t "$IMAGE" -f Containerfile .
 CONTAINER_ENGINE=podman deploy/check-image.sh "$IMAGE"
 CONTAINER_ENGINE=podman python3 deploy/smoke-image.py "$IMAGE"
 ```
 
-Docker may be used for CI with `docker build`; the smoke command still uses the image's real entrypoint. These checks do not prove provider reachability, SELinux policy, HTTPS, or reboot recovery on a target host.
+Deploy this same tested image, not another build from a moving branch.
+`--format docker` preserves the image HEALTHCHECK. Docker CI uses `docker build`
+without that flag and `CONTAINER_ENGINE=docker`. Both gates fail on unsupported
+native environments; skipped native tests do not count as success.
 
-## Configuration and preflight
+The image defaults to UID/GID `10001:10001`. Rootless Podman maps the deploying
+account to this identity with `--userns=keep-id:uid=10001,gid=10001`. Docker bind
+mounts need compatible ownership; replacing the command name is not sufficient.
 
-Create configuration outside the source checkout. The initializer refuses to overwrite an existing destination:
+## Initial configuration
+
+Keep configuration, data, and backups outside the checkout, owned by the
+non-root deploying account. For example:
 
 ```sh
-python3 deploy/init-config.py /srv/openruyi-monitor/config
-install -d -m 0750 /srv/openruyi-monitor/data /srv/openruyi-monitor/backups
+BASE="$HOME/.local/share/openruyi-monitor"
+CONFIG_DIR="$BASE/config-$(git rev-parse --short=12 HEAD)"
+DATA_DIR="$BASE/data"
+BACKUP_DIR="$BASE/backups"
+install -d -m 0700 "$BASE" "$DATA_DIR" "$BACKUP_DIR"
+python3 deploy/init-config.py "$CONFIG_DIR"
 ```
 
-Keep `tracker.toml` and `versions/nvchecker.toml` read-only in the container; keep data and backups in separate persistent directories. Before installing a service, run preflight with the same image, user mapping, mounts, and security options that production will use. It does not contact upstreams or create a database:
+The initializer refuses an existing destination. Review the external config
+before starting; upgrades use [configuration promotion](../config/README.md#推广到运行配置)
+into a new directory, not a copy of repository defaults over operator settings.
+Do not solve permissions with `chmod 777`. Use dedicated local data directories,
+not cross-host shared SQLite storage. `:Z` assigns private SELinux labels.
+
+## Preflight without starting services
+
+Override the image entrypoint explicitly. Passing `python ...` after the image
+without this override does **not** run an independent preflight.
 
 ```sh
 podman run --rm --network none --read-only --cap-drop=all \
   --security-opt=no-new-privileges --userns=keep-id:uid=10001,gid=10001 \
-  -v /srv/openruyi-monitor/config:/config:ro,Z \
-  -v /srv/openruyi-monitor/data:/data:Z \
-  "$IMAGE" python -m tracker.runtime_checks \
-    --config /config/tracker.toml --db /data/state/tracker.sqlite3
+  --tmpfs /tmp:rw,nosuid,nodev,size=128m,mode=1777 \
+  -v "$CONFIG_DIR:/config:ro,Z" -v "$DATA_DIR:/data:Z" \
+  --workdir /app/backend --entrypoint /opt/venv/bin/python "$IMAGE" \
+  -m tracker.runtime_checks --config /config/tracker.toml \
+  --db /data/state/tracker.sqlite3
 ```
 
-## Rootless Quadlet
+This validates config, writes/removes temporary permission probes, reads any
+existing database without changing it, and tests the native worker. It neither
+contacts upstreams nor creates a database. Failures exit 2. A successful check
+does not prove external network availability.
 
-Render `deploy/quadlet/openruyi-monitor.container.in` by replacing exactly `@IMAGE@`, `@CONFIG_DIR@`, and `@DATA_DIR@` with absolute paths and the tested image tag. Refuse to overwrite an existing unit and verify no placeholder remains. Run the user generator in dry-run mode, then have the operator copy the rendered unit to `~/.config/containers/systemd/openruyi-monitor.container`:
+## Render and validate a Quadlet unit
+
+Use the tested image and absolute config/data directories. This renderer creates
+a new temporary file exclusively and rejects unresolved placeholders:
 
 ```sh
+TMP_QUADLET_DIR=$(mktemp -d)
+python3 - "$IMAGE" "$CONFIG_DIR" "$DATA_DIR" "$TMP_QUADLET_DIR" <<'PY'
+from pathlib import Path
+import sys
+image, config, data, output = sys.argv[1:]
+assert not image.endswith(':latest') and all('\n' not in x for x in (image, config, data))
+assert Path(config).is_absolute() and Path(data).is_absolute()
+text = Path('deploy/quadlet/openruyi-monitor.container.in').read_text()
+for key, value in [('IMAGE', image), ('CONFIG_DIR', config), ('DATA_DIR', data)]:
+    text = text.replace('@' + key + '@', value)
+assert '@' not in text
+with (Path(output) / 'openruyi-monitor.container').open('x') as stream:
+    stream.write(text)
+PY
 QUADLET_UNIT_DIRS="$TMP_QUADLET_DIR" \
   /usr/lib/systemd/system-generators/podman-system-generator --user --dryrun
+```
+
+Use the system's actual generator path if different. Review the generated
+ExecStart for UID mapping, dropped capabilities, read-only root/config, data
+mount, and loopback port. Missing generator means this step is unverified, not
+passed. Dry-run does not start a service.
+
+For first installation, the operator installs the unit without overwriting one:
+
+```sh
+install -d -m 0700 "$HOME/.config/containers/systemd"
+python3 - "$TMP_QUADLET_DIR/openruyi-monitor.container" \
+  "$HOME/.config/containers/systemd/openruyi-monitor.container" <<'PY'
+from pathlib import Path
+import sys
+with Path(sys.argv[2]).open('x') as stream:
+    stream.write(Path(sys.argv[1]).read_text())
+PY
 systemctl --user daemon-reload
 systemctl --user start openruyi-monitor.service
 journalctl --user -u openruyi-monitor.service -f
 ```
 
-Do not run ordinary `systemctl enable` on the generated service. Configure linger and the user service directory as an operator/administrator task. Do not run a second full collector instance or a host collection timer against the same SQLite database.
+Configure user linger with the administrator. Do not use ordinary `systemctl
+--user enable` for a generated Quadlet service; the template's Install section
+handles activation. Do not leave an old `podman run` instance or host collection
+timer running. Process restart policy and image health are different: this unit
+does not kill the service merely because a probe fails.
 
-The unit binds only `127.0.0.1:18730`. For HTTPS, use the host Caddy example in [`deploy/Caddyfile.example`](../deploy/Caddyfile.example), replace the domain, and configure DNS and access control on the host. Port 18731 is not published.
+## HTTPS and acceptance
 
-## Health acceptance
+The unit publishes only `127.0.0.1:18730`; API port 18731 stays private. Use
+[the Caddy example](../deploy/Caddyfile.example) on the **host**, not another
+container's localhost. Replace the domain and arrange DNS, ports 80/443, and
+any private-site authentication/network restrictions outside the application.
 
-`/livez` only proves the Node-to-FastAPI liveness path. `/readyz` and the compatibility `/healthz` report whether a readable snapshot exists. The status API and logs report freshness, coverage, failures, and degraded collection. An empty data directory may be live but not ready; degraded must not be reported as fully healthy.
+- `/livez`: Node → FastAPI HTTP chain only.
+- `/readyz` and compatibility `/healthz`: a snapshot is readable, possibly degraded.
+- `/api/v1/status`: collection coverage and timestamp progression.
 
-The optional cve-bin-tool integration is unavailable until its controlled scanner and fresh database are installed under the configured `/data/cve` location. Do not turn unavailable into “no vulnerabilities”; other OSV-based evidence remains independent.
+An empty data volume may be live before ready. Degraded is not fully healthy;
+do not create fake snapshots to satisfy probes.
+
+The base image does not include the optional `/opt/cve` scanner. Vendor/product
+security checks require a controlled scanner and fresh `/data/cve` database;
+the adapter enforces its two-day age limit. Until supplied, those checks remain
+unavailable/error, not “no vulnerabilities.” OSV checks remain independent.
 
 ## Backup
 
-Never copy a live SQLite file with `cp`. Use the atomic SQLite Backup API command and store the result independently:
+Use SQLite's Backup API while the service runs; `cp` of a live database and API
+exports are not recovery backups:
 
 ```sh
 python3 deploy/backup-snapshot.py \
-  --db /srv/openruyi-monitor/data/state/tracker.sqlite3 \
-  --output /srv/openruyi-monitor/backups/tracker-YYYYMMDDTHHMMSSZ.sqlite3 \
+  --db "$DATA_DIR/state/tracker.sqlite3" \
+  --output "$BACKUP_DIR/tracker-$(date -u +%Y%m%dT%H%M%SZ).sqlite3" \
   --timeout-seconds 30
 ```
 
-Back up the matching configuration and image identifier as well. Arrange at least one independent copy and periodically restore a backup into a separate test directory.
+The output directory must exist. The command refuses any existing output,
+validates the snapshot, and publishes a 0600 file without overwriting concurrent
+backups. A failed command is not success even if publication preceded a storage
+sync error. Back up config/credentials and the image identifier separately;
+arrange at least one independent storage copy and an explicit retention policy.
 
-## Upgrade and rollback
+## Upgrade, rollback, and operator-only checks
 
-Record the image tag, configuration directory, data directory, and backup path. Build and test the new image, run preflight, take a backup, stop the old service, and switch the unit to the new image while retaining the data directory. For a code rollback, restore the previous image and matching configuration; do not delete or automatically restore the database. A data restore is a separate explicit operation, and schema compatibility must be checked before using an older image.
+Record the image ID/tag, config directory, and backup path. Build/test the new
+image, prepare a new config, run preflight, and take a backup. Stop the old
+instance before switching the unit's image/config. Retain data; never run two
+complete collectors against it.
 
-The operator must finally verify real provider data progression, HTTPS, continued operation after logout, host reboot recovery, and a backup restore on the target host. These host and production-data checks are not performed by the repository test suite or by this deployment procedure.
+For code rollback, stop the new instance and restore the previous tested image
+and matching config. Do not automatically rewind observations. Database restore
+is a separate explicit operation while writers are stopped; assess compatibility
+for schema changes instead of assuming an arbitrary old image can read new data.
+
+The operator must verify on the target host: native isolation/SELinux, real
+provider timestamp progression, HTTPS, operation after logout, reboot recovery,
+and backup restoration into an **independent test directory**. Offline smoke
+proves entrypoint/permissions/HTTP/persistence/stop behavior, not these host and
+external-service properties.

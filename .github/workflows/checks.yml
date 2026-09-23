@@ -19,3 +19,7 @@ jobs:
         env:
           CONTAINER_ENGINE: docker
         run: deploy/check-image.sh openruyi-monitor:test
+      - name: Smoke-test the production entrypoint
+        env:
+          CONTAINER_ENGINE: docker
+        run: python3 deploy/smoke-image.py openruyi-monitor:test

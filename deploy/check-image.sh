@@ -4,10 +4,15 @@
 set -eu
 IMAGE=${1:?usage: deploy/check-image.sh IMAGE}
 ENGINE=${CONTAINER_ENGINE:-podman}
+case "$ENGINE" in docker|podman) ;; *) echo "CONTAINER_ENGINE must be docker or podman" >&2; exit 2;; esac
+set --
+if [ "$ENGINE" = podman ] && [ "$(podman info --format '{{.Host.Security.Rootless}}')" = true ]; then
+  set -- --userns=keep-id:uid=10001,gid=10001
+fi
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 # Host-installer tests execute temporary command shims. Declare exec explicitly
 # for this offline test harness; production mounts and worker confinement stay unchanged.
-"$ENGINE" run --rm --network none --read-only --cap-drop=all \
+"$ENGINE" run "$@" --rm --network none --read-only --cap-drop=all \
   --security-opt=no-new-privileges --user 10001:10001 \
   --tmpfs /tmp:rw,nosuid,nodev,exec,size=128m \
   -v "$ROOT:/testsrc:ro,Z" --entrypoint sh "$IMAGE" -c '
