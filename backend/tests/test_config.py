@@ -6,15 +6,7 @@ from tracker import config as cfg, nv, state
 ROOT=Path(__file__).resolve().parents[2]
 
 def test_actual_native_config():
-    snapshot = {
-        'sources': {'python-requests': {'version': '2.32.5'}},
-        'specs': {'python-requests': {
-            'metadata': {'name': 'python-requests', 'version': '2.32.5',
-                         'sources': [{'number': 0, 'url': 'https://files.pythonhosted.org/packages/source/r/requests/requests-2.32.5.tar.gz'}]},
-            'native_query': {'spec_sha256': 'a' * 64, 'context': {'resolver': 6}},
-        }},
-    }
-    c=cfg.load(ROOT/'config/tracker.toml', snapshot=snapshot)
+    c=cfg.load(ROOT/'config/tracker.toml')
     assert c['native'] and all(e.get('source') != 'manual' for e in c['native'].values())
     assert Path(c['nvpath']).name=='nvchecker.toml'
     assert c['native']['python-requests']['source'] == 'pypi'  # promoted discovery candidate is explicit

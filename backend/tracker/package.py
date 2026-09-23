@@ -20,11 +20,11 @@ def rule_location(config, name):
 
 def explain(config_path, name, db=None, runtime_config=None):
     snapshot = state.read(db) if db else state.empty()
-    config = cfg.load(config_path, snapshot=snapshot)
+    config = cfg.load(config_path)
     binding = cfg.binding(config, name)
     ids = list(dict.fromkeys(t for t in [binding["compare"], *binding["watch"]] if t))
     rules = []
-    runtime = cfg.load(runtime_config, snapshot=snapshot) if runtime_config else None
+    runtime = cfg.load(runtime_config) if runtime_config else None
     for track in ids:
         entry = config["native"][track]
         rule = {
@@ -77,7 +77,7 @@ def explain(config_path, name, db=None, runtime_config=None):
 
 
 def check(config_path, name, db=None):
-    config = cfg.load(config_path, snapshot=state.read(db) if db else None)
+    config = cfg.load(config_path)
     binding = cfg.binding(config, name)
     selected = list(dict.fromkeys(t for t in [binding["compare"], *binding["watch"]] if t))
     if not selected:
@@ -176,7 +176,6 @@ def main(argv=None):
                 args.config,
                 args.runtime_config,
                 args.output,
-                snapshot=state.read(args.db) if args.db else None,
             )
         else:
             result = config_change.apply(args.review, args.runtime_config, args.destination)

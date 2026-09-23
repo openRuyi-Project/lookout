@@ -8,7 +8,7 @@ import re
 import tomllib
 from urllib.parse import urlsplit, urlunsplit, parse_qs, quote
 
-def load(path, snapshot=None):
+def load(path):
     path = Path(path).resolve()
     raw = path.read_bytes()
     config = tomllib.loads(raw.decode())
@@ -129,9 +129,14 @@ def derive_track_label(name):
     return f'{m.group(1)}.x' if m else 'stable'
 
 def binding(config, name):
-    b = config.get('packages', {}).get(name, {})
-    return {**b, 'compare': b.get('compare', name if name in config['native'] else None),
-            'watch': b.get('watch', []), 'track_label': b.get('track_label') or derive_track_label(name)}
+    return resolve_binding(name, config['native'], config.get('packages', {}).get(name, {}))
+
+
+def resolve_binding(name, native_ids, overrides):
+    """The same defaults apply to operator configuration and its saved projection."""
+    return {**overrides, 'compare': overrides.get('compare', name if name in native_ids else None),
+            'watch': overrides.get('watch', []),
+            'track_label': overrides.get('track_label') or derive_track_label(name)}
 
 
 def spec_source_url(origin, name, ref):

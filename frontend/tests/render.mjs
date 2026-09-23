@@ -22,9 +22,9 @@ const makePackage = (name, patch = {}) => ({
 const packages = [
   makePackage('security', {maintenance_findings: [1, 2].map(i => ({
     id: `CVE-2026-100${i}`, label: 'Security', title: `CVE-2026-100${i}`,
-    facts: [{key: 'Query version', value: '2.0', source: 'OSV', url: 'https://api.osv.dev/v1/query', status: 'observed'},
-      {key: 'EPSS probability · CVE', value: 0.00396, source: 'FIRST', url: 'https://api.first.org/data/v1/epss', status: 'observed'},
-      {key: 'Fixed events', value: ['3.0'], source: 'OSV', url: 'https://osv.dev/vulnerability/fixture', status: 'observed'},
+    facts: [{key: 'Observed version', code: 'query', value: '2.0', source: 'OSV', url: 'https://api.osv.dev/v1/query', status: 'observed'},
+      {key: 'Exploit probability', code: 'epss_probability', value: 0.00396, source: 'FIRST', url: 'https://api.first.org/data/v1/epss', status: 'observed'},
+      {key: 'Reported fixes', code: 'fixed_events', value: ['3.0'], source: 'OSV', url: 'https://osv.dev/vulnerability/fixture', status: 'observed'},
       {key: 'KEV', value: i === 1 ? false : null, source: 'CISA', url: 'https://www.cisa.gov/known-exploited-vulnerabilities-catalog', status: i === 1 ? 'observed' : 'unavailable'}],
     evidence_url: `https://nvd.nist.gov/vuln/detail/CVE-2026-100${i}`,
     scope: 'current', tags: [], stale: false,
@@ -244,12 +244,14 @@ try {
   assert.equal((security.match(/Queried source component only/g) || []).length, 1);
   assert.match(security, /0\.396%/);
   assert.match(security, /<summary>Security 2/);
-  assert.doesNotMatch(security, /<details[^>]* open|Query version/);
+  assert.doesNotMatch(security, /<details[^>]* open|Observed version/);
   assert.equal((security.match(/class="security-query"/g) || []).length, 1);
   for (const id of ['CVE-2026-1001', 'CVE-2026-1002']) {
     assert.ok(security.includes(`https://nvd.nist.gov/vuln/detail/${id}`));
   }
   assert.match(security, /Fixed events/);
+  assert.match(security, /Reported fixes/);
+  assert.match(security, /<td>3\.0<\/td>/);
   assert.match(security, />No</);
   assert.match(security, /unavailable/);
   assert.doesNotMatch(security, /<th>Action<\/th>|SecurityReview|urgent/);

@@ -4,7 +4,7 @@ import re
 from urllib.parse import quote
 from .monitor_model import finding, evidence
 
-VERSION = 4
+VERSION = 5
 HOSTS = {"api.osv.dev", "www.cisa.gov", "api.first.org"}
 CVE = re.compile(r"CVE-\d{4}-\d{4,}")
 
@@ -105,7 +105,7 @@ def check(subject, settings, io):
             "https://cve-bin-tool.readthedocs.io/en/latest/" if "vendor" in settings else "https://api.osv.dev/v1/query"
         )
         facts = [
-            evidence("Query " + key, value, provider, source_url)
+            evidence("Query " + key, value, provider, source_url, code="query")
             for key, value in {**settings, "version": subject["version"]}.items()
         ]
         aliases_url = (
@@ -129,7 +129,7 @@ def check(subject, settings, io):
                         if event.get("fixed"):
                             fixed.add(str(event["fixed"]))
             if provider == "OSV":
-                facts.append(evidence("Fixed events", sorted(fixed), provider, member_url))
+                facts.append(evidence("Fixed events", sorted(fixed), provider, member_url, code="fixed_events"))
         kev_url = "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"
         if not ids:
             facts.append(evidence("KEV (no CVE alias)", None, "CISA", kev_url, status="not_applicable"))
@@ -149,7 +149,7 @@ def check(subject, settings, io):
             epss_url = "https://api.first.org/data/v1/epss?cve=" + cve
             if cve in epss:
                 probability, day = epss[cve]
-                facts.append(evidence("EPSS probability · " + cve, probability, "FIRST", epss_url))
+                facts.append(evidence("EPSS probability · " + cve, probability, "FIRST", epss_url, code="epss_probability"))
                 facts.append(evidence("EPSS model date · " + cve, day, "FIRST", epss_url))
             else:
                 facts.append(evidence("EPSS · " + cve, None, "FIRST", epss_url, status="unavailable"))

@@ -6,7 +6,7 @@ from . import config as cfg, discover_sources
 
 
 def propose(config_path, name, snapshot, *, config=None):
-    config = cfg.load(config_path, snapshot=snapshot) if config is None else config
+    config = cfg.load(config_path) if config is None else config
     if cfg.binding(config, name)['compare']:
         raise ValueError('package already has a version rule; use explain/check')
     if name not in snapshot.get('sources', {}):

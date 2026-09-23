@@ -282,9 +282,7 @@ def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt
         old = state.read(db)
         now = state.utcnow()
         def guard():
-            current = cfg.load(config_path, snapshot=state.read(db))
-            if any(current["native"].get(n)!=config["native"][n] for n in config.get("automatic_rules",[])):
-                raise ValueError("automatic version identity changed during collection")
+            current = cfg.load(config_path)
             if (current['nv_digest'] != config['nv_digest'] or
                     (config.get('config_digest') and current.get('config_digest') != config['config_digest'])):
                 raise ValueError('upstream configuration changed during collection; result not published')
@@ -348,7 +346,7 @@ def main():
         p.error('--source-limit must be nonnegative')
     if args.track is not None and args.only != 'upstreams':
         p.error('--track requires --only upstreams')
-    config = cfg.load(args.config, snapshot=state.read(args.db))
+    config = cfg.load(args.config)
     try:
         selected = nv.selected_names(config, args.track)
     except ValueError as error:

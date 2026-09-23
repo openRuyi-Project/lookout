@@ -159,9 +159,12 @@ def test_upgrade_monitor_never_runs_without_upgrade(config, snapshot, monkeypatc
     fact = monitor.check(config, snapshot, "binutils", "license", FixtureIO({}))
     snapshot["monitors"] = {"binutils": {"license": fact}}
     now = datetime.now(timezone.utc)
-    assert monitor_model.project(snapshot, "binutils", now, "3.10.0", True)["summary"][0]["label"] == "LicenseChange"
-    assert monitor_model.project(snapshot, "binutils", now, "3.10.0", False)["summary"] == []
-    assert monitor_model.project(snapshot, "binutils", now, "3.11.0", True)["summary"] == []
+    assert monitor_model.project(snapshot, "binutils", now)["summary"][0]["label"] == "LicenseChange"
+    snapshot['tracks']['binutils']['error'] = 'timeout'
+    assert monitor_model.project(snapshot, "binutils", now)["summary"] == []
+    snapshot['tracks']['binutils']['error'] = None
+    snapshot['tracks']['binutils']['version'] = '3.11.0'
+    assert monitor_model.project(snapshot, "binutils", now)["summary"] == []
 
 
 def test_source_patch_revision_invalidates_finding(config, snapshot):

@@ -1,7 +1,8 @@
 # Contributing
 
 For a package correction, use the [configuration guide](config/README.md).
-For a new monitor or a change to data ownership, use the [maintainer reference](docs/design.md).
+For a new monitor, use the [porting guide](docs/monitor-porting.md).
+For data ownership and safety boundaries, use the [maintainer reference](docs/design.md).
 
 ## Development checks
 

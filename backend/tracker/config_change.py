@@ -106,9 +106,9 @@ def rebase(base, candidate, runtime):
     return changes
 
 
-def inputs(path, snapshot=None):
+def inputs(path):
     path = Path(path).resolve()
-    config = cfg.load(path, snapshot=snapshot)
+    config = cfg.load(path)
     native = Path(config["nvpath"])
     if not native.resolve().is_relative_to(path.parent) or native == path:
         raise ValueError("promotion requires version files inside the configuration directory")
@@ -146,10 +146,10 @@ def merge_text(base, candidate, runtime, name):
     return "".join(lines)
 
 
-def plan(base_path, candidate_path, runtime_path, output, snapshot=None):
-    base_file, _, base = inputs(base_path, snapshot)
-    candidate_file, _, candidate = inputs(candidate_path, snapshot)
-    runtime_file, native_file, runtime = inputs(runtime_path, snapshot)
+def plan(base_path, candidate_path, runtime_path, output):
+    base_file, _, base = inputs(base_path)
+    candidate_file, _, candidate = inputs(candidate_path)
+    runtime_file, native_file, runtime = inputs(runtime_path)
     # This command promotes package rules, not unrelated operator/site settings.
     a, b = tomllib.loads(base_file.read_text()), tomllib.loads(candidate_file.read_text())
     for key in ("packages", "openruyi", "monitors"):
@@ -193,7 +193,7 @@ def plan(base_path, candidate_path, runtime_path, output, snapshot=None):
         (output / name).parent.mkdir(parents=True, exist_ok=True)
         (output / name).write_text(text)
         (output / name).chmod(0o600)
-    prepared_config = cfg.load(output / runtime_file.name, snapshot=snapshot)
+    prepared_config = cfg.load(output / runtime_file.name)
     expected_native = dict(runtime["native"])
     for name, entry in native_changes.items():
         if entry is None:
@@ -217,7 +217,6 @@ def plan(base_path, candidate_path, runtime_path, output, snapshot=None):
         "runtime_config": str(runtime_file),
         "baseline_hashes": baseline_hashes,
         "proposed_hashes": {n: digest(output / n) for n in texts},
-        "inventory_generation": (snapshot or {}).get("generation"),
         "changed_tracks": sorted(native_changes),
         "changed_bindings": sorted(binding_changes),
         "changed_buildsystems": sorted(appearance_changes),

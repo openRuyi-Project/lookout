@@ -88,6 +88,7 @@ class MaintenanceLabel(BaseModel):
 
 class Evidence(BaseModel):
     key: str
+    code: str | None = None
     value: str | bool | int | float | list[str] | None
     source: str
     url: str

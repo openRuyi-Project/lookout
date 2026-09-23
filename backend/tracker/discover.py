@@ -225,7 +225,7 @@ def main(argv=None):
     if not 1 <= args.limit <= 2000:
         parser.error('--limit must be in 1..2000')
     snapshot = state.read(args.db)
-    config = cfg.load(args.config, snapshot=snapshot)
+    config = cfg.load(args.config)
     output = Path(args.output)
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     if not 0 <= args.github_limit <= 2000:

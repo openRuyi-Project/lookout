@@ -1,7 +1,7 @@
 """Small public projections. Only here do saved facts become display conclusions."""
 from datetime import datetime, timezone
 from urllib.parse import quote
-from . import config as cfg, state, monitor_model, build_status
+from . import config as cfg, state, monitor_model, build_status, version_status
 
 
 def observed_at(observations):
@@ -118,8 +118,8 @@ def project(snapshot, now=None):
     flavors = {}
     for name, owner in inv.items():
         flavors.setdefault(owner, []).append(name)
-    native = set(snapshot.get('native_ids', []))
     rows = []
+    versions = version_status.evaluate_all(snapshot, now)
     obs = snapshot.get('obs', {})
     base = obs.get('web_url', '').rstrip('/')
     project_name = quote(obs.get('project', ''), safe='')
@@ -129,29 +129,10 @@ def project(snapshot, now=None):
             source['raw_version'] = source['version']
             source['version'] = None
             source['version_error'] = 'OBS source version is unresolved; see raw_version'
-        binding = snapshot.get('bindings', {}).get(name, {})
-        track = binding.get('compare', name if name in native else None)
-        upstream = snapshot['tracks'].get(track, {}) if track else {}
+        version = versions[name]
+        binding, track, upstream = version.binding, version.track, version.upstream
         source_stale = state.stale(source, now, obs_ttl)
-        upstream_stale = state.stale(upstream, now, ttl) if track else False
-        current = state.current_source(snapshot, name)
-        current_stale = state.stale(current, now, current['stale_after_seconds'])
-        last_relation = state.compare(current.get('version'), upstream.get('version'), binding.get('comparable', True))
-        version_error = None
-        if not current.get('version') or current.get('error') or current_stale:
-            relation = 'unknown'
-            version_error = current.get('error') or current.get('version_error') or 'source version unknown or stale'
-        elif binding.get('not_applicable'):
-            relation = 'not_applicable'
-        elif not track:
-            relation = 'untracked'
-        elif upstream.get('error') or upstream_stale:
-            relation = 'unknown'
-            version_error = upstream.get('error') or 'upstream observation stale or missing'
-        else:
-            relation = last_relation
-            if relation == 'unknown':
-                version_error = 'versions not reliably comparable with native RPM'
+        current, relation = version.source, version.relation
         builds = []
         all_entries = []
         for target in targets:
@@ -175,7 +156,7 @@ def project(snapshot, now=None):
                                text=chosen['text'], kind=chosen['kind'], issue=any(e['issue'] for e in entries), log_url=chosen['log_url'],
                                stale=any(e['stale'] for e in entries), matches_source=combined_match(entries),
                                last_success=combined_success(entries), updated_at=observed_at(entries), flavors=entries))
-        old_data = bool(current.get('version') and (current_stale or current.get('error'))) or bool(upstream.get('version') and (upstream_stale or upstream.get('error')))
+        old_data = version.stale
         attention = relation in ('unknown', 'untracked') or old_data or any(b['stale'] or b['text'] == 'No result' for b in builds)
         spec_fact = snapshot.get('specs', {}).get(name, {})
         metadata = spec_fact.get('metadata')
@@ -189,14 +170,14 @@ def project(snapshot, now=None):
         previous_version = (next(iter(successful_versions)) if active_successes and all(f and f.get('version') for f in active_successes) and len(successful_versions) == 1 else None)
         buildsystem = metadata.get('buildsystem') if metadata and not spec_fact.get('error') else None
         buildsystem_status = ('declared' if buildsystem else 'not_declared') if metadata and 'buildsystem' in metadata and not spec_fact.get('error') else 'unknown'
-        maintenance = monitor_model.project(snapshot, name, now, upstream.get('version'), relation == 'outdated')
+        maintenance = monitor_model.project(snapshot, name, now, version=version)
         # Package version is the SPEC-declared value.  OBS remains the build
         # evidence below (matches_source/last_success), so a source mismatch
         # cannot silently relabel the shipped artifact.
         rows.append(dict(upstream_updated_at=observed_at([upstream]) if track else None, current_build_success=combined_match(all_entries), last_successful_version=previous_version, name=name, current=current.get('version'), obs_version=source.get('version'), latest=upstream.get('version'), relation=relation,
                          track=track, track_label=binding.get('track_label') or cfg.derive_track_label(name), stale=old_data,
                          needs_attention=attention, builds=builds, detail_url=f'/packages/{quote(name, safe="")}',
-                         source=source, upstream=upstream, version_error=version_error, last_known_relation=last_relation,
+                         source=source, upstream=upstream, version_error=version.error, last_known_relation=version.last_known_relation,
                          watch=[dict(id=t, **snapshot['tracks'].get(t, {}),
                                      stale=state.stale(snapshot['tracks'].get(t, {}), now, ttl))
                                 for t in binding.get('watch', [])],

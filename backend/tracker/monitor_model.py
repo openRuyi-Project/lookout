@@ -4,7 +4,7 @@ import hashlib
 import json
 import re
 from urllib.parse import urlsplit
-from . import state
+from . import state, version_status
 
 
 def subject(snapshot, name):
@@ -17,8 +17,11 @@ def fingerprint(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
-def evidence(key, value, source, url, *, status="observed"):
-    return dict(key=key, value=value, source=source, url=url, status=status)
+def evidence(key, value, source, url, *, status="observed", code=None):
+    result = dict(key=key, value=value, source=source, url=url, status=status)
+    if code is not None:
+        result['code'] = code
+    return result
 
 
 def finding(identity, label, title, facts, evidence_url, *, scope="current", tags=(), target_version=None):
@@ -83,8 +86,12 @@ def validate_findings(findings):
         if not isinstance(facts, list) or len(facts) > 256:
             raise ValueError("invalid evidence list")
         for fact in facts:
-            if not isinstance(fact, dict) or set(fact) != {"key", "value", "source", "url", "status"}:
+            required = {"key", "value", "source", "url", "status"}
+            if not isinstance(fact, dict) or not required <= fact.keys() or fact.keys() - required - {'code'}:
                 raise ValueError("invalid evidence fields")
+            if 'code' in fact and (not isinstance(fact['code'], str)
+                                   or not re.fullmatch(r'[a-z][a-z0-9_]{0,63}', fact['code'])):
+                raise ValueError('invalid evidence code')
             if any(not isinstance(fact[k], str) or not fact[k] or len(fact[k]) > 256 for k in ("key", "source")):
                 raise ValueError("invalid evidence identity")
             validate_url(fact["url"])
@@ -104,11 +111,12 @@ def validate_findings(findings):
                 raise ValueError("evidence value exceeds budget")
 
 
-def project(snapshot, name, now, latest=None, upgrading=False):
+def project(snapshot, name, now, *, version=None):
     observations = snapshot.get("monitors", {}).get(name, {})
-    current = subject(snapshot, name)
-    source = state.current_source(snapshot, name)
-    source_unavailable = bool(source.get('error')) or state.stale(source, now, source['stale_after_seconds'])
+    version = version or version_status.evaluate(snapshot, name, now)
+    current = version.subject
+    latest = version.upstream.get('version')
+    source_unavailable = bool(version.source.get('error')) or version.source_stale
     findings, checks = [], []
     ttl = snapshot.get("monitor_stale_after_seconds", 86400)
     for provider, observation in sorted(observations.items()):
@@ -138,7 +146,7 @@ def project(snapshot, name, now, latest=None, upgrading=False):
         )
         if same and compatible:
             for f in observation.get("findings", []):
-                if f["scope"] == "upgrade" and (not upgrading or f.get("target_version") != latest):
+                if f["scope"] == "upgrade" and (not version.upgrading or f.get("target_version") != latest):
                     continue
                 findings.append(
                     {

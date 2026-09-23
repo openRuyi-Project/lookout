@@ -64,51 +64,30 @@ cannot redefine its own macros. Source versions still come from the expanded RPM
 header. This is metadata parsing, not an OBS target build or binary validation.
 
 
-## Add a monitor
+## Version decisions and monitor ports
 
-1. Add `backend/tracker/monitor_<id>.py`. Implement **only**:
-   - `VERSION`: increment when interpretation changes, invalidating old facts;
-   - `HOSTS`: exact HTTPS provider hosts permitted to its HTTP client;
-   - optional `SCOPE = 'upgrade'` (default is `current`);
-   - `inputs(package, configured)`: own configuration or reliable existing
-     identity → provider inputs; `None` means not configured;
-   - `check(subject, inputs, io)`: return `status`, `findings`, `note`.
-2. Register the trusted module once in `monitor.REGISTRY`. There is no executable
-   path, shell string or dynamic import in distribution TOML. Enable its ID in
-   `[monitors].enabled`; add only identity exceptions that cannot be derived.
-3. Use `monitor_model.finding(...)`. Labels/tags are single words/CamelCase;
-   findings contain a stable ID/title, scope, and structured `facts`. Each fact
-   has `key`, scalar/string-list `value`, `source`, HTTPS `url`, and `status`.
-   Return attributable observations and deterministic transformations, not
-   maintainer decisions: no generated advice, priority or resolution. A missing
-   observation has a null value and an explicit `unavailable`, `not_applicable`
-   or `not_evaluated` status; it is never a negative result. Human dispositions
-   are outside this contract. The generic renderer displays fields, not prose.
-4. Test input absence, one positive case, no finding, malformed/provider failure,
-   changed source revision, and expiry. Add upgrade/target-change cases for
-   `SCOPE='upgrade'`. `test_new_monitor_uses_existing_runner_projection_and_api`
-   proves a new label aggregates without an API/frontend branch. The real
-   `monitor_license.py` is the small upgrade-only example.
-5. Run the checks in [CONTRIBUTING.md](../CONTRIBUTING.md), then the read-only `explain`/`check` commands on
-   one real package. Promote configuration with `tracker.package plan/apply`
-   (including monitor settings and BuildSystem appearance), deploy the image
-   and independent data/config candidate, and observe coverage and errors.
+`version_status.evaluate` owns source selection, freshness, compare policy and
+upgrade eligibility. `view` and the monitor runner consume this same result;
+`monitor_model.project` cannot accept a separately supplied upgrade boolean.
+`evaluate_all` resolves each package once per pass, shared across adapters. The
+historical `last_known_relation` remains evidence, not a second update decision.
+A changed operator version policy waits for its snapshot publication before an
+upgrade monitor runs; current-version monitors are independent of update status.
 
-No scheduler, database schema, API model, filter logic or page edit is needed for
-another finding-producing monitor. The runner owns batching, provider fairness,
-short writer locks, coalesced partial publication and input revalidation. A check
-receives one subject (`name`, native `version`, source `revision`, and target only
-for upgrade checks), its own inputs and scoped IO—not the entire database/config.
-`monitor_model.py` is pure; HTTP read paths never import adapters. A future custom
-script protocol can adapt this same contract, but process isolation and trust
-policy must be designed first; arbitrary scripts are deliberately not supported.
+Configuration is static native TOML plus tracker policy. Loading/promoting it does
+not read observations; discovery alone consumes saved Source0 to propose rules.
+The retired automatic-rule identity guard and its unused snapshot plumbing are
+not a fallback configuration engine.
+
+The monitor runner owns lifecycle and storage; adapters own provider inputs and
+interpretation; projection owns visibility. A new label uses the existing generic
+API and renderer. See the [monitor porting guide](monitor-porting.md) for the small
+module contract, reusable components and an executable end-to-end example.
 
 Upgrade monitors do not run without a confirmed newer comparable release.
 LicenseChange compares same-project PyPI SPDX expressions, not free text against
 RPM's aggregate License. Missing comparable metadata is unsupported, not equal.
-ABIChange requires comparable old/new build artifacts and is **not implemented**;
-never infer ABI breakage merely from a version number. Both belong in Maintenance
-once evidenced, bound to their current→target pair.
+ABIChange requires comparable old/new build artifacts and is not implemented.
 
 ### Security boundaries
 

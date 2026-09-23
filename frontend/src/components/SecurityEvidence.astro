@@ -3,13 +3,13 @@ import type {Finding} from '../lib/api.generated';
 import EvidenceFacts from './EvidenceFacts.astro';
 interface Props {findings: Finding[]}
 const {findings} = Astro.props;
-const common = (findings[0]?.facts ?? []).filter(f => f.key.startsWith('Query ') &&
+const common = (findings[0]?.facts ?? []).filter(f => f.code === 'query' &&
   findings.every(item => item.facts.some(other => JSON.stringify(other) === JSON.stringify(f))));
 const commonKeys = new Set(common.map(f => JSON.stringify(f)));
-const fixed = (finding: Finding) => [...new Set(finding.facts.filter(f => f.key === 'Fixed events' &&
+const fixed = (finding: Finding) => [...new Set(finding.facts.filter(f => f.code === 'fixed_events' &&
   f.status === 'observed').flatMap(f => Array.isArray(f.value) ? f.value : []))];
 const probabilities = (finding: Finding) => finding.facts.filter(f =>
-  f.key.startsWith('EPSS probability') && f.status === 'observed' && typeof f.value === 'number');
+  f.code === 'epss_probability' && f.status === 'observed' && typeof f.value === 'number');
 const incomplete = (finding: Finding) => finding.facts.some(f => f.status === 'unavailable');
 
 ---
