@@ -195,7 +195,8 @@ def resolve_success_version(client, project, target, package, success):
     return binary_success_version(data, filename, project, target, package, success)
 
 class Client:
-    def __init__(self, config):
+    def __init__(self, config, *, attempts=3):
+        self.attempts = attempts
         self.base = config['obs']['api_url'].rstrip('/')
         self.project = quote(config['obs']['project'], safe='')
         self.client = httpx.Client(timeout=config['collector'].get('timeout_seconds', 20),
@@ -203,7 +204,7 @@ class Client:
     def close(self):
         self.client.close()
     def get(self, path):
-        for attempt in range(3):
+        for attempt in range(self.attempts):
             try:
                 with self.client.stream('GET', self.base + path) as r:
                     r.raise_for_status()
@@ -220,7 +221,7 @@ class Client:
                 permanent = (isinstance(e, httpx.HTTPStatusError)
                              and e.response.status_code < 500
                              and e.response.status_code not in (408, 429))
-                if permanent or attempt == 2:
+                if permanent or attempt == self.attempts - 1:
                     raise
                 time.sleep(0.25 * (2 ** attempt))
         raise AssertionError('unreachable')

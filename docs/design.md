@@ -15,6 +15,18 @@ its exact input digest. Discovery produces reviewable candidates, not runtime
 rules. `package explain` locates the package's table; promotion compares the final
 loaded rules, package policies and operator options with the reviewed result.
 
+## OBS collection
+
+Current status and successful-build history share a build identity, not a polling
+cadence. The `builds` phase performs one project-wide `_result` request and owns
+status/error/timestamps. The `obs` state phase owns source inventory and history;
+`state.BUILD_FIELDS` restricts their writes within each build record. Publication
+rebases onto the latest snapshot, so slow source/history work cannot rewind fast
+statuses, and a status heartbeat cannot replace success provenance. Only complete
+inventory removes packages; changing a target repository/architecture invalidates
+that target's old observations. An in-flight status response for a changed scope
+is discarded.
+
 ## Package selection
 
 `build_status` owns OBS status meaning; `view` folds build flavors into one target

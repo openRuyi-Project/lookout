@@ -167,7 +167,7 @@ def test_matching_revision_refreshes_source(config,snapshot):
 
 def test_build_failure_retains_success_time(config,snapshot):
     previous=snapshot['builds']['binutils']['rva23']
-    new=collector.collect(config,snapshot,FakeOBS(config,failed=('/_result',)),state.utcnow())
+    new=collector.refresh_builds(config,snapshot,FakeOBS(config,failed=('/_result',)),state.utcnow())
     actual=new['builds']['binutils']['rva23']
     assert actual['raw_status']==previous['raw_status'] and actual['fetched_at']==previous['fetched_at']
     assert actual['error']

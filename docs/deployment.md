@@ -2,10 +2,21 @@
 
 ## Architecture and prerequisites
 
-One container runs Astro SSR, FastAPI, and the configurable `obs`, `upstreams`,
-`specs`, and `monitors` tasks. Web/API startup does not wait for a full Git clone;
+One container runs Astro SSR, FastAPI, and independent OBS status/source-history, upstream,
+SPEC and maintenance tasks. Web/API startup does not wait for a full Git clone;
 collection updates do not require rebuilding the frontend. There are no host
 collection timers or additional application replicas.
+
+OBS status uses one project-wide request every `build_interval_seconds` (default
+30, minimum 10). Failed polls back off to at most five minutes, without immediate
+HTTP retries; recovery restores the configured delay. Source/history work runs
+separately at `obs_interval_seconds` (default 60); bulk successful-build history
+has its own `build_history_interval_seconds` (default 300). Intervals are minimum
+pauses after completion: no catch-up bursts or overlapping jobs.
+
+For diagnostics, `--only builds` refreshes current status, `--only obs-metadata`
+refreshes source/history, and the existing `--only obs` command runs both. Page
+requests only read saved observations; opening more tabs does not poll OBS.
 
 Use a dedicated non-root Linux account, cgroup v2, rootless Podman with Quadlet,
 Python 3.11+ for host tools, and local persistent storage. Native SPEC parsing

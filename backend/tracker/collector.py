@@ -103,22 +103,6 @@ def collect(config, old, client, now, source_limit=None):
     else:
         for name, previous in new['sources'].items():
             new['sources'][name] = state.failure(previous, 'source inventory/index could not be confirmed', now)
-    results = stage('builds', lambda: obs.build_results(client.get(f'/build/{project}/_result'), config['obs']['project'], config['targets'])) if verified else None
-    builds_complete = results is not None
-    for target in config['targets']:
-        tid = target['id']
-        values = results.get(tid) if results is not None else None
-        for name in new['inventory']:
-            previous = new['builds'].setdefault(name, {}).get(tid, {})
-            if values is not None and name in values:
-                new['builds'][name][tid] = state.success(previous, values[name], now)
-            else:
-                builds_complete = False
-                new['builds'][name][tid] = state.failure(previous, 'OBS target/package result unavailable', now)
-        if values is None:
-            builds_complete = False
-    if not builds_complete:
-        components['builds'] = state.failure(old['components'].get('builds', {}), 'OBS target/package result unavailable', now)
     # Exactly one bounded bulk history request per target, not one per package.
     # Last-success facts remain useful when refresh fails; failure never erases them.
     if verified:
@@ -151,6 +135,44 @@ def collect(config, old, client, now, source_limit=None):
     if verified:
         refresh_success_versions(config, new, client, now)
     return new
+
+def refresh_builds(config, old, client, now=None):
+    """One project-wide status request, independent of source/history work."""
+    new = deepcopy(old)
+    try:
+        data = client.get('/build/' + quote(config['obs']['project'], safe='') + '/_result')
+        results = obs.build_results(data, config['obs']['project'], config['targets'])
+        error = None
+    except Exception as exc:
+        results, error = None, 'OBS build result unavailable: ' + type(exc).__name__
+    # Timestamp the response, not the start of a potentially slow request.
+    now = now or state.utcnow()
+    complete = results is not None
+    for target in config['targets']:
+        tid = target['id']
+        values = results.get(tid) if results is not None else None
+        for name in old['inventory']:
+            previous = new['builds'].setdefault(name, {}).get(tid, {})
+            if values is not None and name in values:
+                new['builds'][name][tid] = state.success(previous, values[name], now)
+            else:
+                complete = False
+                new['builds'][name][tid] = state.failure(
+                    previous, error or 'OBS target/package result unavailable', now)
+        if values is None:
+            complete = False
+    prior = old['components'].get('builds', {})
+    new['components']['builds'] = (state.success(prior, {}, now) if complete else
+        state.failure(prior, error or 'OBS target/package result unavailable', now))
+    return new
+
+
+def build_patch(snapshot, phase):
+    return {name: {tid: {key: value for key, value in fact.items()
+                         if key in state.BUILD_FIELDS[phase]}
+                   for tid, fact in targets.items()}
+            for name, targets in snapshot['builds'].items()}
+
 
 def refresh_success_versions(config, snapshot, client, now):
     """Fill unresolved history only, with a fair bounded queue and identity cache."""
@@ -325,21 +347,48 @@ def collect_obs(config, db, source_limit=None):
                 # OBS owns these fields only. A concurrent upstream/spec job may
                 # have advanced the snapshot while this network phase was running.
                 snapshot = state.merge(latest, 'obs',
-                    {key: observed[key] for key in state.PHASE_FIELDS['obs']},
+                    {**{key: observed[key] for key in state.PHASE_FIELDS['obs'] if key != 'builds'},
+                     'builds': build_patch(observed, 'obs')},
                     {key: value for key, value in observed['components'].items()
-                     if key not in ('nvchecker', 'spec_git')})
+                     if key in ('targets', 'inventory', 'source_index') or key.startswith('build_history:')})
                 state.commit(db, snapshot)
         finally:
             client.close()
     return snapshot
+
+def collect_builds(config, db):
+    """The fast OBS lane owns statuses only; history keeps its own cadence."""
+    with state.writer_lock(str(db) + '.builds'):
+        old = state.read(db)
+        if not old['inventory']:
+            return old  # The authoritative inventory collector initializes scope.
+        if old.get('obs') != config['obs'] or old.get('targets') != config['targets']:
+            raise ValueError('OBS build scope awaits metadata collection')
+        # A heartbeat already retries with backoff: no immediate HTTP retry burst.
+        client = obs.Client(config, attempts=1)
+        try:
+            observed = refresh_builds(config, old, client)
+        finally:
+            client.close()
+        with state.writer_lock(db, timeout=60):
+            latest = state.read(db)
+            if latest.get('obs') != old['obs'] or latest.get('targets') != old['targets']:
+                raise ValueError('OBS scope changed while checking builds')
+            patches = {name: facts for name, facts in build_patch(observed, 'builds').items()
+                       if name in latest['inventory']}
+            snapshot = state.merge(latest, 'builds', {'builds': patches},
+                                   {'builds': observed['components']['builds']})
+            state.commit(db, snapshot)
+    return snapshot
+
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--config', required=True)
     p.add_argument('--db', required=True)
     p.add_argument('--source-limit', type=int, help='0: full initial fill; default: configured bounded batch')
-    p.add_argument('--only', choices=('all', 'obs', 'upstreams', 'specs', 'monitors'), default='all',
-                   help='independent OBS, upstream, and SPEC-git timers share one serialized snapshot writer')
+    p.add_argument('--only', choices=('all', 'obs', 'obs-metadata', 'builds', 'upstreams', 'specs', 'monitors'), default='all',
+                   help='independent collection phases share one serialized snapshot writer; obs-metadata owns source/history, builds owns status; obs runs both')
     p.add_argument('--track', action='append', help='check only this configured upstream track; repeat with --only upstreams')
     args = p.parse_args()
     if args.source_limit is not None and args.source_limit < 0:
@@ -356,8 +405,10 @@ def main():
         # OBS and upstream phases each take the writer lock only around their own local
         # commit. Remote upstream requests never run while the snapshot lock is held.
         snapshot = None
-        if args.only in ('all', 'obs'):
+        if args.only in ('all', 'obs', 'obs-metadata'):
             snapshot = collect_obs(config, args.db, args.source_limit)
+        if args.only in ('all', 'obs', 'builds'):
+            snapshot = collect_builds(config, args.db)
         if args.only in ('all', 'upstreams'):
             snapshot = check_upstreams(config, args.config, args.db, tracks=selected, attempt=attempt)
         if args.only in ('all', 'specs'):
@@ -376,6 +427,9 @@ def main():
         errors = ([attempt['command_error']] if attempt['command_error'] else []) + [
             f'{name}: {error}' for name, error in attempt['track_errors'].items()]
         result.update(attempt, collection_errors=result['errors'], errors=errors)
+    if args.only == 'builds':
+        errors = [snapshot['components']['builds']['error']] if snapshot['components'].get('builds', {}).get('error') else []
+        result['errors'] = errors
     print(json.dumps(result, ensure_ascii=False))
     return 2 if errors else 0
 

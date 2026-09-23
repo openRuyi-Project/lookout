@@ -170,7 +170,7 @@ def test_partial_build_result_keeps_prior_successful_collection_time(config, sna
             if path.endswith('/_result'):
                 root = ET.fromstring(data); root.remove(root[1]); return ET.tostring(root)
             return data
-    new = collector.collect(config, snapshot, PartialOBS(config), (datetime.now(timezone.utc)+timedelta(seconds=60)).isoformat())
+    new = collector.refresh_builds(config, snapshot, PartialOBS(config), (datetime.now(timezone.utc)+timedelta(seconds=60)).isoformat())
     assert new['components']['builds']['fetched_at'] == prior
     assert new['components']['builds']['error']
 

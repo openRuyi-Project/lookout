@@ -205,6 +205,7 @@ def test_initial_reuse_followed_by_failure_is_unknown_not_never_succeeded(config
             data = super().get(path)
             return data.replace(b'code="succeeded"', b'code="failed"') if path.endswith('/_result') else data
     result = collector.collect(config, snapshot, ReuseThenFailOBS(config), state.utcnow())
+    result = collector.refresh_builds(config, result, ReuseThenFailOBS(config))
     assert result['builds']['binutils']['rva23']['history_unresolved'] is True
     assert result['builds']['binutils']['rva23']['last_success'] is None
     assert row(result)['current_build_success'] is None

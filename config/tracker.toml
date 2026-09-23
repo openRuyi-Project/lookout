@@ -24,6 +24,7 @@ architecture = "x86_64"
 [collector]
 nvchecker_config = "versions/nvchecker.toml"
 obs_interval_seconds = 60
+build_interval_seconds = 30
 nvchecker_interval_seconds = 21600
 stale_after_seconds = 86400
 obs_stale_after_seconds = 300

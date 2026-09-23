@@ -66,7 +66,9 @@ class ContainerTests(unittest.TestCase):
         self.assertEqual(jobs[1][1][-1], '/app/frontend')
         self.assertEqual(jobs[1][1][1], ['node', '/app/frontend/server.mjs'])
         self.assertEqual(jobs[1][1][2]['HOST'], '127.0.0.2')
-        self.assertEqual(jobs[4], (entrypoint.specs, (config['spec'],)))
+        self.assertIn((entrypoint.specs, (config['spec'],)), jobs)
+        self.assertIn((entrypoint.periodic, ("builds", 30)), jobs)
+        self.assertIn((entrypoint.periodic, ("obs-metadata", 60)), jobs)
         popen.assert_not_called()  # Main itself never performs a blocking clone.
 
     def test_monitor_heartbeat_is_automatic_and_separate_from_recheck_interval(self):
@@ -109,6 +111,18 @@ class ContainerTests(unittest.TestCase):
         self.assertIn(entrypoint.CONFIG, args[1])
         self.assertNotIn('--source-limit', args[1])
         self.assertEqual(kwargs['cwd'], '/app/backend')
+
+    def test_build_poll_backoff_is_bounded_and_recovers_without_overlap(self):
+        waits = []
+        results = iter([2, 2, 2, 2, 2, 0, 75, 0])
+        def wait(delay):
+            waits.append(delay)
+            if len(waits) == 8:
+                entrypoint._stop.set()
+        with patch.object(entrypoint, 'run_collector', side_effect=lambda _: next(results)), \
+             patch.object(entrypoint._stop, 'wait', side_effect=wait):
+            entrypoint.periodic('builds', 30)
+        self.assertEqual(waits, [60, 120, 240, 300, 300, 30, 30, 30])
 
     def test_clone_uses_config_origin_and_branch(self):
         config = {'repo': '/data/spec.git', 'url': 'https://example.invalid/repo.git',

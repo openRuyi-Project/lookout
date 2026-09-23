@@ -13,12 +13,15 @@ def load(path):
     raw = path.read_bytes()
     config = tomllib.loads(raw.decode())
     config['config_digest'] = hashlib.sha256(raw).hexdigest()
-    for key, default in (('obs_interval_seconds', 60), ('nvchecker_interval_seconds', 21600),
+    for key, default in (('obs_interval_seconds', 60), ('build_interval_seconds', 30), ('nvchecker_interval_seconds', 21600),
                          ('nvchecker_timeout_seconds', 7200), ('build_history_interval_seconds', 300)):
         value = config['collector'].setdefault(key, default)
         if type(value) is not int or value <= 0:
             raise ValueError(f'{key} must be a positive integer')
+    if config['collector']['build_interval_seconds'] < 10:
+        raise ValueError('build_interval_seconds must be at least 10')
     for interval, stale, default in (('obs_interval_seconds', 'obs_stale_after_seconds', 300),
+                                      ('build_interval_seconds', 'obs_stale_after_seconds', 300),
                                       ('nvchecker_interval_seconds', 'stale_after_seconds', 86400)):
         if config['collector'].get(stale, default) <= config['collector'][interval]:
             raise ValueError(f'{stale} must exceed {interval}')

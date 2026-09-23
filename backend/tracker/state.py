@@ -146,6 +146,17 @@ PHASE_FIELDS = {
     'upstreams': frozenset(('tracks', 'native_ids', 'nv_digest', 'bindings')),
     'specs': frozenset(('specs', 'spec_interval_seconds')),
     'monitors': frozenset(('monitors', 'monitor_stale_after_seconds')),
+    'builds': frozenset(('builds',)),
+}
+
+# Status and history share a displayed build, but have independent writers and
+# cadences. Neither writer may replay the other one's old observation.
+BUILD_FIELDS = {
+    'builds': frozenset(('raw_status', 'details', 'matches_source',
+                         'fetched_at', 'attempted_at', 'error')),
+    'obs': frozenset(('last_success', 'history_attempted_at', 'history_checked_at',
+                     'history_error', 'history_unresolved',
+                     'version_attempt_identity', 'version_attempted_at')),
 }
 
 
@@ -158,10 +169,25 @@ def merge(latest, phase, fields, components=None):
         if phase == 'monitors':
             raise ValueError('monitor observations own no collection component')
         valid = (key == 'nvchecker' if phase == 'upstreams' else key == 'spec_git' if phase == 'specs'
-                 else key in ('targets', 'inventory', 'source_index', 'builds') or key.startswith('build_history:'))
+                 else key == 'builds' if phase == 'builds'
+                 else key in ('targets', 'inventory', 'source_index') or key.startswith('build_history:'))
         if not valid:
             raise ValueError('snapshot component ownership violation')
     result = deepcopy(latest)
-    result.update(deepcopy(fields), generation=latest['generation'] + 1)
+    result.update(deepcopy({k: v for k, v in fields.items() if k != 'builds'}),
+                  generation=latest['generation'] + 1)
+    if phase == 'obs':
+        prior = {t['id']: (t['repository'], t['architecture']) for t in latest.get('targets', [])}
+        current = {t['id']: (t['repository'], t['architecture']) for t in result.get('targets', [])}
+        result['builds'] = {
+            name: {tid: fact for tid, fact in builds.items()
+                   if tid in current and prior.get(tid) == current[tid]}
+            for name, builds in result['builds'].items() if name in result['inventory']
+        }
+    for name, targets in fields.get('builds', {}).items():
+        for tid, facts in targets.items():
+            if set(facts) - BUILD_FIELDS[phase]:
+                raise ValueError('build observation field ownership violation')
+            result['builds'].setdefault(name, {}).setdefault(tid, {}).update(deepcopy(facts))
     result['components'].update(deepcopy(components))
     return result

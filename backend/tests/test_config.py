@@ -29,7 +29,8 @@ def test_track_change_does_not_relabel_prior_version():
     assert result['foo']['previous_configuration']['version']=='3.10'
     assert result['foo']['error']=='timeout'
 
-@pytest.mark.parametrize('key,value', [('obs_interval_seconds','0'),
+@pytest.mark.parametrize('key,value', [('obs_interval_seconds','0'), ('build_interval_seconds', '0'),
+    ('build_interval_seconds', '9'), ('build_interval_seconds', '300'),
     ('nvchecker_interval_seconds','-1'), ('nvchecker_interval_seconds','true'),
     ('obs_interval_seconds','"60"'), ('nvchecker_interval_seconds','86400')])
 def test_invalid_timer_policy_rejected(tmp_path,key,value):

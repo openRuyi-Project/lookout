@@ -67,17 +67,22 @@ def run_collector(phase, extra=()):
            "--config", CONFIG, "--db", DB, *extra]
     result = run_child(f"collect-{phase}", cmd, cwd=f"{APP}/backend")
     log(f"collect {phase}: exit {result}")
+    return result
 
 
 def periodic(phase, interval):
+    delay = interval
     while not _stop.is_set():
         try:
             # Keep the configured bounded OBS batch, including on restart. An existing
             # snapshot must not trigger another expensive full source fill at every boot.
-            run_collector(phase)
+            result = run_collector(phase)
         except OSError as error:
             log(f"collect {phase}: {type(error).__name__}: {error}")
-        _stop.wait(interval)
+            result = 1
+        if phase == "builds":
+            delay = interval if result in (0, 75) else min(delay * 2, max(interval, 300))
+        _stop.wait(delay)
 
 
 def specs(spec):
@@ -155,9 +160,10 @@ def main():
                    api_env, f"{APP}/backend")),
         (service, ("web", ["node", f"{APP}/frontend/server.mjs"],
                    web_env, f"{APP}/frontend")),
-        (periodic, ("obs", config["collector"]["obs_interval_seconds"])),
+        (periodic, ("obs-metadata", config["collector"]["obs_interval_seconds"])),
         (periodic, ("upstreams", config["collector"]["nvchecker_interval_seconds"])),
     ]
+    tasks.append((periodic, ("builds", config["collector"].get("build_interval_seconds", 30))))
     if config["spec"]["repo"]:
         tasks.append((specs, (config["spec"],)))
     from tracker.monitor import settings as monitor_settings
