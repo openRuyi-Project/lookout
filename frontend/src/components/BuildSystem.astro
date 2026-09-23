@@ -1,6 +1,6 @@
 ---
-interface Props {value: string | null; query?: string; view?: string; maintenance?: string}
-const {value, query = '', view = 'all', maintenance = ''} = Astro.props;
-const href = '/?' + new URLSearchParams({buildsystem: value || '', q: query, view, maintenance});
+import {listingURL} from '../lib/listing';
+interface Props {value: string | null; filters?: URLSearchParams}
+const {value, filters = new URLSearchParams()} = Astro.props;
 ---
-{value && <span class="buildsystem-line"><a class="buildsystem-label" data-buildsystem={encodeURIComponent(value)} href={href} aria-label={`BuildSystem ${value}: show packages`}>{value}</a></span>}
+{value && <span class="buildsystem-line"><a class="buildsystem-label" data-buildsystem={encodeURIComponent(value)} href={listingURL(filters, {buildsystem: value})} aria-label={`BuildSystem ${value}: show packages`}>{value}</a></span>}

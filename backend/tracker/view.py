@@ -1,17 +1,8 @@
 """Small public projections. Only here do saved facts become display conclusions."""
 from datetime import datetime, timezone
 from urllib.parse import quote
-from . import config as cfg, state, monitor_model
+from . import config as cfg, state, monitor_model, build_status
 
-STATES = {
-    'succeeded': ('✓', 'ok', 80), 'failed': ('Failed', 'error', 0),
-    'unresolvable': ('Unresolvable', 'error', 1), 'broken': ('Broken', 'error', 2),
-    'blocked': ('Blocked', 'working', 20), 'building': ('Building', 'working', 30),
-    'scheduled': ('Scheduled', 'working', 40), 'signing': ('Signing', 'working', 45),
-    'finished': ('Finishing', 'working', 46), 'dispatching': ('Dispatching', 'working', 47),
-    'disabled': ('Disabled', 'muted', 90), 'excluded': ('Excluded', 'muted', 91),
-    'unknown': ('No result', 'muted', 10),
-}
 
 def observed_at(observations):
     """Old successful observations remain dated; missing/invalid ones are unknown.
@@ -170,18 +161,18 @@ def project(snapshot, now=None):
                 raw_status = fact.get('raw_status', 'unknown')
                 # Preserve old status but mark it stale immediately after a failed observation.
                 is_stale = state.stale(fact, now, obs_ttl) or bool(fact.get('error'))
-                text, kind, rank = STATES.get(raw_status, ('No result', 'muted', 10))
+                status = build_status.describe(raw_status)
                 url = f'{base}/package/live_build_log/{project_name}/{quote(flavor, safe="")}/{quote(target["repository"], safe="")}/{quote(target["architecture"], safe="")}' if base else None
                 source_hash = snapshot.get('index', {}).get(flavor, {}).get('srcmd5')
                 # Flavor source identities must not be guessed from their owner.
                 matched = None if source_stale or is_stale else matching_success(fact, source, source_hash, now, history_ttl)
-                entries.append({**fact, 'updated_at': observed_at([fact]), 'last_success': fact.get('last_success'), 'package': flavor, 'raw_status': raw_status, 'text': text, 'kind': kind,
-                                'stale': is_stale, 'log_url': url, 'rank': rank, 'matches_source': matched})
+                entries.append({**fact, 'updated_at': observed_at([fact]), 'last_success': fact.get('last_success'), 'package': flavor, 'raw_status': raw_status, 'text': status.text, 'kind': status.kind, 'issue': status.issue,
+                                'stale': is_stale, 'log_url': url, 'rank': status.rank, 'matches_source': matched})
             all_entries.extend(entries)
             chosen = min(entries, key=lambda e: e['rank'])
             builds.append(dict(target=target['id'], label=target['label'], repository=target['repository'],
                                architecture=target['architecture'], raw_status=chosen['raw_status'],
-                               text=chosen['text'], kind=chosen['kind'], log_url=chosen['log_url'],
+                               text=chosen['text'], kind=chosen['kind'], issue=any(e['issue'] for e in entries), log_url=chosen['log_url'],
                                stale=any(e['stale'] for e in entries), matches_source=combined_match(entries),
                                last_success=combined_success(entries), updated_at=observed_at(entries), flavors=entries))
         old_data = bool(current.get('version') and (current_stale or current.get('error'))) or bool(upstream.get('version') and (upstream_stale or upstream.get('error')))

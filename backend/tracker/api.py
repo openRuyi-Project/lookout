@@ -9,7 +9,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
-from . import state, view
+from . import state, view, package_list
 
 # Fixed-shape payloads are typed so the response contract cannot silently drift.
 # Raw provenance (source, upstream, per-flavor facts) stays open on purpose.
@@ -32,6 +32,7 @@ class Build(BaseModel):
     raw_status: str
     text: str
     kind: str
+    issue: bool
     log_url: str | None
     stale: bool
     matches_source: bool | None
@@ -44,6 +45,7 @@ class BuildFlavor(BaseModel):
     raw_status: str
     text: str
     kind: str
+    issue: bool
     log_url: str | None
     stale: bool
     updated_at: str | None
@@ -166,6 +168,12 @@ class PackageDetail(PackageSummary):
     monitor_checks: list[MonitorCheck]
     presentation: Presentation
 
+class BuildStatusOption(BaseModel):
+    value: str
+    label: str
+    count: int
+
+
 class PackageList(BaseModel):
     items: list[PackageSummary]
     total: int
@@ -178,6 +186,7 @@ class PackageList(BaseModel):
     presentation: Presentation
     buildsystems: dict[str, int]
     maintenance_labels: dict[str, int]
+    build_statuses: dict[str, list[BuildStatusOption]]
 
 def create_app(db=None):
     db = Path(db or os.environ.get('TRACKER_DB', 'state/tracker.sqlite3'))
@@ -223,49 +232,20 @@ def create_app(db=None):
     @app.get('/api/v1/packages', response_model=PackageList)
     def packages(q: str = Query('', max_length=100), view_name: Literal['all', 'updates', 'problems', 'attention', 'untracked'] = Query('all', alias='view'),
                  page: int = Query(1, ge=1, le=1000000), per_page: int = Query(100, ge=1, le=200),
-                 buildsystem: str = Query('', max_length=100), maintenance: str = Query('', max_length=40)):
+                 buildsystem: str = Query('', max_length=100), maintenance: str = Query('', max_length=40),
+                 build: list[str] = Query(default=[], max_length=16)):
         snap, rows, collection = data()
-        rows = [r for r in rows if q.strip().casefold() in r['name'].casefold()]
-        # Facets share the same search/view context and apply the OTHER facet.
-        # Tab counts apply both facets, but not the currently selected tab.
-        def build_key(row):
-            return row['buildsystem'] or '_not_detected'
-        def matches_build(row):
-            return not buildsystem or build_key(row) == buildsystem
-        def matches_maintenance(row):
-            return not maintenance or any(v['label'] == maintenance for v in row['maintenance'])
-        def in_view(row, selected_view):
-            return (selected_view == 'all'
-                    or selected_view == 'updates' and row['relation'] == 'outdated'
-                    or selected_view == 'problems' and any(b['kind'] == 'error' for b in row['builds'])
-                    or selected_view == 'attention' and row['needs_attention']
-                    or selected_view == 'untracked' and not row['track'] and row['relation'] != 'not_applicable')
-        buildsystems, labels = {}, {}
-        for row in rows:
-            if not in_view(row, view_name):
-                continue
-            if matches_maintenance(row):
-                key = build_key(row)
-                buildsystems[key] = buildsystems.get(key, 0) + 1
-            if matches_build(row):
-                for label in row['maintenance']:
-                    labels[label['label']] = labels.get(label['label'], 0) + 1
-        # A selected zero-result option must stay selected, not silently reset.
-        if buildsystem:
-            buildsystems.setdefault(buildsystem, 0)
-        if maintenance:
-            labels.setdefault(maintenance, 0)
-        rows = [r for r in rows if matches_build(r) and matches_maintenance(r)]
-        groups = {key: [r for r in rows if in_view(r, key)]
-                  for key in ('all', 'updates', 'problems', 'attention', 'untracked')}
-        selected = groups[view_name]
-        total = len(selected)
-        pages = max(1, (total + per_page - 1) // per_page)
-        page = min(page, pages)
-        return dict(items=[view.summary(r) for r in selected[(page-1)*per_page:page*per_page]], total=total,
-                    page=page, per_page=per_page, pages=pages, counts={k: len(v) for k, v in groups.items()},
-                    targets=snap['targets'], collection=collection, buildsystems=buildsystems,
-                    maintenance_labels=labels, presentation=snap.get('presentation', {}))
+        try:
+            builds = package_list.build_selections(build, snap['targets'])
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        result = package_list.PackageList(rows, snap['targets'], q).select(
+            view=view_name, buildsystem=buildsystem, maintenance=maintenance,
+            builds=builds, page=page, per_page=per_page,
+        )
+        result['items'] = [view.summary(row) for row in result['items']]
+        return {**result, 'targets': snap['targets'], 'collection': collection,
+                'presentation': snap.get('presentation', {})}
     def find_package(name, rows):
         found = next((r for r in rows if r['name'] == name), None)
         if found is None:

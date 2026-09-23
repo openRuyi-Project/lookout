@@ -1,11 +1,11 @@
 ---
 import type {MaintenanceLabel} from '../lib/api.generated';
-interface Props {labels: MaintenanceLabel[]; query?: string; buildsystem?: string; view?: string}
-const {labels, query = '', buildsystem = '', view = 'all'} = Astro.props;
+import {listingURL} from '../lib/listing';
+interface Props {labels: MaintenanceLabel[]; filters?: URLSearchParams}
+const {labels, filters = new URLSearchParams()} = Astro.props;
 ---
 {labels.length > 0 && <span class="maintenance-labels">{labels.map(label => <a
   class:list={['maintenance-label', {old: label.stale}]}
-  href={'/?' + new URLSearchParams({maintenance: label.label, q: query, buildsystem, view})}
-  title={`${label.label}: show matching packages${label.stale ? '. This finding is from an earlier observation.' : ''}`}>
-  {label.label}{label.count > 1 && <span>×{label.count}</span>}
-</a>)}</span>}
+  href={listingURL(filters, {maintenance: label.label})}
+  title={label.stale ? 'Previous evidence; check details for freshness.' : undefined}
+>{label.label}{label.count > 1 && <span>{label.count}</span>}</a>)}</span>}

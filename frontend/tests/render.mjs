@@ -12,7 +12,7 @@ const makePackage = (name, patch = {}) => ({
   current_build_success: true, last_successful_version: '2.0', stale: false,
   needs_attention: false, upstream_updated_at: '2026-09-19T10:50:00Z', detail_url: `/packages/${name}`, version_error: null,
   builds: targets.map(target => ({target: target.id, label: target.label, repository: target.repository,
-    architecture: target.architecture, raw_status: 'succeeded', text: '✓', kind: 'ok',
+    architecture: target.architecture, raw_status: 'succeeded', text: '✓', kind: 'ok', issue: false,
     log_url: null, stale: false, updated_at: '2026-09-19T11:10:00Z', matches_source: true,
     last_success: {version: '2.0', time: '2026-09-19T11:00:00+00:00', srcmd5: 'a'}, flavors: []})),
   spec: {source_path: `SPECS/${name}`, source_url: `https://gitlab.example.org/team/packaging/-/tree/review/SPECS/${name}`, metadata: {summary: 'Fixture package', url: 'https://example.org/upstream'}, changelog: [], error: null},
@@ -39,22 +39,23 @@ const packages = [
     builds: makePackage('base').builds.map(build => ({...build, matches_source})),
   })),
   makePackage('arch-version', {builds: makePackage('base').builds.map(build => ({...build, last_success: {...build.last_success, version: '2.0.arch'}}))}),
-  makePackage('failed-same-version', {builds: makePackage('base').builds.map(build => ({...build, kind: 'error', raw_status: 'failed', text: 'Failed', matches_source: false}))}),
+  makePackage('failed-same-version', {builds: makePackage('base').builds.map(build => ({...build, kind: 'error', issue: true, raw_status: 'failed', text: 'Failed', matches_source: false}))}),
   makePackage('long-version', {current: '0.7+git20231216.05e79eb', latest: null, relation: 'untracked', track: null, builds: makePackage('base').builds.map(build => ({...build, last_success: {...build.last_success, version: '0.7+git20231216.05e79eb'}}))}),
-  makePackage('failed', {current_build_success: false, last_successful_version: '9.9-shared-should-not-render', stale: true, builds: makePackage('base').builds.map((build, i) => ({...build, text: 'Failed', kind: 'error', raw_status: 'failed', stale: true, matches_source: false, last_success: {version: ['1.9', '1.8', '1.7'][i], time: '2026-09-19T11:00:00Z', srcmd5: String(i)}}))}),
+  makePackage('failed', {current_build_success: false, last_successful_version: '9.9-shared-should-not-render', stale: true, builds: makePackage('base').builds.map((build, i) => ({...build, text: 'Failed', kind: 'error', issue: true, raw_status: 'failed', stale: true, matches_source: false, last_success: {version: ['1.9', '1.8', '1.7'][i], time: '2026-09-19T11:00:00Z', srcmd5: String(i)}}))}),
   makePackage('untracked', {relation: 'untracked', track: null, current_build_success: false}),
   makePackage('untracked-unavailable-source', {relation: 'unknown', track: null, current: null, current_build_success: null}),
   makePackage('unknown', {relation: 'unknown', current_build_success: null, last_successful_version: null}),
   makePackage('unresolved-version', {builds: [{...makePackage('base').builds[0], last_success: {version: null, time: '2026-09-19T11:00:00Z', srcmd5: 'macro'}}]}),
   makePackage('multibuild', {builds: [{...makePackage('base').builds[0], last_success: null, flavors: [
     {package: 'multibuild:one', text: '✓', kind: 'ok', raw_status: 'succeeded', stale: false, log_url: null, updated_at: '2026-09-19T11:10:00Z', last_success: {version: '1.1', time: '2026-09-19T10:00:00Z', srcmd5: 'one'}},
-    {package: 'multibuild:two', text: 'Failed', kind: 'error', raw_status: 'failed', stale: false, log_url: null, updated_at: '2026-09-19T11:10:00Z', last_success: {version: '1.0', time: '2026-09-18T10:00:00Z', srcmd5: 'two'}},
+    {package: 'multibuild:two', text: 'Failed', kind: 'error', issue: true, raw_status: 'failed', stale: false, log_url: null, updated_at: '2026-09-19T11:10:00Z', last_success: {version: '1.0', time: '2026-09-18T10:00:00Z', srcmd5: 'two'}},
   ]}]}),
   makePackage('missing-history', {current_build_success: null, last_successful_version: null,
     builds: targets.map(target => ({target: target.id, label: target.label, repository: target.repository,
       architecture: target.architecture, raw_status: 'unknown', text: 'No result', kind: 'muted',
       log_url: null, stale: false, updated_at: null, matches_source: null, last_success: null, flavors: []}))}),
 ];
+let lastQuery = new URLSearchParams();
 let unavailable = false;
 let health = 'ok';
 let ready = {status: 200, body: {status: 'degraded', generation: 1}};
@@ -71,8 +72,9 @@ const mock = createServer((req, res) => {
     res.writeHead(ready.status, {'Content-Type': 'application/json'});
     res.end(JSON.stringify(ready.body)); return;
   }
+  if (url.pathname === '/api/v1/packages') lastQuery = url.searchParams;
   const selected = packages.find(pkg => url.pathname === `/api/v1/packages/${pkg.name}`);
-  const payload = url.pathname === '/api/v1/presentation' ? {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}} : selected ?? {presentation: {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}}, buildsystems: {custom: 1}, maintenance_labels: {NewSignal: 1}, items: url.searchParams.get('q') === 'quiet' ? packages.map(pkg=>({...pkg,maintenance:[]})) : packages, total: packages.length, page: 1, per_page: 100, pages: 1,
+  const payload = url.pathname === '/api/v1/presentation' ? {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}} : selected ?? {presentation: {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}}, buildsystems: {custom: 1}, maintenance_labels: {NewSignal: 1}, build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'issues',label:'Issues',count:2}, {value:'blocked',label:'Blocked',count:1}]])), items: url.searchParams.get('q') === 'quiet' ? packages.map(pkg=>({...pkg,maintenance:[]})) : packages, total: packages.length, page: 1, per_page: 100, pages: 1,
     counts: {all: packages.length, updates: 3, problems: 1, attention: 1, untracked: 1}, targets,
     collection: {obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
       packages: packages.length, tracked_packages: packages.length - 1}};
@@ -138,6 +140,15 @@ try {
   assert.match(listing, />Untracked <b>/);
   const row = name => listing.match(new RegExp(`<tr data-name="${name}"[^]*?</tr>`))?.[0] ?? '';
   assert.match(row('success'), /class="current-version"/);
+  const linked = await read('/?build=rva23:blocked&build=rva20:issues&buildsystem=custom&maintenance=NewSignal&q=ok');
+  assert.deepEqual(lastQuery.getAll('build'), ['rva23:blocked', 'rva20:issues']);
+  for (const target of targets) assert.match(linked, new RegExp(`id="build-${target.id}"`));
+  assert.match(linked, /value="rva23:blocked" selected/);
+  const allLinks = [...linked.matchAll(/href="([^"]+)"/g)].map(match => new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture'));
+  for (const link of allLinks.filter(url => url.searchParams.get('buildsystem') === 'custom' || url.searchParams.get('maintenance') === 'NewSignal')) {
+    assert.deepEqual(link.searchParams.getAll('build'), ['rva23:blocked', 'rva20:issues']);
+  }
+  assert.doesNotMatch(linked.match(/<nav class="filters"[^]*?<\/nav>/)[0], /Build issues/);
   assert.match(row('success'), /buildsystem=custom/);
   assert.match(row('success'), /data-buildsystem="custom"/);
   assert.doesNotMatch(listing, / style=/);
