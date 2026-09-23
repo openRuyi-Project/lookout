@@ -197,3 +197,7 @@ foreground = "#ffffff"
 
 ["packages"."shim"]
 "comparable" = false
+
+# TODO(drop): openRuyi SPECS/go-github-dmarkham-enumer has Name=enumer.
+# TODO(drop): openRuyi SPECS/python-annotated-types has Name=python-annotated_types.
+# TODO(drop): openRuyi SPECS/python-discord has Name=python-discord.py.

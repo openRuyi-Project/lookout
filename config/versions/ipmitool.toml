@@ -1,6 +1,0 @@
-"source" = "github"
-"github" = "ipmitool/ipmitool"
-"use_latest_release" = true
-"prefix" = "IPMITOOL_"
-"from_pattern" = "_"
-"to_pattern" = "."

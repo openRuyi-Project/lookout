@@ -1,4 +1,0 @@
-"source" = "git"
-"git" = "https://gitlab.freedesktop.org/mesa/demos.git"
-"prefix" = "mesa-demos-"
-"include_regex" = "^mesa\\-demos\\-[0-9]+(?:\\.[0-9]+){1,3}$"

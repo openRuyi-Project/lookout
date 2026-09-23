@@ -1,4 +1,0 @@
-"source" = "git"
-"git" = "https://gitlab.freedesktop.org/poppler/poppler.git"
-"prefix" = "poppler-"
-"include_regex" = "^poppler\\-[0-9]+(?:\\.[0-9]+){1,3}$"

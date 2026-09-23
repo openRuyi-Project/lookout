@@ -1,4 +1,0 @@
-# TODO(drop): openRuyi SPECS/python-annotated-types has Name=python-annotated_types.
-# Drop this compatibility rule after directory/Name agree and upstream tracking is verified.
-"source" = "pypi"
-"pypi" = "annotated-types"

@@ -1,4 +1,0 @@
-"source" = "git"
-"git" = "https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config.git"
-"prefix" = "xkeyboard-config-"
-"include_regex" = "^xkeyboard\\-config\\-[0-9]+(?:\\.[0-9]+){1,3}$"

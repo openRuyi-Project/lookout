@@ -1,3 +1,0 @@
-"source" = "cratesio"
-"cratesio" = "cbindgen"
-"include_regex" = "^0\\.29\\.[0-9]+$"

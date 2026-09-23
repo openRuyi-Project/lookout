@@ -13,7 +13,9 @@ def test_documented_initializer_loads_and_refuses_overwrite(tmp_path):
     assert result.returncode == 0, result.stderr
     loaded = config.load(destination / "tracker.toml")
     assert loaded["native"]["python-zmq"]["pypi"] == "pyzmq"
-    assert len(list((destination / "versions").glob("*.toml"))) > 1
+    assert {p.name for p in (destination / "versions").glob("*.toml")} == {"nvchecker.toml"}
+    assert loaded["packages"]["openssl"]["track_label"] == "3.x"
+    assert loaded["packages"]["openssl"]["monitors"]["eol"]["product"] == "openssl"
     before = {str(p.relative_to(destination)): p.read_bytes() for p in destination.rglob("*") if p.is_file()}
     result = subprocess.run(command, capture_output=True, text=True)
     assert result.returncode == 2
