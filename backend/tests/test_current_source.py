@@ -66,3 +66,25 @@ def test_spec_expiry_has_cache_deadline_and_fetch_failure_stays_visible(config, 
 def test_no_spec_preserves_obs_fallback(snapshot):
     subject = monitor_model.subject(snapshot, 'binutils')
     assert subject['version'] == '3.9.0' and subject['revision'] == 'h-binutils'
+
+
+def test_failed_refresh_retains_matching_evidence_without_rechecking(config, snapshot):
+    spec(snapshot)
+    config['packages']['binutils'] = {'monitors': {'eol': {'product': 'fixture'}}}
+    good = monitor.plan(config, snapshot, 'binutils', 'eol')
+    previous = {**good, 'status': 'ok', 'checked_at': state.utcnow(),
+                'findings': [monitor_model.finding('old', 'EOL', 'Old fact', [], 'https://example.org/')],
+                'changed_at': 'original-change', 'evidence_revision': 'original-evidence'}
+    snapshot['components']['spec_git'] = {'error': 'offline'}
+    unavailable = monitor.plan(config, snapshot, 'binutils', 'eol')
+    assert unavailable['status'] == 'unsupported'
+    result = monitor.execute('eol', unavailable, None, previous)
+    assert result['findings'] == previous['findings']
+    assert result['changed_at'] == previous['changed_at']
+    assert result['checked_at'] == previous['checked_at']
+    snapshot['monitors'] = {'binutils': {'eol': result}}
+    projected = monitor_model.project(snapshot, 'binutils', datetime.now(timezone.utc))
+    assert projected['findings'][0]['stale'] is True
+    snapshot['specs']['binutils']['head'] = 'different-revision'
+    changed = monitor.plan(config, snapshot, 'binutils', 'eol')
+    assert monitor.execute('eol', changed, None, previous)['findings'] == []

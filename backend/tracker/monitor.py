@@ -78,6 +78,10 @@ def evidence_revision(subject, findings):
 
 def execute(provider, proposed, io, previous=None):
     if proposed['status'] != 'pending':
+        if (proposed['status'] == 'unsupported' and previous
+                and previous.get('fingerprint') == proposed['fingerprint']):
+            return {**proposed, **{key: previous.get(key) for key in
+                    ('findings', 'checked_at', 'attempted_at', 'evidence_revision', 'changed_at')}}
         return proposed
     at = state.utcnow()
     try:
@@ -131,7 +135,7 @@ def collect(config, config_path, db, *, io=None):
                     previous = snapshot.get('monitors', {}).get(name, {}).get(provider, {})
                     same = previous.get('fingerprint') == proposed['fingerprint']
                     if proposed['status'] != 'pending':
-                        observations[name][provider] = proposed
+                        observations[name][provider] = execute(provider, proposed, io, previous)
                     elif same and not state.stale(
                             {'fetched_at': previous.get('attempted_at') or previous.get('checked_at')},
                             now, options['interval_seconds']):
