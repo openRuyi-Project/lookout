@@ -101,11 +101,9 @@ def _toml_value(value):
 
 @contextmanager
 def command_config(config, names):
-    if names is None and not config.get('compact_versions'):
+    if names is None:
         yield config['nvpath']
         return
-    if names is None:
-        names = list(config['native'])
     # nvchecker 2.22 --entry accepts just ONE name; it has no --include list.
     # Use its native CLI once with an ephemeral subset, retaining native selection.
     path = Path(config['nvpath'])

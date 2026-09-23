@@ -26,9 +26,9 @@ The supported deployment is a Linux container with native RPM bindings and
 Landlock ABI 6+ for confined SPEC parsing. Configuration and data are mounted
 separately from the image. The deployment guide points to the tested initializer.
 
-Package rules use `config/versions/nvchecker.toml` and same-directory package
-exceptions, expanded into native nvchecker configuration. Their precedence,
-release policies and promotion commands are documented in the configuration guide.
+Package rules live in the native `config/versions/nvchecker.toml`; comparison and
+monitor policy live in `config/tracker.toml`. Use the configuration guide to locate,
+check and promote one package without reading the complete rule inventory.
 
 ## Interfaces
 

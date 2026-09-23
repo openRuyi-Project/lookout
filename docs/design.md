@@ -5,14 +5,27 @@
 | HTTP readers never collect | Request latency and read-only authority | `api.py`, `view.py`, `scripts/check-architecture.py` |
 | Each collector phase owns its fields | Concurrent phases cannot erase each other | `state.merge`, phase-ownership tests |
 | Failed checks retain dated evidence | Failure is not absence of an update | `state.py`, streaming/targeted collector tests |
-| Source identity precedes version inference | Similar names can identify different projects | `version_rules.automatic`, native Source0 tests |
+| Source identity precedes version inference | Similar names can identify different projects | `onboarding.propose`, native Source0 tests |
 | Ordinary promotion preserves untouched text | A small rule correction needs a small review | `config_change.merge_text`, promotion tests |
 | Generated API types follow OpenAPI | Avoid manual frontend schema synchronization | `scripts/api-types.py --check` |
 
 Configuration syntax and operator commands live in [config/README.md](../config/README.md).
-`RuleSet` names the loaded entries, origins, bindings and native options; `RuleOrigin`
-locates the authored rule. The collector consumes expanded native rules regardless
-of their origin. Rendering/regrouping is a migration helper, not normal editing.
+`version_rules.load` reads one native file once, returning entries, options and
+its exact input digest. Discovery produces reviewable candidates, not runtime
+rules. `package explain` locates the package's table; promotion compares the final
+loaded rules, package policies and operator options with the reviewed result.
+
+## Package selection
+
+`build_status` owns OBS status meaning; `view` folds build flavors into one target
+observation. `package_list` indexes those package rows once per request. List
+membership and every count use intersections of the same sets, before pagination.
+A facet ignores only its own selection when calculating available choices.
+`build=TARGET:STATE` may repeat for distinct configured targets; selections across
+targets are ANDed. Issues includes failed, unresolvable, broken and blocked, not
+queued/running work, disabled targets or unknown observations. Staleness remains
+independent of the observed status. The frontend renders API choices and preserves
+selections in links; it does not recalculate status or counts.
 
 ## Native SPEC confinement
 

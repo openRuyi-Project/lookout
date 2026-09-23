@@ -15,34 +15,7 @@ def location(path, keys):
 
 
 def rule_location(config, name):
-    keys = config.get("rule_origins", {}).get(name, ["package", name] if config.get("compact_versions") else [name])
-    if not keys:
-        return {
-            "file": str(Path(config["rule_files"][name]).resolve()),
-            "table": [],
-            "line": 1,
-            "overrides_group": name in config.get("overridden_rules", []),
-            "group_origin": config.get("group_origins", {}).get(name),
-        }
-    if name not in config["native"] and Path(config["nvpath"]).name == "groups.toml":
-        if Path(name).name != name or name in (".", "..", "groups"):
-            raise ValueError("invalid package filename")
-        return {"file": str(Path(config["nvpath"]).parent / (name + ".toml")), "table": [], "line": None}
-    if len(keys) == 2 and keys[0] == "group":
-        return {**location(config["nvpath"], keys), "match": "source_heuristic"}
-    if keys[0] == "group":
-        result = location(config["nvpath"], keys[:3])
-        member = json.dumps(keys[3]) + " ="
-        lines = Path(config["nvpath"]).read_text().splitlines()
-        start = (result["line"] or 1) - 1
-        result["line"] = next(
-            (n + 1 for n in range(start + 1, len(lines)) if lines[n].startswith(member)), result["line"]
-        )
-        if result["line"] is None:
-            result["line"] = location(config["nvpath"], keys[:2])["line"]
-        result["table"] = keys
-        return result
-    return location(config["nvpath"], keys)
+    return location(config['nvpath'], (name,))
 
 
 def explain(config_path, name, db=None, runtime_config=None):
@@ -87,11 +60,7 @@ def explain(config_path, name, db=None, runtime_config=None):
         "name": name,
         "binding": binding,
         "rules": rules,
-        "binding_location": (
-            location(config["nvpath"], ("binding", name))
-            if name in config.get("version_bindings", {})
-            else location(config_path, ("packages", name))
-        ),
+        "binding_location": location(config_path, ("packages", name)),
         "version_rule_location": rule_location(config, binding["compare"] or name),
         "binding_is_implicit": name not in config["packages"],
         "runtime_binding_matches": cfg.binding(runtime, name) == binding if runtime is not None else None,
@@ -144,15 +113,7 @@ def human_result(action, result, report=None):
         rules = result["rules"]
         for rule in rules or [result["version_rule_location"]]:
             lines.append(f"Edit: {rule['file']}:{rule.get('line') or '?'}")
-            if rule.get("match") == "source_heuristic":
-                kind = "automatic"
-            elif not rule.get("table"):
-                kind = "package override"
-            elif rule["table"][0] == "group":
-                kind = "explicit group"
-            else:
-                kind = "explicit rule"
-            lines.append("Rule: " + kind if rules else "Rule: untracked")
+            lines.append("Rule: explicit rule" if rules else "Rule: untracked")
     elif action == "check":
         lines.append("Check: " + ("passed" if result["passed"] else "failed"))
         for name, fact in result["tracks"].items():
@@ -161,9 +122,6 @@ def human_result(action, result, report=None):
             lines.append("Error: " + result["command_error"])
     elif action == "plan":
         lines.append("Changed tracks: " + (", ".join(result["changed_tracks"]) or "none"))
-        protected = result.get("overridden_unaffected_tracks", [])
-        if protected:
-            lines.append("Unaffected overrides: " + ", ".join(protected))
     elif action == "apply":
         lines.append("Prepared: " + result["destination"])
         lines.append("Activation: select the prepared directory and restart")

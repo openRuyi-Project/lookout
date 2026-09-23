@@ -146,26 +146,10 @@ def merge_text(base, candidate, runtime, name):
     return "".join(lines)
 
 
-def directory_texts(base, candidate, runtime):
-    def contents(config):
-        path = Path(config["nvpath"])
-        return {p.name: p.read_text() for p in version_rules.files(path)}
-
-    before, proposed, actual = map(contents, (base, candidate, runtime))
-    result = {}
-    for name in sorted(before.keys() | proposed.keys() | actual.keys()):
-        text = merge_text(before.get(name), proposed.get(name), actual.get(name), name)
-        if text is not None:
-            result[name] = text
-    return result
-
-
 def plan(base_path, candidate_path, runtime_path, output, snapshot=None):
     base_file, _, base = inputs(base_path, snapshot)
     candidate_file, _, candidate = inputs(candidate_path, snapshot)
     runtime_file, native_file, runtime = inputs(runtime_path, snapshot)
-    if snapshot is None and any(c.get("automatic_filters") for c in (base, candidate, runtime)):
-        raise ValueError("automatic version rules require a saved snapshot; pass --db when planning")
     # This command promotes package rules, not unrelated operator/site settings.
     a, b = tomllib.loads(base_file.read_text()), tomllib.loads(candidate_file.read_text())
     for key in ("packages", "openruyi", "monitors"):
@@ -191,96 +175,15 @@ def plan(base_path, candidate_path, runtime_path, output, snapshot=None):
         {"monitors": candidate.get("monitors")},
         {"monitors": runtime.get("monitors")},
     )
-    compact = bool(candidate.get("compact_versions") or runtime.get("compact_versions"))
-    tracker_changes = binding_changes
-    if compact:
-        operator_packages = tomllib.loads(runtime_file.read_text()).get("packages", {})
-        tracker_changes = {}
-        for name, entry in binding_changes.items():
-            value = {k: v for k, v in (entry or {}).items() if k not in version_rules.BINDING_KEYS}
-            if value != operator_packages.get(name, {}):
-                tracker_changes[name] = value or None
-    tracker_text = edit_tables(runtime_file.read_text(), tracker_changes, ("packages",))
+    tracker_text = edit_tables(runtime_file.read_text(), binding_changes, ("packages",))
     tracker_text = edit_tables(tracker_text, appearance_changes, ("openruyi", "buildsystems"))
     tracker_text = edit_tables(tracker_text, monitor_changes)
-    compact = bool(candidate.get("compact_versions") or runtime.get("compact_versions"))
-    directory = Path(candidate["nvpath"]).name == "groups.toml"
-    output_native = (
-        str(Path(candidate["nvpath"]).relative_to(candidate_file.parent))
-        if compact
-        else str(native_file.relative_to(runtime_file.parent))
+    output_native = str(native_file.relative_to(runtime_file.parent))
+    native_text = merge_text(
+        Path(base["nvpath"]).read_text(), Path(candidate["nvpath"]).read_text(),
+        native_file.read_text(), output_native,
     )
-    stable_directory = directory and all(Path(c["nvpath"]).name == "groups.toml" for c in (base, runtime))
-    if compact:
-        merged_native = dict(runtime["native"])
-        merged_bindings = {n: dict(v) for n, v in runtime["packages"].items()}
-        for name, entry in native_changes.items():
-            if entry is None:
-                merged_native.pop(name, None)
-            else:
-                merged_native[name] = entry
-        for name, entry in binding_changes.items():
-            if entry is None:
-                merged_bindings.pop(name, None)
-            else:
-                merged_bindings[name] = entry
-        policies = {
-            n: {k: v for k, v in e.items() if k in version_rules.BINDING_KEYS} for n, e in merged_bindings.items()
-        }
-        policies = {n: e for n, e in policies.items() if e}
-        runtime_raw = tomllib.loads(tracker_text).get("packages", {})
-        stripped = {
-            n: ({k: v for k, v in e.items() if k not in version_rules.BINDING_KEYS} or None)
-            for n, e in runtime_raw.items()
-            if set(e) & version_rules.BINDING_KEYS
-        }
-        tracker_text = edit_tables(tracker_text, stripped, ("packages",))
-        collector = tomllib.loads(tracker_text)["collector"]
-        if collector["nvchecker_config"] != output_native:
-            collector["nvchecker_config"] = output_native
-            tracker_text = edit_tables(tracker_text, {"collector": collector})
-        native_text = (
-            native_file.read_text()
-            if stable_directory
-            else version_rules.render(merged_native, runtime.get("native_options", {}), policies)
-        )
-    else:
-        native_text = edit_tables(native_file.read_text(), native_changes)
     texts = {output_native: native_text, runtime_file.name: tracker_text}
-    if stable_directory:
-        bundle = directory_texts(base, candidate, runtime)
-        directory_path = Path(output_native).parent
-        texts = {str(directory_path / name): body for name, body in bundle.items()}
-        texts[runtime_file.name] = tracker_text
-    elif directory:
-        group_changes = rebase(base["group_native"], candidate["group_native"], runtime["group_native"])
-        exception_changes = rebase(base["exception_native"], candidate["exception_native"], runtime["exception_native"])
-        groups = dict(runtime["group_native"])
-        exceptions = dict(runtime["exception_native"])
-        for owner, edits in ((groups, group_changes), (exceptions, exception_changes)):
-            for name, entry in edits.items():
-                if entry is None:
-                    owner.pop(name, None)
-                else:
-                    owner[name] = entry
-        promoted_options = dict(runtime.get("native_options", {}))
-        keyfile = promoted_options.get("keyfile")
-        if keyfile and not Path(keyfile).is_absolute():
-            promoted_options["keyfile"] = os.path.relpath(
-                native_file.parent / keyfile, runtime_file.parent / Path(output_native).parent
-            )
-        filters = dict(runtime["automatic_filters"])
-        notes = dict(runtime["exception_notes"])
-        for values, key in ((filters, "automatic_filters"), (notes, "exception_notes")):
-            for name, entry in rebase(base[key], candidate[key], runtime[key]).items():
-                if entry is None:
-                    values.pop(name, None)
-                else:
-                    values[name] = entry
-        bundle = version_rules.layout(groups, promoted_options, policies, exceptions, filters, notes)
-        directory_path = Path(output_native).parent
-        texts = {str(directory_path / name): body for name, body in bundle.items()}
-        texts[runtime_file.name] = tracker_text
     baseline_files = [runtime_file, *version_rules.files(native_file)]
     baseline_hashes = {str(p.relative_to(runtime_file.parent)): digest(p) for p in baseline_files}
 
@@ -297,31 +200,25 @@ def plan(base_path, candidate_path, runtime_path, output, snapshot=None):
             expected_native.pop(name, None)
         else:
             expected_native[name] = entry
-    if compact and prepared_config["packages"] != merged_bindings:
+    expected_bindings = dict(runtime["packages"])
+    for name, entry in binding_changes.items():
+        if entry is None:
+            expected_bindings.pop(name, None)
+        else:
+            expected_bindings[name] = entry
+    if prepared_config["packages"] != expected_bindings:
         raise ValueError("text promotion differs from reviewed package bindings")
     if prepared_config["native"] != expected_native:
         raise ValueError("text promotion differs from reviewed effective rules")
-    changed_group_members = sorted(
-        n
-        for n in base["group_native"].keys() | candidate["group_native"].keys()
-        if base["group_native"].get(n) != candidate["group_native"].get(n)
-    )
-    protected = sorted(
-        n for n in changed_group_members if n in prepared_config["exception_native"] and n not in native_changes
-    )
+    if prepared_config["native_options"] != runtime["native_options"]:
+        raise ValueError("text promotion changed native operator options")
     record = {
-        "schema": 3 if directory else (2 if output_native != native_file.name else 1),
-        "obsolete_files": sorted(set(baseline_hashes) - set(texts)),
-        "obsolete_native": native_file.name if output_native != native_file.name else None,
+        "schema": 1,
         "runtime_config": str(runtime_file),
         "baseline_hashes": baseline_hashes,
         "proposed_hashes": {n: digest(output / n) for n in texts},
-        "changed_filters": sorted(
-            rebase(base["automatic_filters"], candidate["automatic_filters"], runtime["automatic_filters"])
-        ),
         "inventory_generation": (snapshot or {}).get("generation"),
         "changed_tracks": sorted(native_changes),
-        "overridden_unaffected_tracks": protected,
         "changed_bindings": sorted(binding_changes),
         "changed_buildsystems": sorted(appearance_changes),
         "monitor_settings_changed": bool(monitor_changes),
@@ -336,7 +233,7 @@ def apply(review_dir, runtime_path, destination):
     review_dir = Path(review_dir).resolve()
     record = json.loads((review_dir / "review.json").read_text())
     runtime_file, native_file, _ = inputs(runtime_path)
-    if record.get("schema") not in (1, 2, 3) or str(runtime_file) != record["runtime_config"]:
+    if record.get("schema") != 1 or str(runtime_file) != record["runtime_config"]:
         raise ValueError("review belongs to a different runtime configuration")
     names = {str(p.relative_to(runtime_file.parent)) for p in [runtime_file, *version_rules.files(native_file)]}
     proposed = set(record["proposed_hashes"])
@@ -349,9 +246,7 @@ def apply(review_dir, runtime_path, destination):
         set(record["baseline_hashes"]) != names
         or runtime_file.name not in proposed
         or any(not safe(n) for n in proposed)
-        or (record["schema"] == 1 and proposed != names)
-        or (record["schema"] == 2 and record.get("obsolete_native") != native_file.name)
-        or (record["schema"] == 3 and set(record["obsolete_files"]) != names - proposed)
+        or proposed != names
     ):
         raise ValueError("unexpected review file set")
 
@@ -380,8 +275,6 @@ def apply(review_dir, runtime_path, destination):
             (prepared / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(review_dir / name, prepared / name)
             (prepared / name).chmod(0o600)
-        for name in record.get("obsolete_files", [record["obsolete_native"]] if record.get("obsolete_native") else []):
-            (prepared / name).unlink()
         cfg.load(prepared / runtime_file.name)
         if not unchanged():
             raise ValueError("runtime configuration changed during preparation")

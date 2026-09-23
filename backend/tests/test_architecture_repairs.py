@@ -132,78 +132,46 @@ def test_phase_ownership_is_enforced(snapshot):
     assert snapshot['sources']['binutils']['version']!='changed'
 
 
-def test_central_migration_preserves_operator_options_secrets_and_single_owner(tmp_path):
-    from tracker import version_rules
-    base=setup_config(tmp_path/'base');candidate=setup_config(tmp_path/'candidate');runtime=setup_config(tmp_path/'runtime',operator=True)
-    original=cfg.load(candidate)
-    candidate.write_text(candidate.read_text().replace('native.toml','versions.toml'))
-    (candidate.parent/'native.toml').unlink()
-    (candidate.parent/'versions.toml').write_text(version_rules.render(original['native'],original['native_options'],{'widget':{'track_label':'stable'}}))
-    secret=runtime.parent/'keys.toml';secret.write_text('private-fixture');secret.chmod(0o600)
-    before={p.name:p.read_bytes() for p in runtime.parent.iterdir()}
-    review=tmp_path/'review';plan=config_change.plan(base,candidate,runtime,review)
-    assert plan['schema']==2 and plan['changed_tracks']==[]
-    config_change.apply(review,runtime,tmp_path/'out')
-    result=cfg.load(tmp_path/'out/tracker.toml')
-    assert result['native']==original['native']
-    assert result['native_options']['http_timeout']==30
-    assert result['collector']['obs_interval_seconds']==90
-    assert result['version_bindings']['widget']=={'track_label':'stable'}
-    assert 'packages' not in tomllib.loads((tmp_path/'out/tracker.toml').read_text()) or not tomllib.loads((tmp_path/'out/tracker.toml').read_text())['packages']
-    assert not (tmp_path/'out/native.toml').exists()
-    assert (tmp_path/'out/keys.toml').read_bytes()==secret.read_bytes()
-    assert before=={p.name:p.read_bytes() for p in runtime.parent.iterdir()}
-
-
-def test_group_change_reports_each_member_and_rejects_operator_conflict(tmp_path):
-    from tracker import version_rules
-    paths=[setup_config(tmp_path/n) for n in ('base','candidate','runtime')]
+@pytest.mark.parametrize('change', ['add', 'modify', 'delete'])
+def test_native_policy_roundtrip_preserves_monitors_and_operator_settings(tmp_path, change):
+    paths = [setup_config(tmp_path / name, operator=(name == 'runtime'))
+             for name in ('base', 'candidate', 'runtime')]
+    monitor = {'eol': {'product': 'widget'}}
     for path in paths:
-        path.write_text(path.read_text().replace('native.toml','versions.toml'))
-        (path.parent/'native.toml').unlink()
-        (path.parent/'versions.toml').write_text('schema=1\n[group.registry]\nsource="pypi"\npypi="{name}"\nuse_pre_release=false\npackages=["a","b","c"]\n')
-    f=paths[1].parent/'versions.toml';f.write_text(f.read_text().replace('false','true'))
-    result=config_change.plan(*paths,tmp_path/'review')
-    assert result['changed_tracks']==['a','b','c']
-    native,_,bindings,options=version_rules.expand((paths[2].parent/'versions.toml').read_text())
-    native['b']['pypi']='operator-identity'
-    (paths[2].parent/'versions.toml').write_text(version_rules.render(native,options,bindings))
-    with pytest.raises(ValueError,match='operator changes conflict: b'):
-        config_change.plan(*paths,tmp_path/'conflict')
+        policy = {'monitors': monitor}
+        if change != 'add':
+            policy['track_label'] = 'old-line'
+        path.write_text(config_change.edit_tables(path.read_text(), {'widget': policy}, ('packages',)))
+    policy = {'monitors': monitor}
+    if change != 'delete':
+        policy['track_label'] = 'new-line'
+    candidate = paths[1]
+    candidate.write_text(config_change.edit_tables(candidate.read_text(), {'widget': policy}, ('packages',)))
+    # Historical files beside the actual input cannot override reviewed policy.
+    for path in paths:
+        (path.parent / 'groups.toml').write_text('schema=1\n[binding.widget]\ntrack_label="hidden"\n')
+    review = tmp_path / 'review'
+    config_change.plan(*paths, review)
+    config_change.apply(review, paths[2], tmp_path / 'prepared')
+    actual = cfg.load(tmp_path / 'prepared/tracker.toml')
+    assert actual['packages']['widget'] == policy
+    assert actual['native_options']['http_timeout'] == 30
+    assert actual['collector']['obs_interval_seconds'] == 90
 
 
-def test_directory_promotion_exception_precedence_keyfile_and_added_file_drift(tmp_path):
-    from tracker import version_rules
-    base=setup_config(tmp_path/'base');candidate=setup_config(tmp_path/'candidate');runtime=setup_config(tmp_path/'runtime',operator=True)
-    # Keep three group members, then override one without deleting its fallback.
-    for p in (base,candidate,runtime):
-        text=(p.parent/'native.toml').read_text()
-        for name in ['a','b','c']:
-            text+='\n['+name+']\nsource="pypi"\npypi="'+name+'"\n'
-        (p.parent/'native.toml').write_text(text)
-    f=runtime.parent/'native.toml';f.write_text(f.read_text().replace('[__config__]','[__config__]\nkeyfile="keys.toml"'))
-    (runtime.parent/'keys.toml').write_text('private fixture')
-    original=cfg.load(candidate)
-    (candidate.parent/'versions').mkdir()
-    for name,text in version_rules.layout(original['native'],original['native_options'],exceptions={'a':{'source':'git','git':'https://example/a'}}).items():
-        (candidate.parent/'versions'/name).write_text(text)
-    candidate.write_text(candidate.read_text().replace('native.toml','versions/groups.toml'));(candidate.parent/'native.toml').unlink()
-    result=config_change.plan(base,candidate,runtime,tmp_path/'review')
-    assert result['changed_tracks']==['a'] and result['schema']==3
-    config_change.apply(tmp_path/'review',runtime,tmp_path/'out')
-    prepared=cfg.load(tmp_path/'out/tracker.toml')
-    assert prepared['native']['a']=={'source':'git','git':'https://example/a'}
-    assert prepared['group_native']['a']=={'source':'pypi','pypi':'a'}
-    assert prepared['native_options']['keyfile']=='../keys.toml'
-    assert prepared['native_options']['http_timeout']==30
-    assert not (tmp_path/'out/native.toml').exists()
-    explanation=package.explain(tmp_path/'out/tracker.toml','a')
-    assert explanation['rules'][0]['file'].endswith('/versions/a.toml')
-    assert explanation['rules'][0]['overrides_group']
-    assert explanation['rules'][0]['group_origin'][:1]==['group']
-    (tmp_path/'out/versions/a.toml').unlink()
-    assert cfg.load(tmp_path/'out/tracker.toml')['native']['a']=={'source':'pypi','pypi':'a'}
-    # A file added after review changes the complete input set, not only one hash.
-    config_change.plan(tmp_path/'out/tracker.toml',tmp_path/'out/tracker.toml',tmp_path/'out/tracker.toml',tmp_path/'review2')
-    (tmp_path/'out/versions/new.toml').write_text('source="pypi"\npypi="new"\n')
-    with pytest.raises(ValueError):config_change.apply(tmp_path/'review2',tmp_path/'out/tracker.toml',tmp_path/'rejected')
+def test_multiple_native_changes_report_affected_tracks_and_conflicts(tmp_path):
+    paths = [setup_config(tmp_path / name) for name in ('base', 'candidate', 'runtime')]
+    for path in paths:
+        native = path.parent / 'native.toml'
+        native.write_text(config_change.edit_tables(native.read_text(), {
+            name: {'source': 'pypi', 'pypi': name} for name in ('a', 'b', 'c')
+        }))
+    native = paths[1].parent / 'native.toml'
+    native.write_text(config_change.edit_tables(native.read_text(), {
+        name: {'source': 'pypi', 'pypi': name, 'use_pre_release': True} for name in ('a', 'b', 'c')
+    }))
+    assert config_change.plan(*paths, tmp_path / 'review')['changed_tracks'] == ['a', 'b', 'c']
+    native = paths[2].parent / 'native.toml'
+    native.write_text(config_change.edit_tables(native.read_text(), {'b': {'source': 'pypi', 'pypi': 'operator'}}))
+    with pytest.raises(ValueError, match='operator changes conflict: b'):
+        config_change.plan(*paths, tmp_path / 'rejected')

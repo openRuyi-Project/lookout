@@ -23,49 +23,12 @@ def load(path, snapshot=None):
         if config['collector'].get(stale, default) <= config['collector'][interval]:
             raise ValueError(f'{stale} must exceed {interval}')
     nvpath = path.parent / config['collector'].get('nvchecker_config', 'nvchecker.toml')
-    text = nvpath.read_text()
     rules = version_rules.load(nvpath)
-    native = rules.entries
-    origins = {name: list(origin.table) for name, origin in rules.origins.items()}
-    rule_files = {name: origin.file for name, origin in rules.origins.items()}
-    overridden = sorted(name for name, origin in rules.origins.items() if origin.overrides_group)
-    version_bindings, options = rules.bindings, rules.options
     config['nvpath'] = str(nvpath)
-    config['native'] = native
-    config['rule_origins'] = origins
-    config['rule_files'] = rule_files
-    config['automatic_filters'] = version_rules.filters(text)
-    config['exception_notes'] = {}
-    for file in version_rules.files(nvpath):
-        if file==nvpath:continue
-        lines=[]
-        for line in file.read_text().splitlines(keepends=True):
-            if line.strip() and not line.lstrip().startswith('#'):break
-            lines.append(line)
-        if lines:config['exception_notes'][file.stem]=''.join(lines)
-    config['group_native'], config['group_origins'], _, _ = version_rules.expand(text)
-    config['exception_native'] = {n:e for n,e in native.items() if rule_files[n] != str(nvpath)}
-    # Native nvchecker.toml is the executable source of truth.  Automatic
-    # discovery is a setup-time candidate generator, not a runtime rule
-    # synthesizer; promoted candidates are already explicit in this file.
-    automatic, automatic_origins = ({}, {}) if nvpath.name == 'nvchecker.toml' else version_rules.automatic(
-        text, snapshot or {}, native
-    )
-    native.update(automatic); origins.update(automatic_origins)
-    rule_files.update({n:str(nvpath) for n in automatic})
-    config['automatic_rules'] = sorted(automatic)
-    config['overridden_rules'] = overridden
-    config['compact_versions'] = 'schema' in tomllib.loads(text)
-    config['native_options'] = options
-    config['version_bindings'] = version_bindings
-    config['nv_digest'] = version_rules.digest(nvpath)
+    config['native'] = rules.entries
+    config['native_options'] = rules.options
+    config['nv_digest'] = rules.digest
     config.setdefault('packages', {})
-    if config['compact_versions']:
-        for name, entry in config['packages'].items():
-            if set(entry) & version_rules.BINDING_KEYS:
-                raise ValueError('version policy belongs only in the centralized rule file: ' + name)
-    for name, entry in version_bindings.items():
-        config['packages'].setdefault(name, {}).update(entry)
     # Distribution presentation data has one owner; the frontend knows no
     # BuildSystem categories. CSS values are deliberately limited to hex colors.
     config.setdefault('openruyi', {}).setdefault('buildsystems', {})

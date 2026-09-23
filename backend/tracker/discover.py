@@ -187,11 +187,6 @@ def fetch_project(name):
 
 def append_entries(text, entries):
     raw = tomllib.loads(text)
-    original, _, bindings, options = version_rules.expand(text)
-    if 'schema' in raw:
-        if set(original) & set(entries):
-            raise ValueError('discovery must never overwrite an existing native track')
-        return version_rules.render({**original, **entries}, options, bindings)
     original = raw
     if set(original) & set(entries):
         raise ValueError('discovery must never overwrite an existing native track')
@@ -335,12 +330,7 @@ def main(argv=None):
     if version_rules.digest(config['nvpath']) != config['nv_digest']:
         raise ValueError('native configuration changed during discovery')
     if args.verify:
-        if Path(config['nvpath']).name == 'groups.toml':
-            destination = output/'versions'; destination.mkdir()
-            bundle = version_rules.layout({**config['group_native'], **accepted}, config['native_options'], config['version_bindings'], config['exception_native'],config['automatic_filters'],config['exception_notes'])
-            for name, body in bundle.items():(destination/name).write_text(body)
-        else:
-            (output / 'candidate.nvchecker.toml').write_text(append_entries(text, accepted))
+        (output / 'candidate.nvchecker.toml').write_text(append_entries(text, accepted))
     (output / 'candidate-bindings.json').write_text(json.dumps(bindings,indent=2)+'\n')
     # URL mismatch is review evidence, not proof that either URL is wrong.
     for row in rows:
