@@ -31,11 +31,13 @@ class Smoke:
             self.run('volume', 'create', name)
             self.volumes.append(name)
             volumes.append(name)
+        # The fixture owns even an empty volume's permissions; engine copy-up
+        # must not replace them with the image directory's ownership/mode.
         helper = f'{self.prefix}-{mode}-prepare'
         self.containers.append(helper)
         self.run('run', '--rm', '--name', helper, '--network', 'none', *self.mapping, '--user', '0',
                  '-e', 'TRACKER_SPEC_REPO=', '-e', 'PYTHONDONTWRITEBYTECODE=1',
-                 '-v', f'{volumes[0]}:/config', '-v', f'{volumes[1]}:/data',
+                 '-v', f'{volumes[0]}:/config:nocopy', '-v', f'{volumes[1]}:/data:nocopy',
                  '--entrypoint', '/opt/venv/bin/python', self.image,
                  '/app/backend/tests/container_smoke_fixture.py', mode)
         self.containers.remove(helper)
@@ -47,7 +49,7 @@ class Smoke:
         self.run('run', '-d', '--name', name, '--network', 'none', *self.mapping,
                  '--read-only', '--cap-drop=all', '--security-opt=no-new-privileges',
                  '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m,mode=1777',
-                 '-v', f'{volumes[0]}:/config:ro', '-v', f'{volumes[1]}:/data:rw',
+                 '-v', f'{volumes[0]}:/config:ro,nocopy', '-v', f'{volumes[1]}:/data:rw,nocopy',
                  '-e', 'TRACKER_SPEC_REPO=', '-e', 'HOST=0.0.0.0', '-e', 'PORT=8080',
                  '-e', 'API_PORT=18731', '-e', 'PYTHONDONTWRITEBYTECODE=1',
                  *(['--user', '0'] if root else []), self.image)
