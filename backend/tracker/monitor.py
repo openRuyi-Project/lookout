@@ -54,8 +54,9 @@ def plan(config, snapshot, name, provider):
             status, note = 'not_applicable', 'No confirmed version upgrade; this monitor is not run.'
     if inputs is None:
         status, note = 'not_configured', 'No reliable monitor identity/configuration.'
-    source = snapshot.get('sources', {}).get(name, {})
-    if inputs is not None and (not state.usable_version(current['version']) or not current['revision'] or source.get('error')):
+    source = state.current_source(snapshot, name)
+    if inputs is not None and (not state.usable_version(current['version']) or not current['revision'] or source.get('error')
+                               or state.stale(source, datetime.now(timezone.utc), source['stale_after_seconds'])):
         status, note = 'unsupported', 'Current source version/revision is not established.'
     fp = fingerprint({'provider': provider, 'adapter_version': adapter.VERSION, 'subject': current, 'inputs': inputs})
     return {'subject': current, 'scope': scope, 'fingerprint': fp, 'inputs': inputs,

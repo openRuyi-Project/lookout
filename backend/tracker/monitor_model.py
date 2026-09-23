@@ -8,9 +8,9 @@ from . import state
 
 
 def subject(snapshot, name):
-    source = snapshot.get('sources', {}).get(name, {})
+    source = state.current_source(snapshot, name)
     return {'name': name, 'version': source.get('version'),
-            'revision': source.get('srcmd5') or source.get('native_query', {}).get('spec_sha256')}
+            'revision': source.get('revision')}
 
 
 def fingerprint(value):
@@ -107,12 +107,14 @@ def validate_findings(findings):
 def project(snapshot, name, now, latest=None, upgrading=False):
     observations = snapshot.get("monitors", {}).get(name, {})
     current = subject(snapshot, name)
+    source = state.current_source(snapshot, name)
+    source_unavailable = bool(source.get('error')) or state.stale(source, now, source['stale_after_seconds'])
     findings, checks = [], []
     ttl = snapshot.get("monitor_stale_after_seconds", 86400)
     for provider, observation in sorted(observations.items()):
         expected = {**current, "target_version": latest} if observation.get("scope") == "upgrade" else current
         same = observation.get("subject") == expected
-        old = state.stale(observation, now, ttl)
+        old = source_unavailable or state.stale(observation, now, ttl)
         status = observation.get("status", "pending") if same else "input_changed"
         if same and old and status == "ok":
             status = "expired"

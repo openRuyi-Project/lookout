@@ -322,7 +322,7 @@ def test_facets_follow_search_other_filter_and_view_not_pagination(snapshot, tmp
         ("foo3", "cmake", ["Security"]),
         ("foo4", "meson", ["EOL", "Security"]),
     ]:
-        snapshot["specs"][name] = {"metadata": {"name": name, "buildsystem": buildsystem}}
+        snapshot["specs"][name] = state.success({}, {"head": "spec-" + name, "metadata": {"name": name, "buildsystem": buildsystem, "version": snapshot["sources"][name]["version"]}}, state.utcnow())
         snapshot.setdefault("monitors", {})[name] = {
             "fixture": {
                 "subject": monitor_model.subject(snapshot, name),

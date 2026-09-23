@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import fcntl
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -91,6 +92,33 @@ def next_stale_change(observation, now, ttl):
     except (ValueError, TypeError, OverflowError):
         pass
     return None
+
+
+def current_source(snapshot, name):
+    """Select the same source observation for display, comparison and monitors.
+
+    A recorded SPEC owns the source version even on failure; do not silently
+    substitute OBS's different source. OBS remains the fallback before the first
+    SPEC observation, and independently owns build/artifact evidence.
+    """
+    obs_ttl = snapshot.get('obs_stale_after_seconds', snapshot.get('stale_after_seconds', 86400))
+    spec = snapshot.get('specs', {}).get(name)
+    if spec is not None:
+        metadata = spec.get('metadata') or {}
+        provenance = {'head': spec.get('head'), 'native_query': spec.get('native_query'),
+                      'origin': spec.get('source_origin')}
+        revision = ('spec:' + hashlib.sha256(json.dumps(provenance, sort_keys=True).encode()).hexdigest()
+                    if spec.get('head') or spec.get('native_query', {}).get('spec_sha256') else None)
+        value = metadata.get('version')
+        ttl = max(obs_ttl, snapshot['spec_interval_seconds'] * 2) if 'spec_interval_seconds' in snapshot else obs_ttl
+        return {**spec, 'version': value if usable_version(value) else None,
+                'revision': revision, 'origin': 'spec', 'stale_after_seconds': ttl,
+                'error': spec.get('error') or snapshot.get('components', {}).get('spec_git', {}).get('error')}
+    source = snapshot.get('sources', {}).get(name, {})
+    value = source.get('version')
+    return {**source, 'version': value if usable_version(value) else None,
+            'revision': source.get('srcmd5') or source.get('native_query', {}).get('spec_sha256'),
+            'origin': 'obs', 'stale_after_seconds': obs_ttl}
 
 def compare(current, latest, comparable=True):
     """Only RPM VERSION; never compare the Epoch or package Release to an upstream tag."""
