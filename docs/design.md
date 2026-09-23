@@ -25,7 +25,9 @@ A facet ignores only its own selection when calculating available choices.
 targets are ANDed. Issues includes failed, unresolvable, broken and blocked, not
 queued/running work, disabled targets or unknown observations. Staleness remains
 independent of the observed status. The frontend renders API choices and preserves
-selections in links; it does not recalculate status or counts.
+selections in links. A small same-origin script submits the GET form immediately
+on selection; it does not fetch, filter or count data. Without scripting, the form
+retains a submit button.
 
 ## Native SPEC confinement
 
@@ -132,7 +134,9 @@ set `TRACKER_MONITOR_PROXY` (for example a locally managed HTTP proxy); only the
 monitor HTTP client consumes it. Do not embed proxy addresses in package identity
 data or apply a global proxy to OBS/Git merely to fix one provider. BuildSystem
 colors are served as a small, conditionally revalidated same-origin stylesheet;
-`style-src 'self'` and `script-src 'none'` remain enforced.
+`style-src 'self'` is enforced. The list page permits same-origin scripts for
+automatic filter submission; other pages retain `script-src 'none'`. Inline
+scripts and external script origins are not enabled.
 
 
 ## Review state

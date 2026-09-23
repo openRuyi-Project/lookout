@@ -1,5 +1,4 @@
-// No-JavaScript theme switch. The CSP is script-src 'none', so the choice is made
-// server-side: this route records the preference in a cookie and redirects back.
+// The theme works without scripting: set a cookie and redirect to the same site.
 import type {APIRoute} from 'astro';
 
 const THEMES = new Set(['auto', 'light', 'dark']);

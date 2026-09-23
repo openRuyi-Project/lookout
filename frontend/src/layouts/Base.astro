@@ -4,7 +4,7 @@ import '../styles/app.css';
 interface Props {title?: string}
 const {title = 'openRuyi · Packages'} = Astro.props;
 
-// The theme is chosen server-side from a cookie so it works with script-src 'none'.
+// Cookie-backed themes also work when scripting is disabled.
 // No cookie means follow the system preference, which the CSS handles on its own.
 const raw = Astro.cookies.get('theme')?.value;
 const theme = raw === 'light' || raw === 'dark' ? raw : 'auto';

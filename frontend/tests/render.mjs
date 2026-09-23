@@ -4,6 +4,7 @@ import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {createServer, request} from 'node:http';
 import {gunzipSync, brotliDecompressSync} from 'node:zlib';
+import {runInNewContext} from 'node:vm';
 
 const targets = ['rva23', 'rva20', 'x86_64'].map(id => ({id, label: id, repository: id, architecture: 'riscv64'}));
 const makePackage = (name, patch = {}) => ({
@@ -138,6 +139,27 @@ try {
   assert.equal((listing.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 5);
   assert.doesNotMatch(listing, /Unverified|Some checks are incomplete|Collection status|Upstream checks cover/);
   assert.match(listing, />Untracked <b>/);
+  assert.match(listing, /data-auto-submit/);
+  assert.match(listing, /<script[^>]*src="\/filters.js"[^>]*defer/);
+  const script = await wire('/filters.js');
+  assert.equal(script.status, 200);
+  let filterChange;
+  let submissions = 0;
+  const fallback = {hidden: false};
+  class Select {}
+  const form = {
+    addEventListener(event, listener) { assert.equal(event, 'change'); filterChange = listener; },
+    requestSubmit() { submissions += 1; },
+    querySelector(selector) { assert.equal(selector, '[data-filter-submit]'); return fallback; },
+  };
+  runInNewContext(script.body.toString(), {
+    document: {querySelectorAll: () => [form]}, HTMLSelectElement: Select,
+  });
+  assert.equal(fallback.hidden, true);
+  for (let i = 0; i < 5; i += 1) filterChange({target: new Select()});
+  assert.equal(submissions, 5, 'every filter selection submits immediately');
+  filterChange({target: {}});
+  assert.equal(submissions, 5);
   const row = name => listing.match(new RegExp(`<tr data-name="${name}"[^]*?</tr>`))?.[0] ?? '';
   assert.match(row('success'), /class="current-version"/);
   const linked = await read('/?build=rva23:blocked&build=rva20:issues&buildsystem=custom&maintenance=NewSignal&q=ok');
@@ -257,7 +279,9 @@ try {
   const identity = await wire('/');
   assert.equal(identity.status,200);assert.equal(identity.headers['content-encoding'],undefined);
   assert.equal(identity.headers['cache-control'],'private, no-cache');
-  assert.match(identity.headers['content-security-policy'], /script-src 'none'/);
+  assert.match(identity.headers['content-security-policy'], /script-src 'self'/);
+  assert.doesNotMatch(identity.headers['content-security-policy'], /unsafe-inline|unsafe-eval/);
+  assert.match((await wire('/packages/success')).headers['content-security-policy'], /script-src 'none'/);
   assert.match(identity.headers.vary,/Cookie/);
   const etag=identity.headers.etag;assert.match(etag,/^W\/"[0-9a-f]{64}"$/);
   for (const coding of ['gzip','br']) {

@@ -2,7 +2,8 @@ import {defineMiddleware} from 'astro:middleware';
 import {createHash} from 'node:crypto';
 export const onRequest = defineMiddleware(async (context, next) => {
   const response = await next();
-  response.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'none'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'");
+  const scripts = context.url.pathname === '/' ? "'self'" : "'none'";
+  response.headers.set('Content-Security-Policy', `default-src 'self'; script-src ${scripts}; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`);
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'no-referrer');
   response.headers.set('X-Frame-Options', 'DENY');

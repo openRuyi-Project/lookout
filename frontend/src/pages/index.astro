@@ -36,7 +36,7 @@ const href = (v: string, p = 1) => listingURL(query, {view: v, page: String(p)})
     {!data && <div role="alert" class="notice">The snapshot is unavailable. Please <a href={href(view, page)}>retry</a>. This does not mean the package list is empty.</div>}
     {data?.collection.mode === 'fixture' && <div class="notice">Test fixture — not live openRuyi data.</div>}
     {data && <>
-      <form class="secondary-filters" method="get" action="/">
+      <form class="secondary-filters" data-auto-submit method="get" action="/">
         <input type="hidden" name="q" value={q}/><input type="hidden" name="view" value={view}/>
         <div class="filter-field">
           <label for="buildsystem">Build system</label>
@@ -64,7 +64,7 @@ const href = (v: string, p = 1) => listingURL(query, {view: v, page: String(p)})
             >{option.label} ({option.count})</option>)}
           </select>
         </div>)}
-        <div class="filter-actions"><button type="submit">Apply</button>
+        <div class="filter-actions"><button type="submit" data-filter-submit>Apply</button>
           {(buildsystem || maintenance || builds.length > 0 || view === 'problems' || view === 'attention') &&
             <a href={'/?' + new URLSearchParams({q, view: ['problems', 'attention'].includes(view) ? 'all' : view})}>Clear filters</a>}
         </div>
@@ -86,4 +86,5 @@ const href = (v: string, p = 1) => listingURL(query, {view: v, page: String(p)})
       <nav class="pagination" aria-label="Pages"><span>{data.total} packages · page {data.page} / {Math.max(data.pages, 1)}</span>{data.page > 1 && <a rel="prev" href={href(view, data.page - 1)}>Previous</a>}{data.page < data.pages && <a rel="next" href={href(view, data.page + 1)}>Next</a>}</nav>
     </>}
   </section>
+  <script is:inline src="/filters.js" defer></script>
 </Base>
