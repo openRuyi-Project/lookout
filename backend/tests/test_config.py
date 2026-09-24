@@ -47,3 +47,52 @@ def test_spec_repo_env_override_enables_source(monkeypatch):
     # The container image sets TRACKER_SPEC_REPO to the clone path on its data volume.
     monkeypatch.setenv('TRACKER_SPEC_REPO', '/data/spec-full.git')
     assert cfg.load(ROOT/'config/tracker.toml')['spec']['repo'] == '/data/spec-full.git'
+
+
+def test_unchanged_configuration_is_checked_without_parsing(config, configured_path, monkeypatch):
+    def unexpected(*_args, **_kwargs):
+        pytest.fail('a loaded configuration must not be parsed again for publication')
+    monkeypatch.setattr(cfg, 'load', unexpected)
+    monkeypatch.setattr(cfg.tomllib, 'loads', unexpected)
+    before = {path: path.read_bytes() for path in (configured_path, Path(config['nvpath']))}
+    cfg.require_unchanged(config, configured_path)
+    assert {path: path.read_bytes() for path in before} == before
+
+
+@pytest.mark.parametrize('change', ['rule', 'binding', 'operator_option', 'comment'])
+def test_configuration_guard_covers_every_loaded_input(config, configured_path, change):
+    if change == 'rule':
+        path = Path(config['nvpath'])
+        text = path.read_text().replace('source = "manual"', 'source = "pypi"', 1)
+    else:
+        path = configured_path
+        text = path.read_text()
+        if change == 'binding':
+            text = text.replace('3.x', 'new-line', 1)
+        elif change == 'operator_option':
+            text = text.replace('"source_workers" = 2', '"source_workers" = 3', 1)
+        else:
+            text += '\n# reviewer-visible change\n'
+    assert text != path.read_text()
+    path.write_text(text)
+    with pytest.raises(ValueError, match='configuration changed'):
+        cfg.require_unchanged(config, configured_path)
+
+
+@pytest.mark.parametrize('replacement', ['symlink', 'directory', 'missing'])
+def test_configuration_guard_rejects_nonregular_native_input(config, configured_path, replacement):
+    path = Path(config['nvpath'])
+    saved = path.with_suffix('.saved')
+    path.rename(saved)
+    if replacement == 'symlink':
+        path.symlink_to(saved)
+    elif replacement == 'directory':
+        path.mkdir()
+    with pytest.raises(ValueError, match='configuration changed'):
+        cfg.require_unchanged(config, configured_path)
+
+
+def test_configuration_guard_rejects_missing_tracker(config, configured_path):
+    configured_path.unlink()
+    with pytest.raises(ValueError, match='configuration changed'):
+        cfg.require_unchanged(config, configured_path)

@@ -189,7 +189,7 @@ def test_collect_has_no_upstream_entry_point(config,snapshot):
 def test_slow_upstream_run_preserves_newer_obs(config,snapshot,tmp_path,monkeypatch):
     db=tmp_path/'snapshot.db';state.commit(db,snapshot)
     config['nv_digest']='fixed'
-    monkeypatch.setattr(cfg,'load',lambda _, **kwargs:config)
+    monkeypatch.setattr(cfg,'require_unchanged',lambda *_args:None)
     def concurrent_obs(config,prior,now,on_results=None):
         # This write occurs while the external checker is running: no writer lock held.
         with state.writer_lock(db):
@@ -200,11 +200,11 @@ def test_slow_upstream_run_preserves_newer_obs(config,snapshot,tmp_path,monkeypa
     assert new['sources']['binutils']['version']=='4.0.0'
     assert new['generation']==snapshot['generation']+2
 
-def test_config_change_during_upstream_check_is_not_published(config,snapshot,tmp_path,monkeypatch):
-    db=tmp_path/'snapshot.db';state.commit(db,snapshot);config['nv_digest']='old'
-    monkeypatch.setattr(cfg,'load',lambda _, **kwargs:{'nv_digest':'new'})
+def test_config_change_during_upstream_check_is_not_published(config,snapshot,tmp_path,configured_path):
+    db=tmp_path/'snapshot.db';state.commit(db,snapshot)
+    configured_path.write_text(configured_path.read_text() + '\n# operator changed configuration\n')
     with pytest.raises(ValueError,match='configuration changed'):
-        collector.check_upstreams(config,'unused',db,run_nv=keep_nv)
+        collector.check_upstreams(config,configured_path,db,run_nv=keep_nv)
     assert state.read(db)==snapshot
 
 

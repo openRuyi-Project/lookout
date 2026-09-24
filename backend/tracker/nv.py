@@ -155,8 +155,8 @@ def command_config(config, names):
 
 
 
-def stream_command(command, timeout, native, previous, now, on_results):
-    """Publish completed native JSON events while slow requests are still running.
+def stream_command(command, timeout, native, previous, now, on_results=None):
+    """Run the bounded native command, optionally publishing early JSON results.
 
     One native process/concurrency budget, bounded logs, no extra provider queue.
     Partial publication cannot claim a successful full batch. Final import keeps
@@ -170,6 +170,8 @@ def stream_command(command, timeout, native, previous, now, on_results):
     def line(value):
         text = value.decode(errors='replace')
         lines.append(text)
+        if on_results is None:
+            return
         try:
             event = json.loads(text); name = event.get('name')
             if name in native and event.get('event') in ('updated', 'up-to-date'):
@@ -229,17 +231,7 @@ def run(config, previous, now, tracks=None, on_results=None):
     try:
         with command_config(config, command_names) as path:
             command = ['nvchecker', '--logger=json', '--json-log-fd=1', '--tries', '3', '-c', path]
-            if on_results is not None:
-                return stream_command(command, config['collector'].get('nvchecker_timeout_seconds', 180),
-                                      native, previous, now, on_results)
-            p = subprocess.run(command, capture_output=True, text=True,
-                               timeout=config['collector'].get('nvchecker_timeout_seconds', 180), check=False)
-        error = f'nvchecker exited {p.returncode}' if p.returncode else None
-        return import_events(p.stdout, native, previous, now, error)
-    except subprocess.TimeoutExpired as e:
-        partial = e.stdout or b''
-        if isinstance(partial, bytes):
-            partial = partial.decode(errors='replace')
-        return import_events(partial, native, previous, now, 'nvchecker timeout')
+            return stream_command(command, config['collector'].get('nvchecker_timeout_seconds', 180),
+                                  native, previous, now, on_results)
     except OSError:
         return import_events('', native, previous, now, 'nvchecker executable unavailable')

@@ -137,8 +137,8 @@ def collect(config, old, client, now, source_limit=None):
     return new
 
 def refresh_builds(config, old, client, now=None):
-    """One project-wide status request, independent of source/history work."""
-    new = deepcopy(old)
+    """Return only status-owned patches from one project-wide request."""
+    builds = {name: {} for name in old['inventory']}
     try:
         data = client.get('/build/' + quote(config['obs']['project'], safe='') + '/_result')
         results = obs.build_results(data, config['obs']['project'], config['targets'])
@@ -152,19 +152,20 @@ def refresh_builds(config, old, client, now=None):
         tid = target['id']
         values = results.get(tid) if results is not None else None
         for name in old['inventory']:
-            previous = new['builds'].setdefault(name, {}).get(tid, {})
+            previous = {key: value for key, value in old['builds'].get(name, {}).get(tid, {}).items()
+                        if key in state.BUILD_FIELDS['builds']}
             if values is not None and name in values:
-                new['builds'][name][tid] = state.success(previous, values[name], now)
+                builds[name][tid] = state.success(previous, values[name], now)
             else:
                 complete = False
-                new['builds'][name][tid] = state.failure(
+                builds[name][tid] = state.failure(
                     previous, error or 'OBS target/package result unavailable', now)
         if values is None:
             complete = False
     prior = old['components'].get('builds', {})
-    new['components']['builds'] = (state.success(prior, {}, now) if complete else
+    component = (state.success(prior, {}, now) if complete else
         state.failure(prior, error or 'OBS target/package result unavailable', now))
-    return new
+    return {'builds': builds, 'components': {'builds': component}}
 
 
 def build_patch(snapshot, phase):
@@ -326,17 +327,21 @@ def check_specs(config, db, describe=native_spec.describe):
                                     logs.get(name, []) + specs.get(name, {}).get('changelog', [])}
                         logs[name] = list(combined.values())[:spec['changelog_limit']]
                 if not error:
-                    refreshed = refresh_specs(config, specs, sorted(selected), logs, now, describe)
-                    specs = {name: refreshed[name] if name in refreshed else
-                             state.success(specs[name], {}, now) for name in names}
-                    context = {'head': head, 'input_fingerprint': fingerprint,
-                               'mode': 'incremental' if incremental else 'full',
-                               'selected_packages': len(selected)}
+                    try:
+                        refreshed = refresh_specs(config, specs, sorted(selected), logs, now, describe)
+                    except spec_git.MacroReadError as failure:
+                        error = str(failure)
+                    else:
+                        specs = {name: refreshed[name] if name in refreshed else
+                                 state.success(specs[name], {}, now) for name in names}
+                        context = {'head': head, 'input_fingerprint': fingerprint,
+                                   'mode': 'incremental' if incremental else 'full',
+                                   'selected_packages': len(selected)}
             elif not error:
                 error = 'SPEC HEAD unavailable'
         elif not error:
             error = 'SPEC fetch failed'
-        # Failed fetch/traversal retains both old facts and their success timestamps.
+        # Failed fetch, traversal or macro reads retain facts and success timestamps.
         with state.writer_lock(db, timeout=60):
             latest = state.read(db)
             specs = {name: fact for name, fact in specs.items() if name in latest['sources']}
@@ -356,10 +361,7 @@ def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt
                 raise ValueError('automatic selection cannot be combined with explicit tracks')
             selected = nv.due_names(config, old, datetime.fromisoformat(now))
         def guard():
-            current = cfg.load(config_path)
-            if (current['nv_digest'] != config['nv_digest'] or
-                    (config.get('config_digest') and current.get('config_digest') != config['config_digest'])):
-                raise ValueError('upstream configuration changed during collection; result not published')
+            cfg.require_unchanged(config, config_path)
         def publish(completed):
             if not completed or set(completed) - set(config['native']):
                 raise ValueError('unexpected partial upstream result scope')
@@ -455,7 +457,7 @@ def collect_builds(config, db):
             latest = state.read(db)
             if latest.get('obs') != old['obs'] or latest.get('targets') != old['targets']:
                 raise ValueError('OBS scope changed while checking builds')
-            patches = {name: facts for name, facts in build_patch(observed, 'builds').items()
+            patches = {name: facts for name, facts in observed['builds'].items()
                        if name in latest['inventory']}
             component = observed['components']['builds']
             if state.commit_build_heartbeat(db, latest, patches, component):

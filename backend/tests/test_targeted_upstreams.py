@@ -46,7 +46,7 @@ def test_subset_config_native_options_and_no_operator_file_writes(config, tmp_pa
     for name in ('keys.toml', 'old.json', 'new.json'):
         (tmp_path / name).write_text('operator-owned')
     seen = []
-    def execute(command, **kwargs):
+    def execute(command, timeout, native, previous, now, on_results):
         path = Path(command[-1]); seen.append(path)
         parsed = tomllib.loads(path.read_text())
         assert set(parsed) == {'__config__', 'binutils', 'widget@3'}
@@ -54,11 +54,12 @@ def test_subset_config_native_options_and_no_operator_file_writes(config, tmp_pa
         assert parsed['__config__'] == {**{k: v for k, v in options.items() if k not in ('oldver', 'newver')},
                                          'keyfile': str(tmp_path / 'keys.toml')}
         assert '--include' not in command and '--entry' not in command
-        return subprocess.CompletedProcess(command, 0, '\n'.join(json.dumps(item) for item in [
+        assert on_results is None
+        return nv.import_events('\n'.join(json.dumps(item) for item in [
             {'name': 'binutils', 'event': 'updated', 'version': '3.11'},
             {'name': 'widget@3', 'event': 'updated', 'version': '3.12'},
-            {'name': 'widget@4', 'event': 'updated', 'version': '999'}]), '')
-    monkeypatch.setattr(nv.subprocess, 'run', execute)
+            {'name': 'widget@4', 'event': 'updated', 'version': '999'}]), native, previous, now)
+    monkeypatch.setattr(nv, 'stream_command', execute)
     result, error = nv.run(config, {}, state.utcnow(), tracks=['binutils', 'widget@3'])
     assert not error and set(result) == {'binutils', 'widget@3'}
     assert len(seen) == 1 and not seen[0].exists()
@@ -69,10 +70,11 @@ def test_subset_config_native_options_and_no_operator_file_writes(config, tmp_pa
 def test_full_run_keeps_original_cli(config, tmp_path, monkeypatch):
     original = write_native(tmp_path, config)
     commands = []
-    def execute(command, **kwargs):
+    def execute(command, timeout, native, previous, now, on_results):
         commands.append(command)
-        return subprocess.CompletedProcess(command, 0, '', '')
-    monkeypatch.setattr(nv.subprocess, 'run', execute)
+        assert on_results is None
+        return nv.import_events('', native, previous, now)
+    monkeypatch.setattr(nv, 'stream_command', execute)
     tracks, _ = nv.run(config, {}, state.utcnow())
     assert commands == [['nvchecker', '--logger=json', '--json-log-fd=1', '--tries', '3', '-c', str(original)]]
     assert set(tracks) == set(config['native'])
@@ -80,18 +82,21 @@ def test_full_run_keeps_original_cli(config, tmp_path, monkeypatch):
 
 def test_digest_change_before_selected_command_aborts(config, tmp_path, monkeypatch):
     path = write_native(tmp_path, config); path.write_text(path.read_text() + '\n# changed\n')
-    monkeypatch.setattr(nv.subprocess, 'run', lambda *_a, **_k: pytest.fail('no checker permitted'))
+    monkeypatch.setattr(nv, 'stream_command', lambda *_a, **_k: pytest.fail('no checker permitted'))
     with pytest.raises(ValueError, match='changed before'):
         nv.run(config, {}, state.utcnow(), tracks=['binutils'])
 
 
 def test_subset_timeout_keeps_completed_selected_results_only(config, snapshot, tmp_path, monkeypatch):
     write_native(tmp_path, config)
+    config['collector']['nvchecker_timeout_seconds'] = 0.5
     paths = []
+    popen = subprocess.Popen
     def execute(command, **kwargs):
         paths.append(Path(command[-1]))
-        raise subprocess.TimeoutExpired(command, 1, output=b'{"name":"binutils","event":"updated","version":"4.0"}\n')
-    monkeypatch.setattr(nv.subprocess, 'run', execute)
+        code = 'import time; print(\'{"name":"binutils","event":"updated","version":"4.0"}\', flush=True); time.sleep(10)'
+        return popen([sys.executable, '-u', '-c', code], **kwargs)
+    monkeypatch.setattr(nv.subprocess, 'Popen', execute)
     result, error = nv.run(config, snapshot['tracks'], state.utcnow(), tracks=['binutils', 'widget@3'])
     assert error == 'nvchecker timeout' and set(result) == {'binutils', 'widget@3'}
     assert result['binutils']['version'] == '4.0' and result['binutils']['error'] is None
@@ -105,7 +110,7 @@ def test_partial_merge_preserves_unselected_full_component_and_newer_obs(config,
     config['native']['widget@3']['include_regex'] = '^3[.]'
     snapshot['components']['nvchecker'].update(error='nvchecker timeout', attempted_at='2026-01-01T00:00:00Z', extra={'kept': True})
     db = tmp_path / 'snapshot.db'; state.commit(db, snapshot)
-    monkeypatch.setattr(cfg, 'load', lambda _path, **kwargs: config)
+    monkeypatch.setattr(cfg, 'require_unchanged', lambda *_args: None)
     def execute(c, previous, now, tracks):
         with state.writer_lock(db):
             latest = state.read(db)
@@ -135,11 +140,12 @@ def test_partial_merge_preserves_unselected_full_component_and_newer_obs(config,
     assert attempt['selected_track_count'] == 2 and set(attempt['track_errors']) == {'widget@3'}
 
 
-def test_partial_digest_change_before_commit_rejects_all_results(config, snapshot, tmp_path, monkeypatch):
-    db = tmp_path / 'snapshot.db'; state.commit(db, snapshot); config['nv_digest'] = 'old'
-    monkeypatch.setattr(cfg, 'load', lambda _path, **kwargs: {'nv_digest': 'new'})
+def test_partial_digest_change_before_commit_rejects_all_results(config, snapshot, tmp_path, configured_path):
+    db = tmp_path / 'snapshot.db'; state.commit(db, snapshot)
+    native = Path(config['nvpath'])
+    native.write_text(native.read_text() + '\n# operator changed rule\n')
     with pytest.raises(ValueError, match='configuration changed'):
-        collector.check_upstreams(config, 'unused', db, tracks=['binutils'],
+        collector.check_upstreams(config, configured_path, db, tracks=['binutils'],
             run_nv=lambda _c, old, _now, tracks: ({'binutils': old['binutils']}, None))
     assert state.read(db) == snapshot
 

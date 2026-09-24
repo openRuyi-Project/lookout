@@ -3,7 +3,9 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import json
+import os
 from pathlib import Path
+import signal
 import sys
 import threading
 import time
@@ -54,6 +56,80 @@ def test_real_process_timeout_retains_published_success_and_old_other_value():
     assert result['slow']['reported_at'] is None and result['fast']['reported_at']==now
 
 
+def process_terminated(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    # A container's PID 1 may not promptly reap an orphaned child. A zombie is
+    # terminated and cannot retain the pipe or execute provider work.
+    status = Path(f'/proc/{pid}/status')
+    try:
+        return any(line.startswith('State:') and 'Z' in line for line in status.read_text().splitlines())
+    except FileNotFoundError:
+        return False
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+def test_timeout_kills_native_descendants(tmp_path, streaming):
+    pid_path = tmp_path / 'child.pid'
+    code = (
+        'import pathlib, subprocess, sys, time\n'
+        'child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])\n'
+        f'pathlib.Path({str(pid_path)!r}).write_text(str(child.pid))\n'
+        'print(\'{"name":"fast","event":"updated","version":"2.0"}\', flush=True)\n'
+        'time.sleep(30)\n'
+    )
+    published = []
+    native = {'fast': {'source': 'manual'}}
+    started = time.monotonic()
+    result, error = nv.stream_command(
+        [sys.executable, '-u', '-c', code], 1, native, {}, state.utcnow(),
+        published.append if streaming else None,
+    )
+    pid = int(pid_path.read_text())
+    try:
+        assert error == 'nvchecker timeout' and result['fast']['version'] == '2.0'
+        assert bool(published) is streaming
+        deadline = time.monotonic() + 2
+        while not process_terminated(pid) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert process_terminated(pid), 'native helper survived the command timeout'
+        assert time.monotonic() - started < 4
+    finally:
+        if not process_terminated(pid):
+            os.kill(pid, signal.SIGKILL)
+
+
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('output', ['long_line', 'total_log'])
+def test_real_process_output_limits_preserve_complete_results(streaming, output):
+    now = state.utcnow()
+    native = {'fast': {'source': 'manual'}, 'slow': {'source': 'manual'}}
+    old = {'slow': {'version': '1.0', 'fetched_at': '2026-09-19T00:00:00Z',
+                    'configuration_fingerprint': cfg.track_fingerprint(native['slow'])}}
+    payload = "print('x' * (1024 * 1024 + 1), flush=True)" if output == 'long_line' else (
+        "for _ in range(2200): print('{\"padding\":\"' + 'x' * 8192 + '\"}', flush=True)"
+    )
+    code = (
+        'import time\n'
+        'print(\'{"name":"fast","event":"updated","version":"2.0"}\', flush=True)\n'
+        + payload + '\ntime.sleep(30)\n'
+    )
+    published = []
+    started = time.monotonic()
+    result, error = nv.stream_command(
+        [sys.executable, '-u', '-c', code], 5, native, old, now,
+        published.append if streaming else None,
+    )
+    assert error == 'nvchecker output limit exceeded'
+    assert result['fast']['version'] == '2.0' and result['fast']['error'] is None
+    assert result['slow']['version'] == '1.0' and result['slow']['fetched_at'] == old['slow']['fetched_at']
+    assert result['slow']['error'] == error
+    assert bool(published) is streaming
+    assert time.monotonic() - started < 5
+
+
 def test_full_run_prioritizes_tracks_not_reported_before_deadline(config,tmp_path,monkeypatch):
     config['native']={n:{'source':'manual'} for n in ['reported','unreported']};native_file(tmp_path,config)
     old={'reported':{'reported_at':'2026-09-20T00:00:00Z'},'unreported':{'reported_at':None,'attempted_at':'2026-09-20T00:00:00Z'}}
@@ -65,7 +141,7 @@ def test_full_run_prioritizes_tracks_not_reported_before_deadline(config,tmp_pat
 
 def test_partial_publication_retains_global_failure_and_newer_other_phases(config,snapshot,tmp_path,monkeypatch):
     config['nv_digest']='same';db=tmp_path/'state.db';snapshot['components']['nvchecker']['error']='prior failure';state.commit(db,snapshot)
-    monkeypatch.setattr(cfg,'load',lambda _, **kwargs:config)
+    monkeypatch.setattr(cfg,'require_unchanged',lambda *_args:None)
     def execute(config,previous,now,on_results):
         facts,_=nv.import_events('{"name":"binutils","event":"updated","version":"9.0"}',{'binutils':config['native']['binutils']},previous,now)
         on_results(facts)
@@ -79,15 +155,15 @@ def test_partial_publication_retains_global_failure_and_newer_other_phases(confi
     assert result['specs']==snapshot['specs'] and result['components']['nvchecker']['error'] is None
 
 
-def test_config_drift_stops_publication_without_relabelling_completed_facts(config,snapshot,tmp_path,monkeypatch):
-    config.update(nv_digest='same',config_digest='original');db=tmp_path/'state.db';state.commit(db,snapshot);current=[dict(config)]
-    monkeypatch.setattr(cfg,'load',lambda _, **kwargs:current[0])
+def test_config_drift_stops_publication_without_relabelling_completed_facts(config,snapshot,tmp_path,configured_path):
+    db=tmp_path/'state.db';state.commit(db,snapshot)
     def execute(config,previous,now,on_results):
         facts,_=nv.import_events('{"name":"binutils","event":"updated","version":"9.0"}',{'binutils':config['native']['binutils']},previous,now)
-        on_results(facts);current[0]={**config,'config_digest':'operator-new'}
+        on_results(facts)
+        configured_path.write_text(configured_path.read_text() + '\n# operator changed configuration\n')
         on_results(facts)
         pytest.fail('drift must stop writer')
     with pytest.raises(ValueError,match='configuration changed'):
-        collector.check_upstreams(config,'unused',db,run_nv=execute)
+        collector.check_upstreams(config,configured_path,db,run_nv=execute)
     assert state.read(db)['tracks']['binutils']['version']=='9.0'
     assert state.read(db)['components']['nvchecker']==snapshot['components']['nvchecker']

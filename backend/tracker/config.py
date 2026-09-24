@@ -92,6 +92,18 @@ def load(path):
         raise ValueError('spec.source_url_template must be a public HTTP(S) URL containing {ref} and {path}')
     return config
 
+
+def require_unchanged(config, path):
+    """Confirm the exact inputs already validated by load(), without parsing again."""
+    try:
+        tracker_digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        native_digest = version_rules.digest(config['nvpath'])
+    except (OSError, ValueError) as error:
+        raise ValueError('configuration changed or unavailable during collection; result not published') from error
+    if (tracker_digest != config['config_digest'] or native_digest != config['nv_digest']):
+        raise ValueError('configuration changed during collection; result not published')
+
+
 def track_fingerprint(entry):
     return hashlib.sha256(json.dumps(entry, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 

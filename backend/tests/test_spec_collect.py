@@ -114,3 +114,45 @@ def test_spec_phase_publishes_interval_without_rewriting_other_freshness(config)
     assert merged['spec_interval_seconds'] == 7200
     assert merged['obs_stale_after_seconds'] == 300
     assert merged['stale_after_seconds'] == 86400
+
+
+@pytest.mark.parametrize('failure', ['SPEC macro directory unavailable',
+                                   'SPEC macro file unavailable',
+                                   'SPEC macro file exceeds size limit'])
+def test_macro_failure_retains_prior_evidence_and_success_times(config, tmp_path, monkeypatch, failure):
+    config['spec']['macro_package'] = 'package'
+    config['collector'] = {}
+    old = state.empty()
+    old['sources']['bash'] = {'version': '1.0'}
+    old['specs']['bash'] = state.success({}, {
+        'head': 'old-head', 'metadata': {'version': '1.0'}, 'changelog': [cl('old-head')]}, 'old-time')
+    old['components']['spec_git'] = state.success({}, {'head': 'old-head'}, 'old-time')
+    db = tmp_path / 'snapshot.db'
+    state.commit(db, old)
+    monkeypatch.setattr(spec_git, 'fetch', lambda *_a, **_kw: (True, None))
+    monkeypatch.setattr(spec_git, 'head', lambda *_a, **_kw: ('new-head', None))
+    monkeypatch.setattr(spec_git, 'changelogs', lambda *_a, **_kw: ({'bash': [cl('new-head')]}, None))
+    def broken_macros(*_a, **_kw):
+        raise spec_git.MacroReadError(failure)
+    monkeypatch.setattr(spec_git, 'read_macros', broken_macros)
+    monkeypatch.setattr(spec_git, 'read_spec', lambda *_a, **_kw: pytest.fail('incomplete parser environment'))
+    actual = collector.check_specs(config, db,
+                                   lambda *_a, **_kw: pytest.fail('worker must not run with incomplete macros'))
+    assert actual['specs'] == old['specs']
+    component = actual['components']['spec_git']
+    assert component['error'] == failure
+    assert component['head'] == 'old-head'
+    assert component['fetched_at'] == 'old-time'
+    assert component['attempted_at'] != 'old-time'
+    assert actual['sources'] == old['sources']
+
+
+def test_macro_failure_precedes_individual_spec_processing(config, monkeypatch):
+    config['spec']['macro_package'] = 'package'
+    def broken_macros(*_a, **_kw):
+        raise spec_git.MacroReadError('SPEC macro file unavailable')
+    monkeypatch.setattr(spec_git, 'read_macros', broken_macros)
+    monkeypatch.setattr(spec_git, 'read_spec', lambda *_a, **_kw: pytest.fail('no partial parser input'))
+    with pytest.raises(spec_git.MacroReadError):
+        collector.refresh_specs(config, {}, ['bash'], {}, 'now',
+                                lambda *_a, **_kw: pytest.fail('worker must not run'))

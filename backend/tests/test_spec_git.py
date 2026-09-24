@@ -5,6 +5,8 @@
 simplification and trailer extraction; these lock the bucketing of its
 `git log --name-status` stream into per-package changelogs. Live equivalence with
 per-package `git log` was cross-checked over the whole repo (0 mismatch, 2s)."""
+import hashlib
+import pytest
 from tracker import spec_git as sg
 
 FS, GS, RS = sg.FS, sg.GS, sg.RS
@@ -63,3 +65,38 @@ def test_malformed_header_skipped_not_guessed():
 def test_subject_with_colon_is_intact():
     stream = commit('c1', 'SPECS: bash: fix packaging: really', ['SPECS/bash/bash.spec'])
     assert sg._bucket_log(stream, 20)['bash'][0]['subject'] == 'SPECS: bash: fix packaging: really'
+
+
+def test_unconfigured_macros_do_not_access_git(monkeypatch):
+    monkeypatch.setattr(sg, '_git_text', lambda *_a, **_kw: pytest.fail('macros disabled'))
+    assert sg.read_macros('/repo', None) == []
+
+
+def test_macro_directory_without_macro_files_is_legitimately_empty(monkeypatch):
+    monkeypatch.setattr(sg, '_git_text', lambda *_a, **_kw: ('README\npackage.spec\n', None))
+    monkeypatch.setattr(sg, '_git_bytes', lambda *_a, **_kw: pytest.fail('no selected macro files'))
+    assert sg.read_macros('/repo', 'package') == []
+
+
+def test_macro_directory_failure_is_not_an_empty_set(monkeypatch):
+    monkeypatch.setattr(sg, '_git_text', lambda *_a, **_kw: (None, 'git exited 128'))
+    with pytest.raises(sg.MacroReadError, match='directory unavailable'):
+        sg.read_macros('/repo', 'package')
+
+
+@pytest.mark.parametrize('failed_blob', [None, b'x' * (sg._SIZE_LIMIT + 1)])
+def test_unreadable_or_oversized_macro_never_returns_partial_set(monkeypatch, failed_blob):
+    monkeypatch.setattr(sg, '_git_text', lambda *_a, **_kw: ('macros.a\nmacros.b\n', None))
+    monkeypatch.setattr(sg, '_git_bytes', lambda args, *_a, **_kw:
+                        b'%good 1\n' if args[-1].endswith('macros.a') else failed_blob)
+    with pytest.raises(sg.MacroReadError):
+        sg.read_macros('/repo', 'package')
+
+
+def test_complete_macros_keep_deterministic_provenance(monkeypatch):
+    monkeypatch.setattr(sg, '_git_text', lambda *_a, **_kw: ('macros.b\nREADME\nmacros.a\n', None))
+    blobs = {'macros.a': b'%a 1\n', 'macros.b': b'%b 2\n'}
+    monkeypatch.setattr(sg, '_git_bytes', lambda args, *_a, **_kw: blobs[args[-1].rsplit('/', 1)[1]])
+    assert sg.read_macros('/repo', 'package') == [
+        ({'path': 'SPECS/package/' + name, 'sha256': hashlib.sha256(data).hexdigest()}, data)
+        for name, data in sorted(blobs.items())]

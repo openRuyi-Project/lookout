@@ -41,3 +41,20 @@ def make_snapshot(config, now=None):
 @pytest.fixture
 def snapshot(config):
     return make_snapshot(config)
+
+
+@pytest.fixture
+def configured_path(config, tmp_path):
+    """The small in-memory fixture, validated through the real file loader."""
+    from tracker import config as cfg, nv
+    native = tmp_path / 'native.toml'
+    native.write_text('\n\n'.join(
+        '[' + nv._toml_value(name) + ']\n' + '\n'.join(
+            key + ' = ' + nv._toml_value(value) for key, value in rule.items())
+        for name, rule in config['native'].items()))
+    config['collector']['nvchecker_config'] = native.name
+    path = tmp_path / 'tracker.toml'
+    path.write_text('\n'.join(key + ' = ' + nv._toml_value(config[key])
+                              for key in ('obs', 'targets', 'collector', 'packages')))
+    config.update(cfg.load(path))
+    return path

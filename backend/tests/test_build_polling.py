@@ -68,6 +68,26 @@ def test_fast_poll_preserves_concurrent_success_history(config, snapshot, tmp_pa
     assert result['builds']['binutils']['rva23']['last_success'] == success
 
 
+def test_fast_poll_only_copies_owned_status_fields(config, snapshot):
+    class Evidence(dict):
+        def __deepcopy__(self, memo):
+            pytest.fail('the status lane must not copy unrelated evidence')
+    snapshot['specs'] = Evidence({'binutils': {'metadata': {'version': '3.9.0'}}})
+    snapshot['monitors'] = Evidence({'binutils': {'security': {'findings': ['unchanged']}}})
+    prior_builds = deepcopy(snapshot['builds'])
+    snapshot['builds']['binutils']['rva23']['last_success'] = Evidence({'version': '3.8'})
+    observed = collector.refresh_builds(config, snapshot, FakeOBS(config), 'new-time')
+    assert set(observed) == {'builds', 'components'}
+    assert set(observed['components']) == {'builds'}
+    for name, targets in observed['builds'].items():
+        for tid, fact in targets.items():
+            assert set(fact) <= state.BUILD_FIELDS['builds']
+            old = snapshot['builds'][name][tid]
+            assert {key: old[key] for key in prior_builds[name][tid]} == prior_builds[name][tid]
+    assert observed['builds']['binutils']['rva23']['raw_status'] == 'succeeded'
+    assert observed['builds']['binutils']['rva23']['fetched_at'] == 'new-time'
+
+
 def test_retry_is_owned_by_heartbeat_not_http_loop(config, snapshot, monkeypatch):
     client = obs.Client(config, attempts=1)
     client.client.close()

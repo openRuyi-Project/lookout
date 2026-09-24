@@ -16,7 +16,7 @@ def test_port_runs_through_heartbeat_storage_api_and_facets(config, snapshot, mo
     config['native']['binutils'] = {'source': 'pypi', 'pypi': 'upstream-fixture'}
     config.update(monitors={'enabled': ['yanked']}, config_digest='fixture', nv_digest='fixture')
     monkeypatch.setitem(monitor.REGISTRY, 'yanked', monitor_yanked)
-    monkeypatch.setattr(monitor.cfg, 'load', lambda path: config)
+    monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
     response = {'urls': [{'yanked': True}, {'yanked': True}]}
@@ -86,7 +86,7 @@ def test_one_broken_input_does_not_stop_other_packages(config, snapshot, monkeyp
         check=lambda subject, *args: checked.append(subject['name']) or
               {'status': 'ok', 'findings': [], 'note': None}))
     config.update(monitors={'enabled': ['fixture']}, config_digest='fixture', nv_digest='fixture')
-    monkeypatch.setattr(monitor.cfg, 'load', lambda path: config)
+    monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
     result = monitor.collect(config, 'unused', db, io=SimpleNamespace(for_hosts=lambda hosts, **kwargs: None))
@@ -108,7 +108,7 @@ def test_v2_port_catalog_checks_and_facets_share_the_same_observation(config, sn
     config.update(monitors={'enabled': ['yanked']}, config_digest='fixture', nv_digest='fixture')
     monkeypatch.setitem(monitor.REGISTRY, 'yanked', monitor_yanked)
     monkeypatch.setattr(monitor_yanked, 'TITLE', 'Release files', raising=False)
-    monkeypatch.setattr(monitor.cfg, 'load', lambda path: config)
+    monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
     with httpx.Client(transport=httpx.MockTransport(

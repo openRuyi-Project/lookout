@@ -29,7 +29,7 @@ def test_automatic_upstream_subset_retries_and_noop(config, snapshot, tmp_path, 
     config['native']['binutils']['prefix'] = 'v'
     db = tmp_path / 'snapshot.db'
     state.commit(db, snapshot)
-    monkeypatch.setattr(cfg, 'load', lambda _: config)
+    monkeypatch.setattr(cfg, 'require_unchanged', lambda config, path: None)
     selected = []
     failure = [True]
     def run(c, old, at, tracks, on_results):
@@ -67,7 +67,7 @@ def test_automatic_upstream_subset_retries_and_noop(config, snapshot, tmp_path, 
 def test_query_dependencies_rebind_source_without_requery(config, snapshot, tmp_path, monkeypatch):
     snapshot['sources'] = {'binutils': snapshot['sources']['binutils']}
     config.update(monitors={'enabled':['fixture']}, nv_digest='rules', config_digest='cfg')
-    monkeypatch.setattr(cfg, 'load', lambda _: config)
+    monkeypatch.setattr(cfg, 'require_unchanged', lambda config, path: None)
     calls = []
     adapter = SimpleNamespace(VERSION=1, HOSTS=set(), inputs=lambda *args: {'identity':'fixture'},
                               query_subject=version_query,
@@ -107,7 +107,11 @@ def test_git_delta_rename_retry_macros_and_rewritten_history(config, snapshot, t
         path=repo/'SPECS'/name/(name+'.spec'); path.parent.mkdir(parents=True, exist_ok=True); path.write_text(text)
     def commit():
         git('add','.');git('-c','user.name=Fixture','-c','user.email=test@example.invalid','commit','-qm','fixture')
-    write('binutils','1.0');write('foo3','1.0');commit()
+    write('binutils','1.0');write('foo3','1.0')
+    macro_dir = repo / 'SPECS/macros'
+    macro_dir.mkdir()
+    (macro_dir / 'README').write_text('macro package without extra files')
+    commit()
     config['spec'] = dict(repo=str(repo), macro_package='macros', changelog_limit=20, fetch_timeout_seconds=30, interval_seconds=60)
     snapshot['sources'] = {n:snapshot['sources'][n] for n in ('binutils','foo3')}
     db=tmp_path/'snapshot.db';state.commit(db,snapshot)
@@ -134,7 +138,7 @@ def test_git_delta_rename_retry_macros_and_rewritten_history(config, snapshot, t
     renamed['sources']['foo4']=deepcopy(renamed['sources']['foo3']);state.commit(db,renamed)
     added=collector.check_specs(config,db,describe)
     assert added['specs']['foo4']['metadata']['version']=='1.0'
-    macro=repo/'SPECS/macros/macros.test';macro.parent.mkdir();macro.write_text('%fixture 1\n');commit()
+    macro=repo/'SPECS/macros/macros.test';macro.write_text('%fixture 1\n');commit()
     changed=collector.check_specs(config,db,describe)
     assert changed['components']['spec_git']['mode']=='full' and parsed['2.0']==3
     # Create a root commit of the same tree: no ancestor checkpoint is trusted.
@@ -148,7 +152,7 @@ def test_git_delta_rename_retry_macros_and_rewritten_history(config, snapshot, t
 def test_source_recovery_reuses_the_same_fresh_provider_result(config, snapshot, tmp_path, monkeypatch, provider_status):
     snapshot['sources'] = {'binutils': snapshot['sources']['binutils']}
     config.update(monitors={'enabled': ['fixture']}, config_digest='cfg', nv_digest='rules')
-    monkeypatch.setattr(cfg, 'load', lambda _: config)
+    monkeypatch.setattr(cfg, 'require_unchanged', lambda config, path: None)
     calls = []
     def check(*args):
         calls.append(1)
@@ -188,7 +192,7 @@ def test_source_recovery_reuses_the_same_fresh_provider_result(config, snapshot,
 def test_legacy_source_gate_is_rechecked_after_recovery(config, snapshot, tmp_path, monkeypatch):
     snapshot['sources'] = {'binutils': snapshot['sources']['binutils']}
     config.update(monitors={'enabled': ['fixture']}, config_digest='cfg', nv_digest='rules')
-    monkeypatch.setattr(cfg, 'load', lambda _: config)
+    monkeypatch.setattr(cfg, 'require_unchanged', lambda config, path: None)
     calls = []
     monkeypatch.setitem(monitor.REGISTRY, 'fixture', SimpleNamespace(
         VERSION=1, HOSTS=set(), inputs=lambda *a: {}, query_subject=version_query,
@@ -213,7 +217,7 @@ def test_legacy_source_gate_is_rechecked_after_recovery(config, snapshot, tmp_pa
 def test_source_gate_does_not_postpone_expired_checks(config, snapshot, tmp_path, monkeypatch):
     snapshot['sources'] = {'binutils': snapshot['sources']['binutils']}
     config.update(monitors={'enabled': ['fixture']}, config_digest='cfg', nv_digest='rules')
-    monkeypatch.setattr(cfg, 'load', lambda _: config)
+    monkeypatch.setattr(cfg, 'require_unchanged', lambda config, path: None)
     calls = []
     monkeypatch.setitem(monitor.REGISTRY, 'fixture', SimpleNamespace(
         VERSION=1, HOSTS=set(), inputs=lambda *a: {}, query_subject=version_query,

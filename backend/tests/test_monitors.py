@@ -275,7 +275,7 @@ def test_monitor_batch_fairness_and_partial_publication(config, snapshot, monkey
         monkeypatch.setitem(monitor.REGISTRY, provider, types.SimpleNamespace(
             VERSION=1, HOSTS=set(), inputs=lambda package, configured: {}, check=check))
     config.update(monitors={'enabled':['first','second'], 'batch_size':2, 'workers':1}, config_digest='fixture', nv_digest='fixture')
-    monkeypatch.setattr(monitor.cfg, 'load', lambda path: config)
+    monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db = tmp_path/'state.db';state.commit(db, snapshot)
     commit = state.commit
     def capture(path, new):
@@ -491,7 +491,7 @@ def test_heartbeat_drains_batches_then_does_not_write(config, snapshot, monkeypa
         VERSION=1, HOSTS=set(), inputs=lambda *args: {}, check=check))
     config.update(monitors={'enabled':['fixture'], 'batch_size':1, 'workers':1},
                   config_digest='fixture', nv_digest='fixture')
-    monkeypatch.setattr(monitor.cfg, 'load', lambda path: config)
+    monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db=tmp_path/'state.db';state.commit(db,snapshot)
     for _ in snapshot['sources']:
         monitor.collect(config,'unused',db,io=FixtureIO({}))
@@ -509,7 +509,7 @@ def test_failed_check_uses_attempt_backoff(config, snapshot, monkeypatch, tmp_pa
     monkeypatch.setitem(monitor.REGISTRY,'fixture',types.SimpleNamespace(
         VERSION=1,HOSTS=set(),inputs=lambda *args:{},check=check))
     config.update(monitors={'enabled':['fixture'],'batch_size':100},config_digest='fixture',nv_digest='fixture')
-    monkeypatch.setattr(monitor.cfg,'load',lambda path:config)
+    monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db=tmp_path/'state.db';state.commit(db,snapshot)
     monitor.collect(config,'unused',db,io=FixtureIO({}));count=len(calls)
     monitor.collect(config,'unused',db,io=FixtureIO({}))

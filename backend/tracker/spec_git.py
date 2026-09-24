@@ -16,6 +16,10 @@ FS, GS, RS = '\x1f', '\x1d', '\x1e'   # field / signed-off / record separators
 _SIZE_LIMIT = 1024 * 1024
 
 
+class MacroReadError(ValueError):
+    """The configured macro set could not be read completely."""
+
+
 def polling(spec):
     interval = spec['interval_seconds']
     return Schedule(interval, min(interval * 2, 900), max(interval, 900))
@@ -133,16 +137,21 @@ def read_spec(repo, name, git='git'):
 
 def read_macros(repo, macro_package, git='git'):
     """Every macro file shipped by the macro package at HEAD, as (provenance, bytes)
-    pairs ready for native_spec's hash-checked parser."""
-    listing, error = _git_text(['-C', repo, 'ls-tree', '--name-only', f'HEAD:SPECS/{macro_package}'], git)
-    if error is not None or not listing:
+    pairs ready for native_spec's hash-checked parser. Never return a partial set."""
+    if not macro_package:
         return []
+    listing, error = _git_text(['-C', repo, 'ls-tree', '--name-only', f'HEAD:SPECS/{macro_package}'], git)
+    if error is not None:
+        raise MacroReadError('SPEC macro directory unavailable')
     macros = []
     for filename in sorted(listing.splitlines()):
         if not filename.startswith('macros'):
             continue
         data = _git_bytes(['-C', repo, 'cat-file', '-p', f'HEAD:SPECS/{macro_package}/{filename}'], git)
-        if data is not None and len(data) <= _SIZE_LIMIT:
-            macros.append(({'path': f'SPECS/{macro_package}/{filename}',
-                            'sha256': hashlib.sha256(data).hexdigest()}, data))
+        if data is None:
+            raise MacroReadError('SPEC macro file unavailable')
+        if len(data) > _SIZE_LIMIT:
+            raise MacroReadError('SPEC macro file exceeds size limit')
+        macros.append(({'path': f'SPECS/{macro_package}/{filename}',
+                        'sha256': hashlib.sha256(data).hexdigest()}, data))
     return macros

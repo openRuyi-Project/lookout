@@ -258,10 +258,8 @@ def collect(config, config_path, db, *, io=None):
                         del queues[provider]
             catalog = {mid: {'title': getattr(REGISTRY[mid], 'TITLE', mid)} for mid in options['enabled']}
             def publish():
-                active = cfg.load(config_path)
-                if (active['config_digest'], active['nv_digest']) != (config['config_digest'], config['nv_digest']):
-                    raise ValueError('monitor configuration changed during collection')
                 with state.writer_lock(db, timeout=60):
+                    cfg.require_unchanged(config, config_path)
                     latest = state.read(db)
                     if latest.get('obs') != snapshot.get('obs'):
                         raise ValueError('monitor source scope changed during collection')
@@ -291,17 +289,23 @@ def collect(config, config_path, db, *, io=None):
                 return result
             # Publish input invalidation and completed checks without waiting for
             # the slowest provider; coalesce writes just like upstream collection.
-            publish()
+            result = publish()
+            if not selected_jobs:
+                return result
             last_published = 0.0
+            unpublished = False
             with ThreadPoolExecutor(max_workers=options['workers']) as pool:
                 pending = {pool.submit(execute, provider, proposed, io, previous, schedule=policy): (name, provider)
                            for _, provider, name, proposed, previous, policy in selected_jobs}
                 for future in as_completed(pending):
                     name, provider = pending[future]
                     observations[name][provider] = future.result()
+                    unpublished = True
                     if time.monotonic() - last_published >= 5:
-                        publish(); last_published = time.monotonic()
-            return publish()
+                        result = publish()
+                        unpublished = False
+                        last_published = time.monotonic()
+            return publish() if unpublished else result
     finally:
         if own_io:
             io.close()

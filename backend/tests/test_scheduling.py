@@ -72,7 +72,7 @@ def test_new_module_programs_its_schedule_without_a_runner_branch(config, snapsh
                 Schedule(interval if subject['version'] == '3.9.0' else 120)))
     snapshot['sources'] = {'binutils': snapshot['sources']['binutils']}
     config.update(monitors={'enabled': ['fast', 'slow']}, config_digest='test', nv_digest='test')
-    monkeypatch.setattr(monitor.cfg, 'load', lambda _: config)
+    monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     io = SimpleNamespace(for_hosts=lambda *args, **kwargs: None)
     db = tmp_path / 'snapshot.db'
     state.commit(db, snapshot)
@@ -122,7 +122,7 @@ def test_bad_module_policy_is_local(config, snapshot, monkeypatch, tmp_path):
         check=lambda subject, *args: calls.append(subject['name']) or
             {'status': 'ok', 'findings': [], 'note': None}))
     config.update(monitors={'enabled': ['fixture']}, config_digest='test', nv_digest='test')
-    monkeypatch.setattr(monitor.cfg, 'load', lambda _: config)
+    monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db = tmp_path / 'snapshot.db'
     state.commit(db, snapshot)
     result = monitor.collect(config, 'unused', db, io=SimpleNamespace(for_hosts=lambda *args, **kwargs: None))
