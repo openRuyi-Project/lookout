@@ -5,9 +5,11 @@ import Values from './Values.astro';
 import Table from './Table.astro';
 interface Props {section: Section}
 const {section} = Astro.props;
+const Container = section.collapsible ? 'details' : 'section';
+const Heading = section.collapsible ? 'summary' : 'h2';
 ---
-<section class="document-section" id={section.id}>
-  <h2>{section.title}</h2>
+<Container class="document-section" id={section.id}>
+  <Heading>{section.title}</Heading>
   <Fields fields={section.fields} compact/>
   {section.notes.map(note => <p class="section-note">{note}</p>)}
   {section.table && <Table table={section.table}/>}
@@ -15,4 +17,4 @@ const {section} = Astro.props;
     <div class="entry-heading"><Values values={entry.heading}/></div>
     <Fields fields={entry.fields} compact/>
   </li>)}</ul>}
-</section>
+</Container>

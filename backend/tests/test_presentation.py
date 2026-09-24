@@ -277,8 +277,10 @@ def test_package_context_and_changelog_remain_visible_without_empty_sections(sna
     document = presentation.detail(pkg)
     assert document.context[0].notes == ['Useful description']
     assert document.context[0].fields[0].values[0].text == 'MIT'
-    assert document.sections[-1].title == 'Changelog'
-    assert document.sections[-1].entries[0].fields[-1].values[0].text == 'Packager'
+    assert document.sections[-2].title == 'Changelog'
+    assert document.sections[-2].entries[0].fields[-1].values[0].text == 'Packager'
+    assert document.sections[-1].id == 'checks'
+    assert [s.id for s in document.sections + document.context if s.collapsible] == ['checks']
     assert all('folded' not in section.model_dump() for section in document.sections + document.context)
 
 
@@ -338,3 +340,13 @@ def test_monitor_data_contract_is_discriminated_by_kind(snapshot):
         schema = model.model_json_schema()['properties']['data']
         assert schema['discriminator']['propertyName'] == 'kind'
         assert set(schema['discriminator']['mapping']) == {'source', 'version', 'build', 'evidence'}
+
+
+def test_spec_link_uses_the_path_as_its_only_label(snapshot):
+    pkg = view.project_monitors(snapshot)[0][0]
+    source = pkg['monitors']['source']['data']
+    source.update(source_path='SPECS/aardvark-dns',
+                  source_url='https://github.com/openRuyi-Project/openRuyi/tree/main/SPECS/aardvark-dns')
+    document = presentation.detail(pkg)
+    link = next(value for value in document.links if value.href == source['source_url'])
+    assert link.text == '/SPECS/aardvark-dns'

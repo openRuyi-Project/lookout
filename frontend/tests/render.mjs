@@ -17,7 +17,9 @@ const makePackage = (name, patch = {}) => ({
     architecture: target.architecture, raw_status: 'succeeded', text: '✓', kind: 'ok', issue: false,
     log_url: null, stale: false, updated_at: '2026-09-19T11:10:00Z', matches_source: true,
     last_success: {version: '2.0', time: '2026-09-19T11:00:00+00:00', srcmd5: 'a'}, flavors: []})),
-  spec: {source_path: `SPECS/${name}`, source_url: `https://gitlab.example.org/team/packaging/-/tree/review/SPECS/${name}`, metadata: {summary: 'Fixture package', url: 'https://example.org/upstream'}, changelog: [], error: null},
+  spec: {source_path: `SPECS/${name}`, source_url: `https://gitlab.example.org/team/packaging/-/tree/review/SPECS/${name}`, metadata: {summary: 'Fixture package', url: 'https://example.org/upstream'}, changelog: [
+    {commit: 'abcdef0123456789', author: 'Fixture author', date: '2026-09-19T09:00:00Z', subject: 'Fixture change', signed_off_by: []},
+  ], error: null},
   ...patch,
 });
 const packages = [
@@ -184,6 +186,17 @@ async function read(path, cookie) {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, {headers: cookie ? {cookie} : {}});
   assert.equal(response.status, 200, `${path}: ${logs}`); return response.text();
 }
+function assertCollapsedChecksLast(html) {
+  const details = [...html.matchAll(/<details\b([^>]*)>([^]*?)<\/details>/g)];
+  assert.equal(details.length, 1, 'only Checks is collapsible');
+  const [whole, attributes, body] = details[0];
+  assert.doesNotMatch(attributes, /(?:^|\s)open(?:\s|=|$)/, 'Checks starts closed');
+  assert.match(body, /^\s*<summary\b[^>]*>Checks<\/summary>/);
+  assert.match(body, /Collection checks/);
+  assert.match(html.slice(details[0].index + whole.length), /^\s*<\/div>/, 'Checks is the final main section');
+  const changelog = html.match(/<section\b[^>]*id="changelog"[^>]*>/);
+  if (changelog) assert.ok(changelog.index < details[0].index, 'Checks follows Changelog');
+}
 async function wire(path, headers = {}, method = 'GET') {
   return new Promise((resolve, reject) => {
     const req = request({host:'127.0.0.1',port,path,method,headers}, response => {
@@ -281,7 +294,8 @@ try {
   assert.match(await read('/presentation.css'), /background-color:#123456/);
   assert.doesNotMatch(listing, / style=/);
   const detail = await read('/packages/failed');
-  assert.match(detail, /SPEC Source: \/SPECS\/failed/);
+  assert.match(detail, />\/SPECS\/failed<\/a>/);
+  assert.doesNotMatch(detail, /SPEC Source:/);
   assert.match(detail, /Last successful version/);
   assert.match(detail, /2026-09-19 11:00:00 UTC/);
   const security = await read('/packages/security');
@@ -290,16 +304,23 @@ try {
   assert.match(security, /Reported fixes/);
   assert.match(security, /unavailable/);
   assert.match(security, />No<\/span>/);
-  assert.doesNotMatch(security, /<details|Review linked evidence|SecurityReview|urgent/);
+  assert.doesNotMatch(security, /Review linked evidence|SecurityReview|urgent/);
+  assert.match(security, /<section\b[^>]*id="security"[^>]*>/, 'evidence remains expanded');
   assert.equal((security.match(/>Observed version<\/dt>/g) || []).length, 1);
   assert.equal((security.match(/>Reported fixes<\/dt>/g) || []).length, 2);
-  assert.doesNotMatch(detail, /<details|>Track<\/dt>|id="version"/);
+  assert.doesNotMatch(detail, />Track<\/dt>|id="version"/);
   assert.doesNotMatch(listing, /<details|More filters/);
   assert.match(detail, /id="checks"/);
   const license = await read('/packages/license-evidence');
   assert.match(license, /MIT, Apache-2\.0/);
   assert.match(license, />Target<\/dt>/);
   assert.match(license, />No<\/span>/);
+  assert.match(license, /<section\b[^>]*id="license"[^>]*>/, 'license evidence remains expanded');
+  for (const pkg of packages) {
+    const page = await read(pkg.detail_url);
+    assert.match(page, /<section\b[^>]*id="changelog"[^>]*>/);
+    assertCollapsedChecksLast(page);
+  }
   assert.match(await read('/', 'theme=dark'), /data-theme="dark"/);
   assert.match(await read('/', 'theme=light'), /data-theme="light"/);
   // Unknown document data is escaped, including provenance URLs. No raw HTML or scripts.
@@ -308,6 +329,7 @@ try {
   const hostile = await read('/packages/hostile');
   assert.match(hostile, /&lt;script&gt;/);
   assert.doesNotMatch(hostile, /href="(?:javascript:|\/\/evil)/);
+  assertCollapsedChecksLast(hostile);
   packages.pop();
   console.log('PASS documents: arbitrary monitor, opaque navigation/facets, immediate GET, visible tables/fields, safe links, theme and retained evidence');
   // Wire-level tests deliberately bypass fetch's automatic decompression/cache.

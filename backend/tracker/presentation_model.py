@@ -61,6 +61,7 @@ class Entry(DocumentModel):
 class Section(DocumentModel):
     id: str
     title: str
+    collapsible: bool = False
     fields: list[Field] = []
     table: Table | None = None
     entries: list[Entry] = []

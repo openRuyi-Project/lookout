@@ -15,6 +15,6 @@ export type Option = { "value": string; "label": string; "count": (number | null
 export type Palette = { "background": string; "foreground": string };
 export type Parameter = { "name": string; "value": string };
 export type Row = { "key": string; "cells": Array<Cell> };
-export type Section = { "id": string; "title": string; "fields": Array<Field>; "table": (Table | null); "entries": Array<Entry>; "notes": Array<string> };
+export type Section = { "id": string; "title": string; "collapsible": boolean; "fields": Array<Field>; "table": (Table | null); "entries": Array<Entry>; "notes": Array<string> };
 export type Table = { "label": string; "columns": Array<Column>; "rows": Array<Row>; "empty": string };
 export type Text = { "text": string; "href": (string | null); "title": (string | null); "kind": "text" | "code" | "tag" | "time"; "tone": "normal" | "muted" | "positive" | "negative" | "notice"; "appearance": (string | null); "datetime": (string | null) };

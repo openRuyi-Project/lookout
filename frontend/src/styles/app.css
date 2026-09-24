@@ -415,10 +415,16 @@
   border-top: none;
   padding-top: 0;
 }
-.document-section > h2 {
+.document-section > h2, .document-section > summary {
   font-size: 16px;
   font-weight: 600;
   margin: 0 0 14px;
+}
+.document-section > summary {
+  cursor: pointer;
+}
+.document-section:not([open]) > summary {
+  margin-bottom: 0;
 }
 .section-note {
   color: var(--muted);

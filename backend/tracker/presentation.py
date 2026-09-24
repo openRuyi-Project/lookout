@@ -395,7 +395,7 @@ def detail(pkg):
     identity = version_value(pkg)
     if data.get('buildsystem'):
         identity.append(buildsystem(data['buildsystem'], links))
-    shortcuts = [text('SPEC Source: /' + data['source_path'], href=data.get('source_url'))] if data.get('source_path') else []
+    shortcuts = [text('/' + data['source_path'], href=data.get('source_url'))] if data.get('source_path') else []
     if meta.get('url'):
         shortcuts.append(text('Upstream', href=meta['url']))
     shortcuts.append(text('Raw data', href='/api/v2/packages/' + quote(pkg['name'], safe='')))
@@ -415,10 +415,10 @@ def detail(pkg):
         if check.get('attempted_at') and check['attempted_at'] != check.get('checked_at'):
             timestamps.append([text('Last attempted', tone='muted'), stamp(check['attempted_at'])])
         checks.append(Row(key=result['id'], cells=[cell([text(result['title'])]), cell(*status_lines), cell(*timestamps)]))
-    sections.append(Section(id='checks', title='Checks', table=Table(label='Collection checks', columns=[
-        Column(title='Monitor'), Column(title='Observation'), Column(title='Last checked')], rows=checks)))
     if source:
         sections.extend(changelog_section(source))
+    sections.append(Section(id='checks', title='Checks', collapsible=True, table=Table(label='Collection checks', columns=[
+        Column(title='Monitor'), Column(title='Observation'), Column(title='Last checked')], rows=checks)))
     return DetailDocument(title=pkg['name'], subtitle=meta.get('summary'), identity=identity,
                           links=shortcuts, context=context, sections=sections)
 
