@@ -190,7 +190,7 @@ thead th {
 .identity-column {
   width: 38%;
 }
-.version-column {
+.observation-column {
   width: 28%;
 }
 .package-table tbody th {
@@ -203,11 +203,11 @@ thead th {
   vertical-align: middle;
   overflow-wrap: anywhere;
 }
-.package-table th:nth-child(n+3), .package-table td:nth-child(n+3) {
+.package-table .build {
   padding-inline: 8px;
   text-align: center;
 }
-.package-table thead th:nth-child(n+3) {
+.package-table thead .build {
   font-family: var(--mono);
   font-weight: 400;
 }
@@ -609,3 +609,8 @@ thead th {
     text-decoration: none;
   }
 }
+
+.package-table[data-columns="2"] { min-width: 0; }
+.package-table.focused .identity-column { width: 45%; }
+.package-table.focused .observation-column { width: auto; }
+.monitor-status { display: block; font-weight: normal; color: var(--muted); margin-top: .25rem; }

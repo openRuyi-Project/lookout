@@ -2,10 +2,10 @@
 import Base from '../../layouts/Base.astro';
 ---
 <Base title="API · openRuyi Packages"><article class="prose"><h1>Query interface</h1><p>Requests read stored observations; they never start an upstream check. No account is required. <a href="/openapi.json">OpenAPI specification</a>.</p><dl class="api-list">
-<dt><a href="/api/v1/packages">GET /api/v1/packages</a></dt><dd>Search with <code>q</code>. Use <code>view=all|updates|problems|attention</code>, <code>page</code>, and <code>per_page</code> (1–200).</dd>
-<dt><a href="/api/v1/packages/bash">GET /api/v1/packages/{'{name}'}</a></dt><dd>Source version, observations, and all build flavors.</dd>
+<dt><a href="/api/v2/packages">GET /api/v2/packages</a></dt><dd>Uniform monitor results and linked facets. Use <code>monitor</code> to focus a module and <code>check</code> to filter its check status. Search with <code>q</code>. Use <code>view=all|updates|problems|attention</code>, <code>page</code>, and <code>per_page</code> (1–200).</dd>
+<dt><a href="/api/v2/packages/bash">GET /api/v2/packages/{'{name}'}</a></dt><dd>Each monitor’s check status and typed observations, including evidence and build flavors.</dd>
 <dt><a href="/api/v1/tracks/meson">GET /api/v1/tracks/{'{id}'}</a></dt><dd>A configured native nvchecker entry.</dd>
 <dt><a href="/api/v1/targets">GET /api/v1/targets</a></dt><dd>Display labels and exact OBS target identities.</dd>
 <dt><a href="/api/v1/status">GET /api/v1/status</a></dt><dd>Collection status, coverage, and component errors.</dd>
 <dt><a href="/api/v1/export">GET /api/v1/export</a></dt><dd>Download all package observations as JSON.</dd>
-</dl><p>An absent package or track returns 404. An unknown version is null, not an empty success. An unavailable snapshot returns 503. Untracked does not mean up to date.</p></article></Base>
+</dl><p>The original <code>/api/v1/packages</code> endpoints remain compatibility projections of these same observations.</p><p>An absent package or track returns 404. An unknown version is null, not an empty success. An unavailable snapshot returns 503. Untracked does not mean up to date.</p></article></Base>

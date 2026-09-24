@@ -7,15 +7,17 @@ import {api, type Listing} from '../lib/api';
 import {listingQuery, listingURL} from '../lib/listing';
 
 const query = listingQuery(Astro.url.searchParams);
-const {data} = await api<Listing>('/api/v1/packages?' + query);
-if (!data) Astro.response.status = 503;
+const {data, status} = await api<Listing>('/api/v2/packages?' + query);
+const invalidFilters = status === 422;
+if (!data) Astro.response.status = invalidFilters ? 422 : 503;
 ---
 <Base>
   <section aria-label="Package list">
     <PackageFilters data={data} query={query}/>
     {!data && (
       <div role="alert" class="notice">
-        Snapshot unavailable. <a href={listingURL(query)}>Retry</a>
+        {invalidFilters ? <>Invalid filter selection. <a href="/">Clear filters</a></>
+          : <>Snapshot unavailable. <a href={listingURL(query)}>Retry</a></>}
       </div>
     )}
     {data?.collection.mode === 'fixture' && <div class="notice">Test fixture — not live openRuyi data.</div>}

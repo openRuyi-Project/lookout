@@ -1,5 +1,6 @@
 ---
 import type {Listing} from '../lib/api';
+import MonitorSelector from './MonitorSelector.astro';
 import {listingURL, views} from '../lib/listing';
 
 interface Props {data: Listing | null; query: URLSearchParams}
@@ -9,8 +10,8 @@ const buildsystem = query.get('buildsystem') || '';
 const maintenance = query.get('maintenance') || '';
 const builds = query.getAll('build');
 const selectedBuild = (target: string) => builds.find(value => value.startsWith(target + ':')) || target + ':';
-const selected = !!(buildsystem || maintenance || builds.length || ['problems', 'attention'].includes(view));
-const clearQuery = new URLSearchParams({q: query.get('q') || '', view: ['problems', 'attention'].includes(view) ? 'all' : view});
+const selected = !!(query.get('check') || buildsystem || maintenance || builds.length || ['problems', 'attention'].includes(view));
+const clearQuery = new URLSearchParams({q: query.get('q') || '', monitor: query.get('monitor') || '', view: ['problems', 'attention'].includes(view) ? 'all' : view});
 const options = (counts: Record<string, number>) => Object.entries(counts).sort(([a], [b]) => a.localeCompare(b));
 ---
 <form class="package-filters" data-auto-submit method="get" action="/">
@@ -32,6 +33,7 @@ const options = (counts: Record<string, number>) => Object.entries(counts).sort(
   {data && (
     <div class="secondary-filters">
       <p id="filter-behavior" class="sr-only">Selections update the results immediately. Without scripting, use Apply.</p>
+      <MonitorSelector data={data} query={query}/>
       <div class="filter-field">
         <label for="buildsystem">Build system</label>
         <select id="buildsystem" name="buildsystem" aria-describedby="filter-behavior">

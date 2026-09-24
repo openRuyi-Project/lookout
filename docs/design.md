@@ -93,7 +93,10 @@ not a fallback configuration engine.
 
 The monitor runner owns lifecycle and storage; adapters own provider inputs and
 interpretation; projection owns visibility. A new label uses the existing generic
-API and renderer. See the [monitor porting guide](monitor-porting.md) for the small
+API and renderer. Source, Version and Build use the same result envelope, with
+typed domain payloads; v1 is a compatibility projection of v2 monitor results.
+The UI renderer registry and layout are separate from the selector and linked
+query facets. See the [monitor porting guide](monitor-porting.md) for the small
 module contract, reusable components and an executable end-to-end example.
 
 Upgrade monitors do not run without a confirmed newer comparable release.

@@ -1,10 +1,44 @@
 # Port a monitor
 
-A monitor adds a sourced fact about a package, not another way to choose its
-current/upstream version. `version_status` owns that decision. OBS build evidence
-and SPEC source evidence keep their separate provenance.
+Source, Version, Build and supplemental evidence share one **read contract**:
+`{id, title, check, data}`. The API and pages treat each as a monitor. A monitor's
+`check` describes collection, not the package: an OBS response containing `failed`
+is a successful check with a failed build result. An unavailable check is never
+converted to an empty successful result.
 
-## What to implement
+## Follow one result
+
+```text
+collector/adapter → owned snapshot fields → Monitor.read(Context)
+                                               ↓
+                               typed data + query dimensions
+                                               ↓
+                     /api/v2/packages → renderer → page layout
+```
+
+| Responsibility | Location | Contract |
+|---|---|---|
+| Read stored facts | `monitor_views.Monitor` | Pure `project(Context)` returns `check`, typed `data`, and filter `dimensions`. |
+| Version decision | `version_status` | One RPM-based decision, also consumed by upgrade monitors. |
+| Filter/count | `package_list.PackageList` | Intersect monitor dimensions once; each facet excludes only its own selection. |
+| HTTP schema | `api` | OpenAPI generates `api.generated.ts`; summary omits histories and full findings. |
+| Presentation | `frontend/src/monitors/registry.ts` | Summary/detail components by payload kind; optional specialization by stable monitor ID. |
+| Page composition | `frontend/src/monitors/layout.ts` | Place components without collecting, filtering or counting. |
+| Monitor selection | `MonitorSelector.astro` | Consume the API catalog; selecting a monitor changes focus, not collection configuration. |
+
+The payload kinds are `source`, `version`, `build`, and `evidence`. They retain
+domain-specific structure rather than stringify build matrices or source history
+into generic prose. Every monitor contributes to check-status filtering; existing
+build, version and maintenance facets consume the same package rows.
+
+`/api/v1/packages` is a compatibility projection of the same results, not a second
+calculation. Snapshot ownership, batching and intervals are unchanged: the OBS
+collector still issues bulk requests, the SPEC collector uses its isolated worker,
+and provider adapters use the bounded monitor runner. A shared result contract
+does **not** require calling OBS once per package or a base class with collection
+hooks that some monitors cannot implement.
+
+## Add an evidence monitor
 
 Use [monitor_license.py](../backend/tracker/monitor_license.py) for an upgrade-only
 port, or [monitor_eol.py](../backend/tracker/monitor_eol.py) for a current-version
@@ -13,6 +47,7 @@ plugin loader or separate service is needed.
 
 | Member | Contract |
 |---|---|
+| `TITLE` | Optional display title; defaults to the registry ID. Published with observations, never inferred from a finding label. |
 | `VERSION` | Positive interpretation version. Change it when the same inputs would mean different facts; not for every code edit. |
 | `HOSTS` | Set of exact provider HTTPS hostnames. Scoped IO rejects other hosts, credentials, redirects and nonstandard ports. |
 | `SCOPE` | Optional `current` (default) or `upgrade`. Upgrade jobs only run when the same saved version decision used by the UI is `outdated`. |
@@ -69,7 +104,7 @@ enabled production monitor or a claim of live coverage**.
 
 [test_monitor_porting.py](../backend/tests/test_monitor_porting.py) registers it
 through the existing registry and runs the actual heartbeat, scoped IO, SQLite
-storage, API projection and Maintenance filter. Provider HTTP is the substituted
+storage, v1/v2 projection, catalog, check-status and Maintenance filters. Provider HTTP is the substituted
 boundary. The tests cover findings, empty results, failed requests, source changes,
 invalid inputs and isolation from other packages. No scheduler/API/UI branch is
 added for the new label.
@@ -77,7 +112,8 @@ added for the new label.
 For a real port:
 
 1. Add `backend/tracker/monitor_ID.py` and register the trusted module once in
-   `monitor.REGISTRY`. Add your provider fixtures and tests alongside the example.
+   `monitor.REGISTRY` under a stable ID (`source`, `version`, and `build` are reserved).
+   Add your provider fixtures and tests alongside the example.
 2. Enable `ID` in `[monitors].enabled`. Add per-package identity exceptions only
    where `inputs()` cannot derive a reviewed identity. Never put scripts or
    credentials in these identities.
@@ -85,7 +121,13 @@ For a real port:
    wrong/missing identity, malformed responses, no finding, timeout, unchanged
    evidence and changed inputs. Upgrade ports also test no upgrade, disabled
    comparison, stale upstream and changed target through the shared runner.
-4. Inspect one real package with the read-only commands below, then promote the
+4. The next heartbeat publishes the catalog and results. The selector, labels,
+   evidence detail and check-status counts work without edits to API routes or
+   page components. `frontend/tests/render.mjs` exercises an unregistered renderer
+   and a renamed Security finding label to protect this boundary. If a compact
+   domain-specific view is needed, add components and one specialization in the
+   renderer registry. Select by monitor ID/fact code, never English display text.
+5. Inspect one real package with the read-only commands below, then promote the
    configuration and release through the [deployment procedure](deployment.md).
    Observe check statuses/errors and evidence timestamps, not only label counts.
 
@@ -101,3 +143,21 @@ snapshot or a production cache. The current contract is for source-version facts
 binary ABI, repository-only health or human dispositions need their own explicit
 inputs before they can be truthfully attached. Do not fetch hidden prerequisites
 inside the renderer or bypass the source gate to make a port appear covered.
+
+## Change a layout or introduce a new payload kind
+
+For a different homepage arrangement, change `tableLayout`; leave the selector,
+GET query normalization and server-side facets alone. The default dense view keeps
+Version and per-target Build columns, BuildSystem beside the name and evidence
+labels below it. Focusing a monitor promotes its view; uncovered packages remain
+visible and can be filtered by check status. Changing focus resets only that
+check condition; search, version, build and Maintenance facets stay selected and
+retain their cross-monitor meaning. Detail layout uses the same renderer
+registry. It does not repeat finding-specific branches in each page.
+
+Use the existing `evidence` payload for sourced assertions. A genuinely different
+shape (like Build's target/flavor matrix) requires a typed payload in `api`, its
+pure projection in `monitor_views`, regenerated types, and a kind renderer. That
+is an intentional schema change, not a reason to introduce untyped JSON or a
+runtime plugin loader. Keep the collector's write ownership and failure boundary
+explicit; the read model grants no collection privileges.

@@ -1,0 +1,20 @@
+---
+import type {Listing} from '../lib/api';
+interface Props {data: Listing; query: URLSearchParams}
+const {data, query} = Astro.props;
+const focus = query.get('monitor') || '';
+---
+<div class="filter-field">
+  <label for="monitor">Monitor</label>
+  <select id="monitor" name="monitor" aria-describedby="filter-behavior">
+    <option value="">All</option>
+    {data.monitors.map(m => <option value={m.id} selected={m.id === focus}>{m.title}</option>)}
+  </select>
+</div>
+{focus && <div class="filter-field">
+  <label for="check">Check</label>
+  <select id="check" name="check" aria-describedby="filter-behavior">
+    <option value="">All</option>
+    {Object.entries(data.check_statuses).map(([status, count]) => <option value={status} selected={status === query.get('check')}>{status} ({count})</option>)}
+  </select>
+</div>}

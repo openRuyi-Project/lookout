@@ -1,60 +1,30 @@
 ---
 import Base from '../../layouts/Base.astro';
-import Version from '../../components/Version.astro';
-import PackageMaintenance from '../../components/PackageMaintenance.astro';
-import PackageBuilds from '../../components/PackageBuilds.astro';
-import BuildSystem from '../../components/BuildSystem.astro';
+import MonitorChecks from '../../components/MonitorChecks.astro';
 import {api, type PackageDetail} from '../../lib/api';
+import {renderer} from '../../monitors/registry';
+import {detailLayout} from '../../monitors/layout';
 const name = Astro.params.name || '';
-const response = await api<PackageDetail>('/api/v1/packages/' + encodeURIComponent(name));
+const apiPath = '/api/v2/packages/' + encodeURIComponent(name);
+const response = await api<PackageDetail>(apiPath);
 const pkg = response.data;
 if (!pkg) Astro.response.status = response.status === 404 ? 404 : 503;
-const apiPath = '/api/v1/packages/' + encodeURIComponent(name);
-const meta = pkg?.spec?.metadata ?? null;
-const changelog = pkg?.spec?.changelog ?? [];
-const watched = pkg?.watch ?? [];
-const day = (iso: string) => iso.slice(0, 10);
-
+const modules = Object.values(pkg?.monitors || {});
+const descriptors = modules.map(m => ({id: m.id, title: m.title, kind: m.data.kind}));
 ---
 <Base title={`${name} · openRuyi Packages`}>
   <section class="package-detail"><a class="back" href="/">← Packages</a>
   {pkg ? <>
     <header class="package-heading">
       <h1>{pkg.name}</h1>
-      <BuildSystem value={pkg.buildsystem}/>
+      {descriptors.filter(m => renderer(m).placement === 'identity').map(m => {
+        const {Summary} = renderer(m); return <Summary result={pkg.monitors[m.id]} pkg={pkg}/>;
+      })}
     </header>
-    <Version pkg={pkg} label={true}/>
-
-    {watched.length > 0 && <dl class="general" aria-label="Explicitly watched tracks">
-      <dt>Watching</dt><dd><ul>{watched.map(w => <li>
-        <a href={`/api/v1/tracks/${encodeURIComponent(w.id)}`}>{w.id}</a>: <strong>{w.version || '—'}</strong>
-        {w.version && (w.error || w.stale) && <span title={w.error || 'Observation has expired'}> (last observed)</span>}
-      </li>)}</ul></dd>
-    </dl>}
-
-    <PackageMaintenance pkg={pkg}/>
-    <PackageBuilds pkg={pkg}/>
-
-    <h2>Package information</h2>
-    <dl class="general">
-      {meta?.summary && <><dt>Summary</dt><dd>{meta.summary}</dd></>}
-      {meta?.license && <><dt>License</dt><dd>{meta.license}</dd></>}
-      <dt>SPEC Source</dt><dd>{pkg.spec.source_url ? <a href={pkg.spec.source_url}>/{pkg.spec.source_path}</a> : <span>/{pkg.spec.source_path}</span>}</dd>
-      {meta?.url && <><dt>Upstream</dt><dd><a href={meta.url}>{meta.url}</a></dd></>}
-
-      {!pkg.buildsystem && <><dt>BuildSystem</dt><dd><abbr title={pkg.buildsystem_status === 'not_declared' ? 'The parsed SPEC does not declare BuildSystem.' : 'The SPEC observation is missing or failed; declaration is unknown.'}>NotDetected</abbr></dd></>}
-    </dl>
-    {meta?.description && <details class="description"><summary>Description</summary><p>{meta.description}</p></details>}
-
-    <h2>Changelog</h2>
-    {pkg.spec?.error && !changelog.length && <p class="detail-note">Changelog unavailable: {pkg.spec.error}</p>}
-    {changelog.length > 0
-      ? <ol class="changelog">{changelog.map(c => <li>
-          <div class="cl-head"><span class="cl-subject">{c.subject}</span><time class="cl-date">{day(c.date)}</time></div>
-          <div class="cl-meta">{c.author}{c.signed_off_by.length > 0 && <span class="cl-sob"> · Signed-off-by: {c.signed_off_by.join(', ')}</span>}</div>
-        </li>)}</ol>
-      : (!pkg.spec?.error && <p class="detail-note">No SPEC history recorded yet.</p>)}
-
+    {detailLayout(descriptors).map(m => {
+      const {Detail} = renderer(m); return <Detail result={pkg.monitors[m.id]} pkg={pkg} detail/>;
+    })}
+    <MonitorChecks monitors={pkg.monitors}/>
     <p class="provenance-link"><a href={apiPath}>Raw data (JSON)</a></p>
   </> : <div role="alert" class="notice">{response.status === 404 ? 'No such source package.' : 'Snapshot unavailable. Please try again later.'}</div>}
   </section>

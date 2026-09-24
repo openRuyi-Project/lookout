@@ -1,0 +1,34 @@
+---
+import type {Props} from './registry';
+import {listingURL} from '../lib/listing';
+import Maintenance from '../components/Maintenance.astro';
+import EvidenceFacts from '../components/EvidenceFacts.astro';
+const {result, filters = new URLSearchParams(), detail = false} = Astro.props as Props;
+const data = result.data;
+const findings = data.kind === 'evidence' && 'findings' in data ? data.findings : [];
+const aggregate = (label: string) => listingURL(filters, {monitor: result.id, maintenance: label, check: ''});
+---
+{data.kind === 'evidence' && (detail ? findings.length > 0 && <section aria-label={result.title}>
+<h2>{result.title}</h2>
+      <div class="table-wrap">
+        <table class="maintenance-table">
+          <thead><tr><th scope="col">Type</th><th scope="col">Evidence</th></tr></thead>
+          <tbody>
+            {findings.map(finding => (
+              <tr id={'finding-' + encodeURIComponent(finding.id)}>
+                <th scope="row">
+                  <a href={aggregate(finding.label)}>{finding.label}</a>
+                  {finding.tags.map(tag => <><br/><a class="state error" href={aggregate(tag)}>{tag}</a></>)}
+                </th>
+                <td>
+                  <a href={finding.evidence_url}>{finding.title}</a>
+                  {finding.scope === 'upgrade' && <p>Target {finding.target_version}</p>}
+                  <EvidenceFacts facts={finding.facts}/>
+                  {finding.stale && <small>Earlier observation; check status below.</small>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+</section> : <Maintenance labels={data.labels} filters={filters} monitor={result.id}/>)}

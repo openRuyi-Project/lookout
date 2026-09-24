@@ -1,8 +1,8 @@
 // Fixed response shapes have one author: FastAPI OpenAPI.
 export type {Target, Build, BuildFlavor, Collection, SpecMetadata, ChangelogEntry,
-  Spec, Watch, PackageDetail} from './api.generated';
-export type {LastSuccess as BuildSuccess, PackageSummary as Package,
-  PackageList as Listing} from './api.generated';
+  Spec, Watch} from './api.generated';
+export type {LastSuccess as BuildSuccess, MonitoredPackage as Package,
+  MonitoredDetail as PackageDetail, MonitoredList as Listing} from './api.generated';
 export type Relation = import('./api.generated').PackageSummary['relation'];
 
 export function backendURL(path: string): URL {

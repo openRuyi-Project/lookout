@@ -1,0 +1,9 @@
+---
+import type {Props} from './registry';
+import SecurityEvidence from '../components/SecurityEvidence.astro';
+const {result} = Astro.props as Props;
+const data = result.data;
+---
+{data.kind === 'evidence' && 'findings' in data && data.findings.length > 0 && <section aria-label={result.title}>
+  <SecurityEvidence title={result.title} findings={data.findings}/>
+</section>}

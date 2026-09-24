@@ -1,12 +1,12 @@
 ---
-import type {Package} from '../lib/api';
-interface Props {pkg: Package; label?: boolean}
-const {pkg, label = false} = Astro.props;
+import type {VersionSummary} from '../lib/api.generated';
+interface Props {version: VersionSummary; sourceSuccess: boolean | null; label?: boolean}
+const {version: pkg, sourceSuccess, label = false} = Astro.props;
 // Upstream tracking and OBS success are independent observations.
 const untracked = !pkg.track && pkg.relation !== 'not_applicable';
 const badge = untracked ? 'untracked' : pkg.relation;
-const failed = !untracked && pkg.current_build_success === false;
-const unavailable = !untracked && pkg.current_build_success == null;
+const failed = !untracked && sourceSuccess === false;
+const unavailable = !untracked && sourceSuccess == null;
 const buildTitle = untracked ? 'Upstream is not tracked' : failed
   ? 'The current source revision has not succeeded on every active build target'
   : unavailable ? 'Current-version build success is unavailable'

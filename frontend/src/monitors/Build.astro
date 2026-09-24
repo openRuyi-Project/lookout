@@ -1,20 +1,22 @@
 ---
-import type {PackageDetail} from '../lib/api';
+import type {Props} from './registry';
+import type {Build, BuildDetail} from '../lib/api.generated';
+import BuildStatus from '../components/BuildStatus.astro';
 import {utcTime} from '../lib/time';
-
-interface Props {pkg: PackageDetail}
-const {pkg} = Astro.props;
-const observations = pkg.builds.map(build => build.updated_at);
-const obsUpdatedAt = observations.length && observations.every(value => value && Number.isFinite(Date.parse(value)))
-  ? observations.reduce((oldest, value) => Date.parse(value!) < Date.parse(oldest!) ? value : oldest) : null;
-const rows = pkg.builds.flatMap(build =>
-  (build.flavors && build.flavors.length > 1 ? build.flavors : [build]).map(observation => ({
+const {result, pkg, target, detail = false} = Astro.props as Props;
+const data = result.data;
+const builds: Array<Build | BuildDetail> = data.kind === 'build' ? data.targets : [];
+const selected = builds.find(build => build.target === target?.id);
+const rows = builds.flatMap(build =>
+  ('flavors' in build && build.flavors.length > 1 ? build.flavors : [build]).map(observation => ({
     ...observation, label: build.label, flavor: 'package' in observation ? observation.package : null,
   })));
 ---
+{detail ? <>
+
 <section aria-labelledby="build-status">
   <h2 id="build-status">Build status</h2>
-  <p class="updated-note" title={pkg.version_error || undefined}>Last updated: <span>OBS {obsUpdatedAt ? <time datetime={obsUpdatedAt}>{utcTime(obsUpdatedAt)}</time> : '—'}</span>{pkg.track && <> · <span>Upstream {pkg.upstream_updated_at ? <time datetime={pkg.upstream_updated_at}>{utcTime(pkg.upstream_updated_at)}</time> : '—'}</span></>} <span class="time-zone">UTC</span></p>
+  <p class="updated-note">Last updated: <span>OBS {result.check.checked_at ? <time datetime={result.check.checked_at}>{utcTime(result.check.checked_at)}</time> : '—'}</span> <span class="time-zone">UTC</span></p>
   <div class="table-wrap" role="region" tabindex="0" aria-label="Build status by target">
     <table class="detail-table">
       <thead>
@@ -54,3 +56,5 @@ const rows = pkg.builds.flatMap(build =>
     </table>
   </div>
 </section>
+
+</> : selected && data.kind === 'build' && <BuildStatus build={selected} name={pkg.name} current={data.source_version} detailURL={pkg.detail_url}/>}

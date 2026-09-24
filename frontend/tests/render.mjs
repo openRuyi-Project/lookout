@@ -21,7 +21,7 @@ const makePackage = (name, patch = {}) => ({
 });
 const packages = [
   makePackage('security', {maintenance_findings: [1, 2].map(i => ({
-    id: `CVE-2026-100${i}`, label: 'Security', title: `CVE-2026-100${i}`,
+    monitor: 'security', id: `CVE-2026-100${i}`, label: 'Advisory', title: `CVE-2026-100${i}`,
     facts: [{key: 'Observed version', code: 'query', value: '2.0', source: 'OSV', url: 'https://api.osv.dev/v1/query', status: 'observed'},
       {key: 'Exploit probability', code: 'epss_probability', value: 0.00396, source: 'FIRST', url: 'https://api.first.org/data/v1/epss', status: 'observed'},
       {key: 'Reported fixes', code: 'fixed_events', value: ['3.0'], source: 'OSV', url: 'https://osv.dev/vulnerability/fixture', status: 'observed'},
@@ -30,7 +30,7 @@ const packages = [
     scope: 'current', tags: [], stale: false,
   }))}),
   makePackage('license-evidence', {maintenance_findings: [{
-    id: 'license-target', label: 'LicenseChange', title: 'Target license metadata',
+    monitor: 'license', id: 'license-target', label: 'LicenseChange', title: 'Target license metadata',
     evidence_url: 'https://example.org/license', scope: 'upgrade', target_version: '2.1',
     tags: [], stale: false, facts: [
       {key: 'Licenses', value: ['MIT', 'Apache-2.0'], source: 'Registry', url: 'https://example.org/license', status: 'observed'},
@@ -65,6 +65,45 @@ const packages = [
       architecture: target.architecture, raw_status: 'unknown', text: 'No result', kind: 'muted',
       log_url: null, stale: false, updated_at: null, matches_source: null, last_success: null, flavors: []}))}),
 ];
+// The fixture keeps concise package variants above; this is its only wire mapping.
+// Production pages receive only the v2 monitor contract, never these flat fields.
+const catalog = [
+  {id: 'source', title: 'Source', kind: 'source'},
+  {id: 'version', title: 'Version', kind: 'version'},
+  {id: 'build', title: 'Build', kind: 'build'},
+  {id: 'security', title: 'Security', kind: 'evidence'},
+  {id: 'license', title: 'License', kind: 'evidence'},
+  {id: 'yanked', title: 'Release files', kind: 'evidence'},
+];
+packages.push(makePackage('yanked', {
+  maintenance: [{label: 'Withdrawn', count: 1, stale: false}],
+  maintenance_findings: [{monitor: 'yanked', id: 'withdrawn', label: 'Withdrawn', title: 'Release withdrawn',
+    scope: 'current', target_version: null, tags: [], stale: false, evidence_url: 'https://example.org/release',
+    facts: [{key: 'Files', value: 3, source: 'Registry', url: 'https://example.org/release', status: 'observed'}]}],
+}));
+function monitored(pkg, detail = true) {
+  const check = {status: 'ok', stale: false, checked_at: '2026-09-19T11:10:00Z', attempted_at: null,
+    error: null, note: null, changed_at: null, evidence_revision: null};
+  const data = {
+    source: {kind: 'source', version: pkg.current, revision: 'fixture', buildsystem: pkg.buildsystem,
+      buildsystem_status: pkg.buildsystem_status, ...pkg.spec, obs: {}},
+    version: {kind: 'version', current: pkg.current, latest: pkg.latest, relation: pkg.relation, track: pkg.track,
+      track_label: pkg.track_label, stale: pkg.stale, error: pkg.version_error, last_known_relation: pkg.relation,
+      updated_at: pkg.upstream_updated_at, upstream: {}, watch: pkg.watch || []},
+    build: {kind: 'build', targets: pkg.builds, source_version: pkg.current,
+      source_success: pkg.current_build_success, last_successful_version: pkg.last_successful_version},
+  };
+  const monitors = Object.fromEntries(catalog.map(m => [m.id, {id: m.id, title: m.title, check: {...check},
+    data: data[m.id] || {kind: 'evidence', labels: m.id === 'yanked' ? pkg.maintenance : [],
+      findings: pkg.maintenance_findings.filter(f => f.monitor === m.id)}}]));
+  monitors.build.check.checked_at = pkg.builds.every(b => b.updated_at) ? pkg.builds[0].updated_at : null;
+  if (!detail) {
+    for (const result of Object.values(monitors)) {
+      for (const key of ['findings', 'metadata', 'changelog', 'obs', 'upstream', 'watch']) delete result.data[key];
+    }
+  }
+  return {name: pkg.name, detail_url: pkg.detail_url, monitors, presentation: pkg.presentation};
+}
 let lastQuery = new URLSearchParams();
 let unavailable = false;
 let health = 'ok';
@@ -82,12 +121,23 @@ const mock = createServer((req, res) => {
     res.writeHead(ready.status, {'Content-Type': 'application/json'});
     res.end(JSON.stringify(ready.body)); return;
   }
-  if (url.pathname === '/api/v1/packages') lastQuery = url.searchParams;
-  const selected = packages.find(pkg => url.pathname === `/api/v1/packages/${pkg.name}`);
-  const payload = url.pathname === '/api/v1/presentation' ? {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}} : selected ?? {presentation: {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}}, buildsystems: {custom: 1}, maintenance_labels: {NewSignal: 1}, build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'issues',label:'Issues',count:2}, {value:'blocked',label:'Blocked',count:1}]])), items: url.searchParams.get('q') === 'quiet' ? packages.map(pkg=>({...pkg,maintenance:[]})) : packages, total: packages.length, page: 1, per_page: 100, pages: 1,
-    counts: {all: packages.length, updates: 3, problems: 1, attention: 1, untracked: 1}, targets,
-    collection: {obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
-      packages: packages.length, tracked_packages: packages.length - 1}};
+  if (url.pathname === '/api/v2/packages' && url.searchParams.get('monitor') === 'not-registered') {
+    res.writeHead(422, {'Content-Type': 'application/json'}); res.end('{}'); return;
+  }
+  if (url.pathname === '/api/v2/packages') lastQuery = url.searchParams;
+  const selected = packages.find(pkg => url.pathname === `/api/v2/packages/${pkg.name}`);
+  const payload = url.pathname === '/api/v1/presentation'
+    ? {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}}
+    : selected ? monitored(selected) : {
+      monitors: catalog, check_statuses: {ok: packages.length},
+      presentation: {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}},
+      buildsystems: {custom: 1}, maintenance_labels: {NewSignal: 1},
+      build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'issues',label:'Issues',count:2}, {value:'blocked',label:'Blocked',count:1}]])),
+      items: (url.searchParams.get('q') === 'quiet' ? packages.map(pkg=>({...pkg,maintenance:[]})) : packages).map(pkg => monitored(pkg, false)),
+      total: packages.length, page: 1, per_page: 100, pages: 1,
+      counts: {all: packages.length, updates: 3, problems: 1, attention: 1, untracked: 1}, targets,
+      collection: {obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
+        packages: packages.length, tracked_packages: packages.length - 1}};
   res.writeHead(200, {'Content-Type': 'application/json'}); res.end(JSON.stringify(payload));
 });
 mock.listen(0, '127.0.0.1'); await once(mock, 'listening');
@@ -140,6 +190,10 @@ try {
   }
   unavailable = false;
   console.log('PASS health: liveness, readiness/compatibility, degraded, no snapshot, failure, timeout, no-store');
+  const invalidSelection = await wire('/?monitor=not-registered');
+  assert.equal(invalidSelection.status, 422);
+  assert.match(invalidSelection.body.toString(), /Invalid filter selection/);
+  assert.doesNotMatch(invalidSelection.body.toString(), /Snapshot unavailable/);
   const quiet = await read('/?q=quiet');
   assert.doesNotMatch(quiet, /class="maintenance-labels"/);
   assert.doesNotMatch(quiet, /<th scope="col">Maintenance<\/th>/);
@@ -153,9 +207,9 @@ try {
   assert.equal(filterForms.length, 1, 'search and selections must share one GET form');
   const filterForm = filterForms[0][0];
   assert.match(filterForm, /name="q"/);
-  assert.equal((filterForm.match(/<select\b/g) || []).length, targets.length + 2);
+  assert.equal((filterForm.match(/<select\b/g) || []).length, targets.length + 3);
   assert.doesNotMatch(filterForm, /type="hidden" name="(?:q|buildsystem|maintenance|build)"/);
-  assert.equal((filterForm.match(/aria-describedby="filter-behavior"/g) || []).length, targets.length + 2);
+  assert.equal((filterForm.match(/aria-describedby="filter-behavior"/g) || []).length, targets.length + 3);
 
   assert.match(listing, /<script[^>]*src="\/filters.js"[^>]*defer/);
   const script = await wire('/filters.js');
@@ -177,6 +231,35 @@ try {
   assert.equal(submissions, 5, 'every filter selection submits immediately');
   filterChange({target: {}});
   assert.equal(submissions, 5);
+  const fields = {maintenance: {value: 'Withdrawn'}, check: {value: 'error'}};
+  form.querySelector = selector => fields[selector.match(/name="(.*?)"/)[1]];
+  const monitorSelect = new Select(); monitorSelect.name = 'monitor';
+  filterChange({target: monitorSelect});
+  assert.equal(fields.maintenance.value, 'Withdrawn');
+  assert.equal(fields.check.value, '');
+  assert.equal(submissions, 6, 'switching monitor resets only monitor-local selections');
+  const focused = await read('/?monitor=yanked&buildsystem=custom&build=rva23:blocked&check=ok');
+  assert.equal(lastQuery.get('monitor'), 'yanked');
+  assert.equal(lastQuery.get('check'), 'ok');
+  assert.deepEqual(lastQuery.getAll('build'), ['rva23:blocked']);
+  assert.match(focused, /value="yanked" selected/);
+  assert.match(focused, /<th scope="col">Release files<\/th>/);
+  assert.equal((focused.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 2);
+  assert.match(focused, />No findings</);
+  assert.match(focused, /maintenance=Withdrawn/);
+  const sourceFocus = await read('/?monitor=source');
+  assert.match(sourceFocus, /<th scope="col">Source<\/th>/);
+  assert.match(sourceFocus, /class="current-version">2\.0/);
+  const buildFocus = await read('/?monitor=build');
+  assert.equal((buildFocus.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 4);
+  for (const target of targets) assert.match(buildFocus, new RegExp(`<th scope="col"[^>]*>${target.label}</th>`));
+  const unknownPort = await read('/packages/yanked');
+  assert.match(unknownPort, /<h2>Release files<\/h2>/);
+  assert.match(unknownPort, /Release withdrawn/);
+  assert.match(unknownPort, /<dt>Files/);
+  assert.match(unknownPort, />3<\/dd>/);
+  assert.doesNotMatch(unknownPort, /Review linked evidence|<th>Action|urgent/);
+  console.log('PASS composition: data-driven monitor selector, replaceable columns, generic unregistered renderer, independent checks, immediate linked GET selections');
   const row = name => listing.match(new RegExp(`<tr data-name="${name}"[^]*?</tr>`))?.[0] ?? '';
   assert.match(row('success'), /class="current-version"/);
   const linked = await read('/?build=rva23:blocked&build=rva20:issues&buildsystem=custom&maintenance=NewSignal&q=ok');
@@ -265,7 +348,7 @@ try {
   const detail = await read('/packages/failed');
   assert.doesNotMatch(detail, /Release track|class="track"|class="rel outdated"|>Outdated</);
   assert.match(detail, /class="new">2\.1/);
-  assert.match(detail, /href="\/api\/v1\/packages\/failed">Raw data \(JSON\)<\/a>/);
+  assert.match(detail, /href="\/api\/v2\/packages\/failed">Raw data \(JSON\)<\/a>/);
   assert.doesNotMatch(detail, /source version and revision, upstream observation/);
   assert.match(await read('/packages/ahead'), /class="rel ahead">Ahead<\/span>/);
   const successDetail = await read('/packages/success');

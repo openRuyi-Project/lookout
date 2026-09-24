@@ -13,6 +13,8 @@ export function listingQuery(input: URLSearchParams): URLSearchParams {
     view,
     buildsystem: (input.get('buildsystem') || '').slice(0, 100),
     maintenance: (input.get('maintenance') || '').slice(0, 40),
+    monitor: (input.get('monitor') || '').slice(0, 64),
+    check: input.get('monitor') ? (input.get('check') || '').slice(0, 40) : '',
     page: String(page),
     per_page: '100',
   });

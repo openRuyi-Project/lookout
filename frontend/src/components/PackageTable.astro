@@ -1,49 +1,57 @@
 ---
 import type {Listing} from '../lib/api';
-import Version from './Version.astro';
-import BuildStatus from './BuildStatus.astro';
-import BuildSystem from './BuildSystem.astro';
-import Maintenance from './Maintenance.astro';
-
+import {renderer} from '../monitors/registry';
+import {tableLayout} from '../monitors/layout';
 interface Props {data: Listing; query: URLSearchParams}
 const {data, query} = Astro.props;
+const layout = tableLayout(data.monitors, query.get('monitor') || '');
+const columns = [
+  ...layout.columns.map(monitor => ({monitor, target: undefined, label: monitor.title})),
+  ...layout.targets.flatMap(monitor => data.targets.map(target => ({monitor, target, label: target.label}))),
+];
 ---
-<div class="table-wrap" role="region" tabindex="0" aria-label="Package versions and build targets; scroll horizontally">
-  <table class="package-table">
-    <caption class="sr-only">Source packages, versions and OBS build results</caption>
+<div class="table-wrap" role="region" tabindex="0" aria-label="Package monitors; scroll horizontally">
+  <table class:list={['package-table', {focused: !!query.get('monitor')}]} data-columns={columns.length + 1}>
+    <caption class="sr-only">Source packages and monitor observations</caption>
     <colgroup>
       <col class="identity-column"/>
-      <col class="version-column"/>
-      {data.targets.map(() => <col/>)}
+      {columns.map(column => <col class={column.target ? undefined : 'observation-column'}/>)}
     </colgroup>
-    <thead>
-      <tr>
-        <th scope="col">Package</th>
-        <th scope="col">Version</th>
-        {data.targets.map(target => <th scope="col">{target.label}</th>)}
-      </tr>
-    </thead>
-    <tbody>
-      {data.items.map(pkg => (
-        <tr data-name={pkg.name}>
-          <th scope="row">
-            <span class="package-identity">
-              <a class="pkg" href={pkg.detail_url}>{pkg.name}</a>
-              <BuildSystem value={pkg.buildsystem} filters={query}/>
-            </span>
-            <Maintenance labels={pkg.maintenance} filters={query}/>
-          </th>
-          <td><Version pkg={pkg}/></td>
-          {pkg.builds.map(build => (
-            <td class="build" data-target={build.target}>
-              <BuildStatus build={build} name={pkg.name} current={pkg.current} detailURL={pkg.detail_url}/>
-            </td>
-          ))}
-        </tr>
-      ))}
-      {data.total === 0 && (
-        <tr><td class="empty" colspan={data.targets.length + 2}>No matching packages.</td></tr>
-      )}
+    <thead><tr>
+      <th scope="col">Package</th>
+      {columns.map(column => <th scope="col" class={column.target ? 'build' : undefined}>{column.label}</th>)}
+    </tr></thead>
+    <tbody>{data.items.map(pkg => {
+      const focused = pkg.monitors[query.get('monitor') || ''];
+      const empty = focused?.data.kind === 'evidence' && focused.data.labels.length === 0;
+      return <tr data-name={pkg.name}>
+      <th scope="row">
+        <span class="package-identity">
+          <a class="pkg" href={pkg.detail_url}>{pkg.name}</a>
+          {layout.identity.map(monitor => {
+            const {Summary} = renderer(monitor);
+            return <Summary result={pkg.monitors[monitor.id]} pkg={pkg} filters={query}/>;
+          })}
+        </span>
+        {layout.signals.map(monitor => {
+          const {Summary} = renderer(monitor);
+          return <Summary result={pkg.monitors[monitor.id]} pkg={pkg} filters={query}/>;
+        })}
+        {focused && (focused.check.status !== 'ok' || empty) && (
+          <small class="monitor-status" title={focused.check.error || undefined}>
+            {focused.check.status === 'ok' ? 'No findings' : focused.check.status.replaceAll('_', ' ')}
+          </small>
+        )}
+      </th>
+      {columns.map(({monitor, target}) => {
+        const {Summary} = renderer(monitor);
+        const result = pkg.monitors[monitor.id];
+        return <td class={target ? 'build' : undefined} data-target={target?.id}>
+          <Summary result={result} pkg={pkg} filters={query} target={target} focused={!!query.get('monitor')}/>
+        </td>;
+      })}
+    </tr>;})}
+    {data.total === 0 && <tr><td class="empty" colspan={columns.length + 1}>No matching packages.</td></tr>}
     </tbody>
   </table>
 </div>
