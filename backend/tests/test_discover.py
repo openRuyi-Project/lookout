@@ -145,7 +145,7 @@ def test_cli_only_emits_actually_verified_rules_and_no_live_write(tmp_path, monk
     data = snapshot(); data['generation'] = 42
     monkeypatch.setattr(config, 'load', lambda p, **kwargs: cfg)
     monkeypatch.setattr(discover.state, 'read', lambda p: data)
-    monkeypatch.setattr(discover, 'fetch_project', lambda n: {'body': response()})
+    monkeypatch.setattr(discover, 'fetch_project', lambda n, client: {'body': response()})
     entry = discover.match(candidate(), response())['entry']
     fact = {'version': '1.9.17p2', 'error': None, 'fetched_at': '2026-09-20T00:00:00Z',
             'configuration_fingerprint': config.track_fingerprint(entry)}

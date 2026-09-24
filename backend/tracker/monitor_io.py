@@ -8,12 +8,16 @@ import threading
 import time
 from urllib.parse import urlsplit
 import httpx
+from .http_io import read_response
 
 
 class IO:
-    def __init__(self, cache=None, *, client=None, ttl=21600):
+    def __init__(self, cache=None, *, client=None, ttl=21600, workers=4):
         self.cache = Path(cache) if cache else None
-        self.client = client or httpx.Client(timeout=15, follow_redirects=False,
+        self.client = client or httpx.Client(
+            timeout=httpx.Timeout(connect=15, read=15, write=15, pool=15),
+            limits=httpx.Limits(max_connections=workers, max_keepalive_connections=workers),
+            follow_redirects=False,
             proxy=os.environ.get('TRACKER_MONITOR_PROXY') or None)
         self.owns_client = client is None
         self.ttl = ttl
@@ -48,17 +52,12 @@ class IO:
                     raise ValueError('provider request failed earlier in this run')
                 return cached['data']
             try:
+                deadline = time.monotonic() + 30
                 with self.client.stream(method, url, json=body if method == 'POST' else None,
                                         headers={'User-Agent': 'openRuyi-Package-Monitor/0.1.0'}) as response:
                     response.raise_for_status()
-                    chunks, size = [], 0
-                    deadline = time.monotonic() + 30
-                    for chunk in response.iter_bytes():
-                        size += len(chunk)
-                        if size > 16 * 1024 * 1024 or time.monotonic() > deadline:
-                            raise ValueError('provider response exceeds budget')
-                        chunks.append(chunk)
-                data = json.loads(b''.join(chunks))
+                    body_bytes = read_response(response, max_bytes=16 * 1024 * 1024, deadline=deadline)
+                data = json.loads(body_bytes)
                 cached = {'time': now, 'data': data}
                 if path:
                     path.parent.mkdir(parents=True, exist_ok=True)

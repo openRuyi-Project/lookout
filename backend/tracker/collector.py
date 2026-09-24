@@ -97,8 +97,9 @@ def collect(config, old, client, now, source_limit=None):
                 return name, state.success(previous, {**fact, 'checked_at': now}, now)
             except Exception as e:
                 return name, state.failure(previous, f'source version unavailable: {type(e).__name__}', now)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=config['collector'].get('source_workers', 4)) as pool:
-            for name, fact in pool.map(fetch_source, selected):
+        workers = config['collector'].get('source_workers', 4)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            for name, fact in pool.map(fetch_source, selected, buffersize=workers):
                 new['sources'][name] = fact
     else:
         for name, previous in new['sources'].items():

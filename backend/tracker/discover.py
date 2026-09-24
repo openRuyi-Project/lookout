@@ -16,13 +16,18 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import time
 import tomllib
 from urllib.parse import urlencode, urlsplit
+import httpx
 
 from . import config as cfg, nv, state, discover_sources as sources, version_rules
+from .http_io import read_response
 
 API = 'https://release-monitoring.org'
 MAX_BODY = 4 * 1024 * 1024
+WORKERS = 4
+REQUEST_BUDGET = 20
 
 
 def identity_url(value):
@@ -163,21 +168,16 @@ def match(candidate, response):
                       'filter': 'first(.stable_versions[])', 'prefix': 'v'}}
 
 
-def fetch_project(name):
+def fetch_project(name, client):
     """Only the fixed public API is contacted; SPEC URLs are never fetched."""
-    import httpx
     url = API + '/api/v2/projects/?' + urlencode({'name': name, 'items_per_page': 250})
     record = {'url': url, 'at': state.utcnow()}
     try:
-        with httpx.Client(timeout=20, follow_redirects=False) as client:
-            with client.stream('GET', url, headers={'Accept': 'application/json'}) as response:
-                record['http_status'] = response.status_code
-                response.raise_for_status()
-                body = bytearray()
-                for part in response.iter_bytes():
-                    body.extend(part)
-                    if len(body) > MAX_BODY:
-                        raise ValueError('response_too_large')
+        deadline = time.monotonic() + REQUEST_BUDGET
+        with client.stream('GET', url, headers={'Accept': 'application/json'}) as response:
+            record['http_status'] = response.status_code
+            response.raise_for_status()
+            body = read_response(response, max_bytes=MAX_BODY, deadline=deadline)
         record['body_sha256'] = hashlib.sha256(body).hexdigest()
         record['body'] = json.loads(body)
     except (httpx.HTTPError, ValueError) as error:
@@ -283,13 +283,16 @@ def main(argv=None):
                 if saved.get('url') == expected_url and 'body' in saved and not saved.get('error'):
                     evidence = saved
         if evidence is None:
-            evidence = fetch_project(query)
+            evidence = fetch_project(query, client)
         (output / (hashlib.sha256(row['name'].encode()).hexdigest() + '.json')).write_text(
             json.dumps(evidence, ensure_ascii=False, indent=2) + '\n')
         return {**row, **({'reason': 'discovery_request_failed'} if evidence.get('error')
                          else match(row, evidence['body']))}
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        updates = {r['name']: r for r in pool.map(discover, selected)}
+    timeout = httpx.Timeout(connect=20, read=20, write=20, pool=20)
+    limits = httpx.Limits(max_connections=WORKERS, max_keepalive_connections=WORKERS)
+    with httpx.Client(timeout=timeout, limits=limits, follow_redirects=False) as client:
+        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+            updates = {r['name']: r for r in pool.map(discover, selected, buffersize=WORKERS)}
     rows = [updates.get(r['name'], r) for r in rows]
     github_count = 0
     for row in rows:

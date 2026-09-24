@@ -210,7 +210,7 @@ def check(config, snapshot, name, provider, io):
 def collect(config, config_path, db, *, io=None):
     options = settings(config)
     own_io = io is None
-    io = io or IO(Path(db).parent / 'monitor-cache')
+    io = io or IO(Path(db).parent / 'monitor-cache', workers=options['workers'])
     try:
         with state.writer_lock(str(db) + '.monitors'):
             snapshot = state.read(db)

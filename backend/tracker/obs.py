@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from urllib.parse import quote, unquote, urlsplit
 from .state import usable_version
 from .schedule import Schedule
+from .http_io import read_response
 
 MAX_XML = 20 * 1024 * 1024
 
@@ -209,22 +210,21 @@ class Client:
         self.attempts = attempts
         self.base = config['obs']['api_url'].rstrip('/')
         self.project = quote(config['obs']['project'], safe='')
-        self.client = httpx.Client(timeout=config['collector'].get('timeout_seconds', 20),
-                                   follow_redirects=False, headers={'User-Agent': 'openruyi-tracker/0.1'})
+        self.timeout = config['collector'].get('timeout_seconds', 20)
+        workers = config['collector'].get('source_workers', 4)
+        self.client = httpx.Client(
+            timeout=httpx.Timeout(connect=self.timeout, read=self.timeout, write=self.timeout, pool=self.timeout),
+            limits=httpx.Limits(max_connections=workers, max_keepalive_connections=workers),
+            follow_redirects=False, headers={'User-Agent': 'openruyi-tracker/0.1'})
     def close(self):
         self.client.close()
     def get(self, path):
         for attempt in range(self.attempts):
             try:
+                deadline = time.monotonic() + self.timeout
                 with self.client.stream('GET', self.base + path) as r:
                     r.raise_for_status()
-                    chunks, size = [], 0
-                    for chunk in r.iter_bytes():
-                        size += len(chunk)
-                        if size > MAX_XML:
-                            raise ValueError('OBS response too large')
-                        chunks.append(chunk)
-                    return b''.join(chunks)
+                    return read_response(r, max_bytes=MAX_XML, deadline=deadline)
             except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as e:
                 # A missing/forbidden source will not recover from three immediate
                 # identical requests. Keep the error for the next scheduled poll.

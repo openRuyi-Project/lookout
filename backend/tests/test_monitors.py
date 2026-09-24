@@ -296,7 +296,12 @@ def test_monitor_proxy_is_operator_scoped(monkeypatch):
     monkeypatch.setenv('TRACKER_MONITOR_PROXY', 'http://127.0.0.1:7890')
     monkeypatch.setattr(monitor_io.httpx, 'Client', lambda **kwargs: calls.append(kwargs) or types.SimpleNamespace(close=lambda: None))
     owner = monitor_io.IO();owner.close()
-    assert calls == [{'timeout':15, 'follow_redirects':False, 'proxy':'http://127.0.0.1:7890'}]
+    assert len(calls) == 1
+    options = calls[0]
+    assert options['timeout'].as_dict() == dict(connect=15, read=15, write=15, pool=15)
+    assert options['limits'].max_connections == options['limits'].max_keepalive_connections == 4
+    assert options['follow_redirects'] is False
+    assert options['proxy'] == 'http://127.0.0.1:7890'
 
 
 @pytest.mark.parametrize('entry,expected', [
