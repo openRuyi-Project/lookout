@@ -239,7 +239,7 @@ def evidence(context, monitor_id):
     saved = next((c for c in context.evidence['checks'] if c['monitor'] == monitor_id), None)
     check = {k: v for k, v in (saved or {}).items() if k != 'monitor'}
     check.setdefault('status', 'pending')
-    check['stale'] = any(f['stale'] for f in facts) or check['status'] in ('expired', 'input_changed', 'schema_changed')
+    check['stale'] = any(f['stale'] for f in facts) or check['status'] in ('expired', 'input_changed', 'input_unavailable', 'schema_changed')
     labels = monitor_model.summarize(facts)
     return dict(check=check, dimensions={'maintenance': [label['label'] for label in labels]},
                 data=dict(kind='evidence', findings=facts, labels=labels))

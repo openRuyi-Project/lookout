@@ -132,6 +132,9 @@ def project(snapshot, name, now, *, version=None):
         same = observation.get("subject") == expected
         old = source_unavailable or state.stale(observation, now, ttl)
         status = observation.get("status", "pending") if same else "input_changed"
+        gated = same and observation.get('input_status') == 'unsupported'
+        if gated:
+            status = 'input_unavailable'
         if same and old and status == "ok":
             status = "expired"
         compatible = True
@@ -148,20 +151,22 @@ def project(snapshot, name, now, *, version=None):
                 "status": status,
                 "checked_at": observation.get("checked_at"),
                 "attempted_at": observation.get("attempted_at"),
-                "note": observation.get("note"),
+                "note": observation.get("input_note") if gated else observation.get("note"),
                 "error": observation.get("error"),
             }
         )
         if same and compatible:
             for f in observation.get("findings", []):
-                if f["scope"] == "upgrade" and (not version.upgrading or f.get("target_version") != latest):
+                if f["scope"] == "upgrade" and (version.last_known_relation != 'outdated'
+                                                or f.get("target_version") != latest):
                     continue
                 findings.append(
                     {
                         **f,
                         "id": provider + ":" + f["id"],
                         "monitor": provider,
-                        "stale": old or status not in ("ok", "partial"),
+                        "stale": old or status not in ("ok", "partial")
+                        or f['scope'] == 'upgrade' and not version.upgrading,
                     }
                 )
     return {"findings": findings, "checks": checks, "summary": summarize(findings)}

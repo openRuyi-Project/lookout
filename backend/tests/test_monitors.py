@@ -161,7 +161,8 @@ def test_upgrade_monitor_never_runs_without_upgrade(config, snapshot, monkeypatc
     now = datetime.now(timezone.utc)
     assert monitor_model.project(snapshot, "binutils", now)["summary"][0]["label"] == "LicenseChange"
     snapshot['tracks']['binutils']['error'] = 'timeout'
-    assert monitor_model.project(snapshot, "binutils", now)["summary"] == []
+    assert monitor_model.project(snapshot, "binutils", now)["summary"] == [
+        {'label': 'LicenseChange', 'count': 1, 'stale': True}]
     snapshot['tracks']['binutils']['error'] = None
     snapshot['tracks']['binutils']['version'] = '3.11.0'
     assert monitor_model.project(snapshot, "binutils", now)["summary"] == []

@@ -144,14 +144,20 @@ def test_git_delta_rename_retry_macros_and_rewritten_history(config, snapshot, t
     assert collector.check_specs(config,db,describe)['components']['spec_git']['mode']=='full'
 
 
-def test_source_recovery_rechecks_instead_of_retaining_a_blocked_gate(config, snapshot, tmp_path, monkeypatch):
+@pytest.mark.parametrize('provider_status', ['ok', 'unsupported', 'partial', 'error'])
+def test_source_recovery_reuses_the_same_fresh_provider_result(config, snapshot, tmp_path, monkeypatch, provider_status):
     snapshot['sources'] = {'binutils': snapshot['sources']['binutils']}
     config.update(monitors={'enabled': ['fixture']}, config_digest='cfg', nv_digest='rules')
     monkeypatch.setattr(cfg, 'load', lambda _: config)
     calls = []
+    def check(*args):
+        calls.append(1)
+        if provider_status == 'error':
+            raise TimeoutError('provider unavailable')
+        return {'status': provider_status, 'findings': [], 'note': None}
     monkeypatch.setitem(monitor.REGISTRY, 'fixture', SimpleNamespace(
         VERSION=1, HOSTS=set(), query_subject=version_query, inputs=lambda *a: {},
-        check=lambda *a: calls.append(1) or {'status':'ok', 'findings':[], 'note':None}))
+        check=check))
     db = tmp_path / 'snapshot.db'
     io = SimpleNamespace(for_hosts=lambda *a, **kw: None)
     state.commit(db, snapshot)
@@ -160,8 +166,65 @@ def test_source_recovery_rechecks_instead_of_retaining_a_blocked_gate(config, sn
     state.commit(db, first)
     blocked = monitor.collect(config, 'unused', db, io=io)
     assert len(calls) == 1
-    assert blocked['monitors']['binutils']['fixture']['status'] == 'unsupported'
+    old = first['monitors']['binutils']['fixture']
+    fact = blocked['monitors']['binutils']['fixture']
+    assert fact['status'] == provider_status and fact['input_status'] == 'unsupported'
+    for key in ('checked_at', 'attempted_at', 'changed_at', 'evidence_revision', 'failures', 'error'):
+        assert fact.get(key) == old.get(key)
+    from tracker import monitor_model
+    assert monitor_model.project(blocked, 'binutils', datetime.now(timezone.utc))['checks'][0]['status'] == 'input_unavailable'
     blocked['sources']['binutils']['error'] = None
     state.commit(db, blocked)
     recovered = monitor.collect(config, 'unused', db, io=io)
-    assert len(calls) == 2 and recovered['monitors']['binutils']['fixture']['status'] == 'ok'
+    assert len(calls) == 1 and recovered['monitors']['binutils']['fixture']['status'] == provider_status
+    assert recovered['monitors']['binutils']['fixture']['checked_at'] == old['checked_at']
+    # A real query change still invalidates the result.
+    recovered['sources']['binutils']['version'] = '3.9.1'
+    state.commit(db, recovered)
+    monitor.collect(config, 'unused', db, io=io)
+    assert len(calls) == 2
+
+
+def test_legacy_source_gate_is_rechecked_after_recovery(config, snapshot, tmp_path, monkeypatch):
+    snapshot['sources'] = {'binutils': snapshot['sources']['binutils']}
+    config.update(monitors={'enabled': ['fixture']}, config_digest='cfg', nv_digest='rules')
+    monkeypatch.setattr(cfg, 'load', lambda _: config)
+    calls = []
+    monkeypatch.setitem(monitor.REGISTRY, 'fixture', SimpleNamespace(
+        VERSION=1, HOSTS=set(), inputs=lambda *a: {}, query_subject=version_query,
+        check=lambda *a: calls.append(1) or {'status': 'ok', 'findings': [], 'note': None}))
+    snapshot['sources']['binutils']['error'] = 'source unavailable'
+    legacy = monitor.plan(config, snapshot, 'binutils', 'fixture')
+    legacy.update(checked_at=state.utcnow(), attempted_at=state.utcnow())
+    snapshot['monitors'] = {'binutils': {'fixture': legacy}}
+    db = tmp_path / 'state.db'
+    io = SimpleNamespace(for_hosts=lambda *a, **kw: None)
+    state.commit(db, snapshot)
+    blocked = monitor.collect(config, 'unused', db, io=io)
+    assert not calls and blocked['monitors']['binutils']['fixture']['status'] == 'pending'
+    blocked['sources']['binutils']['error'] = None
+    state.commit(db, blocked)
+    recovered = monitor.collect(config, 'unused', db, io=io)
+    assert calls == [1] and recovered['monitors']['binutils']['fixture']['status'] == 'ok'
+    monitor.collect(config, 'unused', db, io=io)
+    assert calls == [1]
+
+
+def test_source_gate_does_not_postpone_expired_checks(config, snapshot, tmp_path, monkeypatch):
+    snapshot['sources'] = {'binutils': snapshot['sources']['binutils']}
+    config.update(monitors={'enabled': ['fixture']}, config_digest='cfg', nv_digest='rules')
+    monkeypatch.setattr(cfg, 'load', lambda _: config)
+    calls = []
+    monkeypatch.setitem(monitor.REGISTRY, 'fixture', SimpleNamespace(
+        VERSION=1, HOSTS=set(), inputs=lambda *a: {}, query_subject=version_query,
+        check=lambda *a: calls.append(1) or {'status': 'ok', 'findings': [], 'note': None}))
+    db = tmp_path / 'state.db'
+    io = SimpleNamespace(for_hosts=lambda *a, **kw: None)
+    state.commit(db, snapshot)
+    checked = monitor.collect(config, 'unused', db, io=io)
+    fact = checked['monitors']['binutils']['fixture']
+    fact.update(checked_at='2000-01-01T00:00:00+00:00', attempted_at='2000-01-01T00:00:00+00:00',
+                input_status='unsupported')
+    state.commit(db, checked)
+    monitor.collect(config, 'unused', db, io=io)
+    assert len(calls) == 2

@@ -111,6 +111,8 @@ def plan(config, snapshot, name, provider, *, version=None):
         fields = {'compare': None, 'comparable': True, 'not_applicable': False}
         if any(active.get(key, default) != version.binding.get(key, default) for key, default in fields.items()):
             status, note = 'unsupported', 'Version policy changed; waiting for upstream collection.'
+        elif version.relation == 'unknown':
+            status, note = 'unsupported', 'Version comparison is unavailable.'
         elif not version.upgrading:
             status, note = 'not_applicable', 'No confirmed version upgrade; this monitor is not run.'
     fingerprint_inputs = ({'invalid_configuration': repr(configured), 'identity': identity}
@@ -156,9 +158,16 @@ def failed(proposed, previous, error, at):
 def execute(provider, proposed, io, previous=None, *, schedule=None):
     if proposed['status'] != 'pending':
         if (proposed['status'] == 'unsupported' and previous
-                and previous.get('fingerprint') == proposed['fingerprint']):
-            return {**proposed, **{key: previous.get(key) for key in
-                    ('findings', 'checked_at', 'attempted_at', 'evidence_revision', 'changed_at')}}
+                and previous.get('fingerprint') == proposed['fingerprint']
+                and (previous.get('attempted_at') or previous.get('checked_at'))):
+            # Eligibility is not a new provider result. Keep the dated result so
+            # recovery of the same input can reuse it until its own refresh is due.
+            status = previous['status']
+            if (status == previous.get('input_status') == 'unsupported'
+                    and 'input_note' not in previous):
+                status = 'pending'  # Legacy gate records lost their provider status.
+            return {**previous, 'status': status, 'subject': proposed['subject'],
+                    'input_status': proposed['status'], 'input_note': proposed['note']}
         return proposed
     at = state.utcnow()
     old = previous if previous and previous.get('fingerprint') == proposed['fingerprint'] else {}
@@ -222,10 +231,17 @@ def collect(config, config_path, db, *, io=None):
                         except Exception as error:
                             observations[name][provider] = failed(proposed, previous, error, state.utcnow())
                             continue
-                        observations[name][provider] = ({**previous, 'subject': proposed['subject']}
+                        lost_result = (previous.get('status') == 'pending' or
+                                       previous.get('input_status') == previous.get('status') == 'unsupported'
+                                       and 'input_note' not in previous)
+                        observations[name][provider] = ({**previous, 'subject': proposed['subject'],
+                                                         'status': 'pending' if lost_result else previous['status'],
+                                                         'input_status': 'pending', 'input_note': None}
                                                         if same else proposed)
+                        # Older records replaced the provider status with the gate;
+                        # their lost result must be checked once, never guessed back.
                         if (policy.due(previous, proposed['fingerprint'], now)
-                                or previous.get('input_status', 'pending') != 'pending'):
+                                or lost_result):
                             jobs.append((previous.get('attempted_at', '') if same else '', provider, name, proposed, previous, policy))
             # Retry failures fairly; never let a bad first package monopolize batches.
             jobs.sort(key=lambda row: row[:3])
@@ -264,7 +280,8 @@ def collect(config, config_path, db, *, io=None):
                             else:
                                 # A packaging-only revision may change during the request.
                                 # Keep the original check time; rebind only identical query inputs.
-                                valid[name][provider] = {**fact, 'subject': expected['subject']}
+                                valid[name][provider] = {**fact, 'subject': expected['subject'],
+                                                        'input_status': 'pending', 'input_note': None}
                     if (latest.get('monitors') == valid and latest.get('monitor_catalog') == catalog and
                             latest.get('monitor_stale_after_seconds') == options['stale_after_seconds']):
                         return latest
