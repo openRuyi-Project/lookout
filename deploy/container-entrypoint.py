@@ -19,6 +19,7 @@ API_PORT = os.environ.get("API_PORT", "18731")
 
 sys.path.insert(0, f"{APP}/backend")
 from tracker.runtime_checks import load_runtime
+from tracker import monitor, nv, obs, spec_git
 
 _stop = threading.Event()
 _procs = {}
@@ -65,13 +66,15 @@ def run_collector(phase, extra=()):
     # Exit 2 (stale observations) and 75 (already running) are recorded, not fatal.
     cmd = [VENV_PYTHON, "-m", "tracker.collector", "--only", phase,
            "--config", CONFIG, "--db", DB, *extra]
+    if phase == "upstreams":
+        cmd.append("--due")
     result = run_child(f"collect-{phase}", cmd, cwd=f"{APP}/backend")
     log(f"collect {phase}: exit {result}")
     return result
 
 
-def periodic(phase, interval):
-    delay = interval
+def periodic(phase, schedule):
+    failures = 0
     while not _stop.is_set():
         try:
             # Keep the configured bounded OBS batch, including on restart. An existing
@@ -80,9 +83,8 @@ def periodic(phase, interval):
         except OSError as error:
             log(f"collect {phase}: {type(error).__name__}: {error}")
             result = 1
-        if phase == "builds":
-            delay = interval if result in (0, 75) else min(delay * 2, max(interval, 300))
-        _stop.wait(delay)
+        failures = 0 if result in (0, 75) else failures + 1
+        _stop.wait(schedule.delay(failures))
 
 
 def specs(spec):
@@ -97,7 +99,7 @@ def specs(spec):
                                cwd=APP, env=env, timeout=spec["fetch_timeout_seconds"])
             log(f"SPEC init: exit {result}")
             if result == 0:
-                periodic("specs", spec["interval_seconds"])
+                periodic("specs", spec_git.polling(spec))
                 return
         except OSError as error:
             log(f"SPEC init: {type(error).__name__}: {error}")
@@ -146,6 +148,10 @@ def main():
     signal.signal(signal.SIGINT, shutdown)
     try:
         config = load_runtime(CONFIG, DB)
+        policies = {**obs.polling(config), "upstreams": nv.polling(config)}
+        monitors = monitor.settings(config)
+        if monitors["enabled"]:
+            policies["monitors"] = monitor.polling(config)
     except Exception as error:
         log(f"runtime preflight failed: {error}")
         return 2
@@ -160,16 +166,10 @@ def main():
                    api_env, f"{APP}/backend")),
         (service, ("web", ["node", f"{APP}/frontend/server.mjs"],
                    web_env, f"{APP}/frontend")),
-        (periodic, ("obs-metadata", config["collector"]["obs_interval_seconds"])),
-        (periodic, ("upstreams", config["collector"]["nvchecker_interval_seconds"])),
     ]
-    tasks.append((periodic, ("builds", config["collector"].get("build_interval_seconds", 30))))
+    tasks.extend((periodic, (phase, policy)) for phase, policy in policies.items())
     if config["spec"]["repo"]:
         tasks.append((specs, (config["spec"],)))
-    from tracker.monitor import settings as monitor_settings
-    monitors = monitor_settings(config)
-    if monitors['enabled']:
-        tasks.append((periodic, ('monitors', min(monitors['heartbeat_seconds'], monitors['interval_seconds']))))
     threads = [threading.Thread(target=fn, args=args, daemon=True) for fn, args in tasks]
     for thread in threads:
         thread.start()

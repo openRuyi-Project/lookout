@@ -25,10 +25,10 @@ class IO:
         if self.owns_client:
             self.client.close()
 
-    def for_hosts(self, hosts):
-        return ProviderIO(self, frozenset(hosts))
+    def for_hosts(self, hosts, *, max_age=None):
+        return ProviderIO(self, frozenset(hosts), max_age)
 
-    def json(self, method, url, body=None):
+    def json(self, method, url, body=None, *, max_age=None):
         key = hashlib.sha256(json.dumps([method, url, body], sort_keys=True).encode()).hexdigest()
         with self.guard:
             lock = self.locks.setdefault(key, threading.Lock())
@@ -41,7 +41,8 @@ class IO:
                     cached = json.loads(path.read_text())
                 except (OSError, ValueError):
                     pass
-            if cached and 0 <= now - cached.get('time', 0) < self.ttl:
+            ttl = self.ttl if max_age is None else min(self.ttl, max_age)
+            if cached and 0 <= now - cached.get('time', 0) < ttl:
                 self.memory[key] = cached
                 if cached.get('error'):
                     raise ValueError('provider request failed earlier in this run')
@@ -73,8 +74,9 @@ class IO:
 
 
 class ProviderIO:
-    def __init__(self, owner, hosts):
+    def __init__(self, owner, hosts, max_age=None):
         self.owner, self.hosts = owner, hosts
+        self.max_age = max_age
         self.today = owner.today
 
     def json(self, method, url, body=None):
@@ -83,4 +85,4 @@ class ProviderIO:
                 or parsed.hostname not in self.hosts or parsed.port not in (None, 443)
                 or parsed.username or parsed.password or parsed.fragment):
             raise ValueError('provider URL outside declared HTTPS hosts')
-        return self.owner.json(method, url, body)
+        return self.owner.json(method, url, body, max_age=self.max_age)

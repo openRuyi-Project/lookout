@@ -3,11 +3,19 @@
 import re
 from urllib.parse import quote
 from .monitor_model import finding, evidence
+from .schedule import Schedule
+from .monitor_model import version_query as query_subject
+
 
 TITLE = 'Security'
 VERSION = 5
 HOSTS = {"api.osv.dev", "www.cisa.gov", "api.first.org"}
 CVE = re.compile(r"CVE-\d{4}-\d{4,}")
+
+
+def refresh(subject, inputs, previous):
+    # New advisories/KEV entries can arrive without any source-version change.
+    return Schedule(interval_seconds=21600)
 
 
 def inputs(package, configured):

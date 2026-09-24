@@ -3,15 +3,34 @@
 A single external source, peer to OBS and nvchecker. One full bare clone holds the
 entire history (for changelogs) and every current SPEC blob (read via cat-file), so
 all reads are offline and only `git fetch` touches the network. git performs history
-simplification (`-- PATH`) and trailer extraction (`%(trailers)`) itself, and a diff
-between the last processed commit and HEAD names exactly which package dirs changed.
+simplification (`-- PATH`) and trailer extraction (`%(trailers)`) itself. After
+bootstrap, only commits since the saved ancestor are traversed. Rewritten history
+or a changed parser environment requires a full reconciliation.
 Following nv.py, subprocess calls and pure parsing are separate for testability.
 """
 import hashlib
 import subprocess
+from .schedule import Schedule
 
 FS, GS, RS = '\x1f', '\x1d', '\x1e'   # field / signed-off / record separators
 _SIZE_LIMIT = 1024 * 1024
+
+
+def polling(spec):
+    interval = spec['interval_seconds']
+    return Schedule(interval, min(interval * 2, 900), max(interval, 900))
+
+
+def head(repo, git='git'):
+    value, error = _git_text(['-C', repo, 'rev-parse', 'HEAD'], git)
+    return value.strip() if value else None, error
+
+
+def is_ancestor(repo, previous, current, git='git'):
+    if not previous:
+        return False
+    _, error = _git_text(['-C', repo, 'merge-base', '--is-ancestor', previous, current], git)
+    return error is None
 
 
 def _git_text(args, git='git', timeout=300):
@@ -66,10 +85,11 @@ def _bucket_log(stdout, limit):
         for line in lines[1:]:
             if not line.strip():
                 continue
-            path = line.split('\t')[-1]  # status\tpath, or Rxxx\told\tnew -> take the new path
-            seg = path.split('/', 2)
-            if len(seg) >= 2 and seg[0] == 'SPECS':
-                touched.add(seg[1])
+            # Renames affect both the removed directory and the new one.
+            for path in line.split('\t')[1:]:
+                seg = path.split('/', 2)
+                if len(seg) >= 2 and seg[0] == 'SPECS':
+                    touched.add(seg[1])
         for name in touched:
             bucket = result.setdefault(name, [])
             if len(bucket) < limit:
@@ -77,17 +97,20 @@ def _bucket_log(stdout, limit):
     return result
 
 
-def changelogs(repo, limit=20, git='git'):
-    """ALL packages' changelogs in ONE history traversal, keyed by package name.
+def changelogs(repo, limit=20, git='git', *, since=None, names=None):
+    """Bucket one Git traversal by package; optionally restrict commits or paths.
 
-    `git log --name-status -- SPECS` walks the whole history once (~2s on a full local
-    clone) and reports, per commit, which files changed. Python buckets each commit
-    into every SPECS/<name> it touched. This replaces per-package `git log` (one
-    subprocess each: ~40 min for the corpus). Each package's newest bucketed commit is
-    also its head, so callers gate metadata re-parsing on it. Returns (dict, error)."""
+    Bootstrap/reconciliation walks the full history once. `since` limits ordinary
+    polling to new commits. `names` fills history for newly observed packages in one
+    batch. Each package's newest entry also identifies its metadata revision.
+    """
     fmt = f'{RS}%H{FS}%aI{FS}%an{FS}%s{FS}%(trailers:key=Signed-off-by,valueonly,unfold,separator={GS})'
+    paths = [f':(literal)SPECS/{name}' for name in names] if names is not None else ['SPECS']
+    if not paths:
+        return {}, None
+    revisions = [f'{since}..HEAD'] if since else []
     stdout, error = _git_text(['-C', repo, 'log', '--no-show-signature',
-                              f'--format={fmt}', '--name-status', '--', 'SPECS'], git)
+                              f'--format={fmt}', '--name-status', *revisions, '--', *paths], git)
     if error is not None:
         return {}, error
     return _bucket_log(stdout, limit), None

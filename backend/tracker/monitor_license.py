@@ -3,11 +3,19 @@
 from urllib.parse import quote
 from packaging.licenses import canonicalize_license_expression, InvalidLicenseExpression
 from .monitor_model import finding, evidence
+from .schedule import Schedule
+from .monitor_model import version_query as query_subject
+
 
 TITLE = 'License'
 VERSION = 2
 SCOPE = "upgrade"
 HOSTS = {"pypi.org"}
+
+
+def refresh(subject, inputs, previous):
+    # Input fingerprints trigger version-pair changes; periodically catch metadata corrections.
+    return Schedule(interval_seconds=43200)
 
 
 def inputs(package, configured):

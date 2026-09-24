@@ -14,10 +14,36 @@ import tempfile
 import tomllib
 from .state import success, failure
 from .config import public_source, track_fingerprint
+from .schedule import Schedule
 
 # The snapshot is tens of MiB: publish the first completion immediately, then
 # coalesce bursts instead of rewriting it for every small group of events.
 _PUBLISH_INTERVAL_SECONDS = 5.0
+
+
+def polling(config):
+    # The cheap heartbeat selects due tracks; it does not query every provider.
+    return Schedule(60, 60, 300)
+
+
+def refresh(config):
+    return Schedule(config['collector'].get('nvchecker_interval_seconds', 21600), 300, 3600)
+
+
+def due_names(config, snapshot, now):
+    options = track_fingerprint(config.get('native_options', {}))
+    if snapshot.get('components', {}).get('nvchecker', {}).get('options_fingerprint') != options:
+        return list(config['native'])
+    policy = refresh(config)
+    selected = []
+    for name, rule in config['native'].items():
+        old = snapshot.get('tracks', {}).get(name, {})
+        previous = {**old, 'fingerprint': old.get('configuration_fingerprint'),
+                    'status': 'error' if old.get('error') else 'ok'}
+        if policy.due(previous, track_fingerprint(rule), now):
+            selected.append(name)
+    return sorted(selected, key=lambda name: (snapshot.get('tracks', {}).get(name, {}).get('attempted_at') or '', name))
+
 
 def _event_error(item):
     """Fixed public categories only: provider exception text can contain secrets."""
@@ -71,6 +97,7 @@ def import_events(stdout, native, previous, now, command_error=None):
         else:
             result[name] = failure(old, errors.get(name) or command_error or 'nvchecker did not report this track', now)
             result[name]['source'] = public_source(entry)
+        result[name]['failures'] = old.get('failures', 0) + 1 if result[name].get('error') else 0
         result[name]['configuration_fingerprint'] = fingerprint
         result[name]['reported_at'] = now if name in versions or name in errors else old.get('reported_at')
     component_error = command_error or ('invalid nvchecker JSON log' if malformed else None)

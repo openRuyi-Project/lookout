@@ -214,7 +214,8 @@ def merge_upstreams(config, latest, tracks, error, now, selected=None):
                   bindings={name: cfg.binding(config, name) for name in config.get('packages', {})})
     components = {}
     if selected is None:
-        prior = latest['components'].get('nvchecker', {})
+        prior = {**latest['components'].get('nvchecker', {}),
+                 'options_fingerprint': cfg.track_fingerprint(config.get('native_options', {}))}
         components['nvchecker'] = (state.failure(prior, error or 'some upstream tracks failed', now)
             if error or any(t.get('error') for t in tracks.values()) else state.success(prior, {}, now))
     return state.merge(latest, 'upstreams', fields, components)
@@ -262,47 +263,98 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
     return result
 
 
-def merge_specs(config, latest, specs, error, now):
+def merge_specs(config, latest, specs, error, now, *, context=None):
     """Merge SPEC results into the newest snapshot without rewinding OBS/upstream."""
     prior = latest['components'].get('spec_git', {})
-    component = state.failure(prior, error, now) if error else state.success(prior, {}, now)
+    component = state.failure(prior, error, now) if error else state.success(prior, context or {}, now)
     return state.merge(latest, 'specs', {'specs': specs,
-                       'spec_interval_seconds': config['spec'].get('interval_seconds', 21600)},
+                       'spec_interval_seconds': config['spec'].get('interval_seconds', 60)},
                        {'spec_git': component})
 
 
 def check_specs(config, db, describe=native_spec.describe):
-    """Third external source. Fetches the full clone, then reads every package's
-    changelog in one history traversal and re-parses metadata only where the SPECS tree
-    changed. No snapshot writer lock is held during git fetch; results merge briefly."""
+    """Fetch, reconcile changed packages and failed parses, then publish a checkpoint.
+
+    A missing ancestor or changed parser policy reconciles all packages. An unchanged
+    commit needs no log traversal; parse failures remain in the next retry set.
+    """
     spec = config['spec']
     if not spec['repo']:
         return state.read(db)
     repo, git = spec['repo'], spec.get('git', 'git')
     with state.writer_lock(str(db) + '.specs'):
-        now = state.utcnow()
         ok, fetch_error = spec_git.fetch(
             repo, git=git, timeout=spec['fetch_timeout_seconds'],
             retries=config['collector'].get('spec_fetch_retries', 2),
         )
-        logs, log_error = spec_git.changelogs(repo, spec['changelog_limit'], git=git)
         old = state.read(db)
         names = list(old.get('sources', {}))
-        # A failed traversal must not be read as "nothing changed": keep prior specs as-is.
-        specs = old.get('specs', {}) if log_error else refresh_specs(config, old.get('specs', {}), names, logs, now, describe)
-        error = '; '.join(e for e in (fetch_error, log_error) if e) or None
+        specs = old.get('specs', {})
+        error = fetch_error
+        context = None
+        now = state.utcnow()
+        if ok:
+            head, error = spec_git.head(repo, git=git)
+            if not error and head:
+                fingerprint = cfg.track_fingerprint({
+                    'resolver': native_spec.RESOLVER,
+                    **{key: spec.get(key) for key in ('url', 'branch', 'source_url_template',
+                                                     'macro_package', 'changelog_limit')},
+                })
+                prior = old['components'].get('spec_git', {})
+                incremental = (prior.get('input_fingerprint') == fingerprint
+                               and spec_git.is_ancestor(repo, prior.get('head'), head, git))
+                logs = {}
+                if incremental and prior['head'] != head:
+                    logs, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
+                                                     since=prior['head'])
+                if incremental and spec['macro_package'] in logs:
+                    incremental = False
+                if not incremental:
+                    logs, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git)
+                    selected = set(names)
+                else:
+                    added = set(names) - specs.keys()
+                    if added and not error:
+                        history, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
+                                                            names=sorted(added))
+                        logs.update(history)
+                    selected = (set(logs) | added | {name for name, fact in specs.items()
+                                if fact.get('error') or fact.get('metadata') is None}) & set(names)
+                    for name in selected - added:
+                        combined = {entry['commit']: entry for entry in
+                                    logs.get(name, []) + specs.get(name, {}).get('changelog', [])}
+                        logs[name] = list(combined.values())[:spec['changelog_limit']]
+                if not error:
+                    refreshed = refresh_specs(config, specs, sorted(selected), logs, now, describe)
+                    specs = {name: refreshed[name] if name in refreshed else
+                             state.success(specs[name], {}, now) for name in names}
+                    context = {'head': head, 'input_fingerprint': fingerprint,
+                               'mode': 'incremental' if incremental else 'full',
+                               'selected_packages': len(selected)}
+            elif not error:
+                error = 'SPEC HEAD unavailable'
+        elif not error:
+            error = 'SPEC fetch failed'
+        # Failed fetch/traversal retains both old facts and their success timestamps.
         with state.writer_lock(db, timeout=60):
-            snapshot = merge_specs(config, state.read(db), specs, error, now)
+            latest = state.read(db)
+            specs = {name: fact for name, fact in specs.items() if name in latest['sources']}
+            snapshot = merge_specs(config, latest, specs, error, now, context=context)
             state.commit(db, snapshot)
     return snapshot
 
 
-def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt=None):
+def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt=None, due=False):
     selected = nv.selected_names(config, tracks)
     # Only one upstream job, but no snapshot-writer lock during remote requests.
     with state.writer_lock(str(db) + '.upstreams'):
         old = state.read(db)
         now = state.utcnow()
+        if due:
+            if selected is not None:
+                raise ValueError('automatic selection cannot be combined with explicit tracks')
+            selected = nv.due_names(config, old, datetime.fromisoformat(now))
         def guard():
             current = cfg.load(config_path)
             if (current['nv_digest'] != config['nv_digest'] or
@@ -318,15 +370,44 @@ def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt
                 guard()
                 latest = merge_upstreams(config, state.read(db), completed, None, now, selected=list(completed))
                 state.commit(db, latest)
-        if selected is None:
+        if due and not selected:
+            tracks, error = {}, None
+        elif selected is None:
             tracks, error = run_nv(config, old['tracks'], now, on_results=publish)
+        elif due:
+            tracks, error = run_nv(config, old['tracks'], now, tracks=selected, on_results=publish)
         else:
             tracks, error = run_nv(config, old['tracks'], now, tracks=selected)
         if selected is not None and set(tracks) != set(selected):
             raise ValueError('selected upstream results do not match requested tracks')
         with state.writer_lock(db, timeout=60):
             guard()
-            snapshot = merge_upstreams(config, state.read(db), tracks, error, now, selected)
+            latest = state.read(db)
+            if due:
+                retained = {name: fact for name, fact in latest['tracks'].items() if name in config['native']}
+                retained.update(tracks)
+                bindings = {name: cfg.binding(config, name) for name in config.get('packages', {})}
+                if (not selected and retained == latest['tracks'] and latest.get('bindings') == bindings
+                        and latest.get('nv_digest') == config['nv_digest']
+                        and latest.get('native_ids') == list(config['native'])):
+                    if attempt is not None:
+                        attempt.update(selected_track_count=0, track_errors={}, command_error=None)
+                    return latest
+                snapshot = merge_upstreams(config, latest, retained, error, now)
+                # The oldest successful member dates total coverage. A subset must
+                # not relabel untouched tracks as freshly checked.
+                successes = [fact.get('fetched_at') for fact in retained.values()]
+                prior = latest['components'].get('nvchecker', {})
+                complete = len(retained) == len(config['native']) and all(successes)
+                component = {**prior, 'attempted_at': now, 'selected_track_count': len(selected),
+                             'options_fingerprint': cfg.track_fingerprint(config.get('native_options', {})),
+                             'error': error or ('some upstream tracks failed' if not complete or
+                                               any(fact.get('error') for fact in retained.values()) else None)}
+                if complete:
+                    component['fetched_at'] = min(successes, key=datetime.fromisoformat)
+                snapshot['components']['nvchecker'] = component
+            else:
+                snapshot = merge_upstreams(config, latest, tracks, error, now, selected)
             state.commit(db, snapshot)
         if attempt is not None:
             attempt.update(selected_track_count=len(tracks),
@@ -390,11 +471,14 @@ def main():
     p.add_argument('--only', choices=('all', 'obs', 'obs-metadata', 'builds', 'upstreams', 'specs', 'monitors'), default='all',
                    help='independent collection phases share one serialized snapshot writer; obs-metadata owns source/history, builds owns status; obs runs both')
     p.add_argument('--track', action='append', help='check only this configured upstream track; repeat with --only upstreams')
+    p.add_argument('--due', action='store_true', help='select changed, expired or retryable upstream tracks')
     args = p.parse_args()
     if args.source_limit is not None and args.source_limit < 0:
         p.error('--source-limit must be nonnegative')
     if args.track is not None and args.only != 'upstreams':
         p.error('--track requires --only upstreams')
+    if args.due and (args.only != 'upstreams' or args.track):
+        p.error('--due requires --only upstreams without --track')
     config = cfg.load(args.config)
     try:
         selected = nv.selected_names(config, args.track)
@@ -410,7 +494,8 @@ def main():
         if args.only in ('all', 'obs', 'builds'):
             snapshot = collect_builds(config, args.db)
         if args.only in ('all', 'upstreams'):
-            snapshot = check_upstreams(config, args.config, args.db, tracks=selected, attempt=attempt)
+            snapshot = check_upstreams(config, args.config, args.db, tracks=selected, attempt=attempt,
+                                       **({'due': True} if args.due else {}))
         if args.only in ('all', 'specs'):
             snapshot = check_specs(config, args.db)
         if args.only in ('all', 'monitors'):
@@ -419,17 +504,19 @@ def main():
     except BlockingIOError:
         print(json.dumps({'error': 'collector already running'}))
         return 75
-    errors = [v['error'] for v in snapshot['components'].values() if v.get('error')]
+    collection_errors = [v['error'] for v in snapshot['components'].values() if v.get('error')]
+    owners = {'obs': ('obs', 'builds'), 'obs-metadata': ('obs',)}.get(args.only, (args.only,))
+    errors = [v['error'] for key, v in snapshot['components'].items() if v.get('error')
+              and (args.only == 'all' or any(state.owns_component(owner, key) for owner in owners))]
     result = dict(generation=snapshot['generation'], packages=len(snapshot['sources']),
                   source_versions=sum(bool(s.get('version')) and not s.get('error') for s in snapshot['sources'].values()),
                   tracks=len(snapshot['tracks']), errors=errors)
-    if selected is not None:
+    if selected is not None or args.due:
         errors = ([attempt['command_error']] if attempt['command_error'] else []) + [
             f'{name}: {error}' for name, error in attempt['track_errors'].items()]
-        result.update(attempt, collection_errors=result['errors'], errors=errors)
-    if args.only == 'builds':
-        errors = [snapshot['components']['builds']['error']] if snapshot['components'].get('builds', {}).get('error') else []
-        result['errors'] = errors
+        result.update(attempt, errors=errors)
+    if collection_errors != errors:
+        result['collection_errors'] = collection_errors
     print(json.dumps(result, ensure_ascii=False))
     return 2 if errors else 0
 

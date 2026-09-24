@@ -11,7 +11,7 @@ def spec(snapshot, name='binutils', version='3.10.0'):
 
 def test_spec_version_drives_display_comparison_and_monitor(config, snapshot):
     spec(snapshot)
-    config['packages']['binutils'] = {'monitors': {'eol': {'product': 'fixture'}}}
+    config['packages']['binutils'] = {'monitors': {'eol': {'product': 'fixture', 'cycle_parts': 2}}}
     rows, _ = view.project(snapshot)
     row = next(r for r in rows if r['name'] == 'binutils')
     assert row['current'] == row['latest'] == '3.10.0'
@@ -44,7 +44,7 @@ def test_failed_spec_never_falls_back_to_obs(config, snapshot):
     rows, _ = view.project(snapshot)
     row = next(r for r in rows if r['name'] == 'binutils')
     assert row['current'] == '3.10.0' and row['relation'] == 'unknown'
-    config['packages']['binutils'] = {'monitors': {'eol': {'product': 'fixture'}}}
+    config['packages']['binutils'] = {'monitors': {'eol': {'product': 'fixture', 'cycle_parts': 2}}}
     assert monitor.plan(config, snapshot, 'binutils', 'eol')['status'] == 'unsupported'
     snapshot['specs']['binutils']['metadata'] = None
     assert state.current_source(snapshot, 'binutils')['version'] is None
@@ -70,7 +70,7 @@ def test_no_spec_preserves_obs_fallback(snapshot):
 
 def test_failed_refresh_retains_matching_evidence_without_rechecking(config, snapshot):
     spec(snapshot)
-    config['packages']['binutils'] = {'monitors': {'eol': {'product': 'fixture'}}}
+    config['packages']['binutils'] = {'monitors': {'eol': {'product': 'fixture', 'cycle_parts': 2}}}
     good = monitor.plan(config, snapshot, 'binutils', 'eol')
     previous = {**good, 'status': 'ok', 'checked_at': state.utcnow(),
                 'findings': [monitor_model.finding('old', 'EOL', 'Old fact', [], 'https://example.org/')],
@@ -87,4 +87,9 @@ def test_failed_refresh_retains_matching_evidence_without_rechecking(config, sna
     assert projected['findings'][0]['stale'] is True
     snapshot['specs']['binutils']['head'] = 'different-revision'
     changed = monitor.plan(config, snapshot, 'binutils', 'eol')
-    assert monitor.execute('eol', changed, None, previous)['findings'] == []
+    retained = monitor.execute('eol', changed, None, previous)
+    assert retained['findings'] == previous['findings']  # Revision is not an upstream lifecycle input.
+    assert retained['checked_at'] == previous['checked_at']
+    snapshot['specs']['binutils']['metadata']['version'] = '4.0.0'
+    changed_cycle = monitor.plan(config, snapshot, 'binutils', 'eol')
+    assert monitor.execute('eol', changed_cycle, None, previous)['findings'] == []

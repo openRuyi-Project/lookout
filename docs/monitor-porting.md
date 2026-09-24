@@ -32,7 +32,7 @@ into generic prose. Every monitor contributes to check-status filtering; existin
 build, version and maintenance facets consume the same package rows.
 
 `/api/v1/packages` is a compatibility projection of the same results, not a second
-calculation. Snapshot ownership, batching and intervals are unchanged: the OBS
+calculation. Snapshot ownership and batching remain separate from presentation: the OBS
 collector still issues bulk requests, the SPEC collector uses its isolated worker,
 and provider adapters use the bounded monitor runner. A shared result contract
 does **not** require calling OBS once per package or a base class with collection
@@ -52,6 +52,8 @@ plugin loader or separate service is needed.
 | `HOSTS` | Set of exact provider HTTPS hostnames. Scoped IO rejects other hosts, credentials, redirects and nonstandard ports. |
 | `SCOPE` | Optional `current` (default) or `upgrade`. Upgrade jobs only run when the same saved version decision used by the UI is `outdated`. |
 | `inputs(package, configured)` | Pure function; return a JSON-compatible dict, or `None` when no reliable identity exists. No network, filesystem or subprocess work. |
+| `query_subject(subject, inputs)` | Optional pure dependency projection for `check()`. Defaults to the entire subject; omit only fields that cannot affect the result. |
+| `refresh(subject, inputs, previous)` | Optional pure function returning `schedule.Schedule`; default is a six-hour recheck. It may use prior facts and current inputs, but performs no IO. |
 | `check(subject, inputs, io)` | Fetch/interpret provider observations; return exactly `status`, `findings`, `note`. Status is `ok`, `partial` or `unsupported`. Raise on failed/invalid provider responses. |
 
 `package` contains `name`, RPM-expanded `version`, source `revision` and the
@@ -88,11 +90,79 @@ check found no matching condition. For partial enrichment, retain the base facts
 and mark the missing fields explicitly. Neither case asserts that a package is
 generally safe, supported or fixed.
 
-The runner owns input fingerprints, retry intervals, batching, provider fairness,
+The runner owns input fingerprints, execution of refresh policies, batching, provider fairness,
 snapshot publication and exact-input failure retention. An `inputs()` exception
 is local to that package/monitor; a `check()` exception retains only matching old
-evidence without refreshing its successful-check time. Changed source revisions
-or upgrade targets invalidate old evidence. An idle heartbeat writes nothing.
+evidence without refreshing its successful-check time. Changed query inputs or
+upgrade targets invalidate old evidence. The default dependency set includes source
+revision; adapters that query only upstream versions can explicitly narrow it. An
+idle heartbeat writes nothing.
+
+## Refresh policy
+
+Modules choose **when evidence needs another check**; the runner controls concurrency,
+locks, retries and publication. No base class, extra timer or configuration-loaded
+Python is needed:
+
+```python
+from .schedule import Schedule
+
+
+def refresh(subject, inputs, previous):
+    return Schedule(interval_seconds=21600, retry_seconds=300, max_retry_seconds=3600)
+```
+
+This function can choose different intervals from its inputs or previous result.
+The runner calls it on each heartbeat. A changed source/identity/adapter/upgrade
+fingerprint is due regardless of the normal interval; an unchanged fingerprint
+is due after its interval. `error` and `partial` use exponential retry delays from
+`attempted_at`, capped by `max_retry_seconds`. Success resets the counter. Batch
+limits and the heartbeat mean these are earliest eligibility times, not deadlines.
+The transport cache cannot outlive the effective recheck/retry age; shared requests
+are still deduplicated. The existing cache's six-hour upper limit also remains.
+
+`query_subject()` separates query dependencies from source provenance. Security and
+License use `monitor_model.version_query`: only the current/target version enters
+the subject portion of the fingerprint. EOL uses the release cycle. Resolved
+`inputs` and adapter `VERSION` are always included. A packaging-only revision can
+therefore rebind matching upstream evidence to current source context without a
+provider call or a new `checked_at`/`changed_at`. This does not evaluate local patches.
+An adapter that inspects patches must keep source revision in its dependencies.
+Publication recomputes these dependencies and rechecks source availability, so
+an in-flight response cannot attach to a different query or hide a failed source.
+
+Defaults: Security and EOL recheck every six hours; License rechecks the version
+pair every twelve hours and still requires a confirmed upgrade. These checks must
+not run **only** on version changes: new vulnerabilities, lifecycle dates or metadata
+corrections can affect an unchanged version. An unchanged result advances
+`checked_at`, not its `changed_at` or `evidence_revision`.
+
+Operator overrides belong to `tracker.toml`, separately from package identities:
+
+```toml
+[monitors.refresh.security]
+interval_seconds = 3600
+retry_seconds = 300
+max_retry_seconds = 3600
+```
+
+Precedence is per-monitor override, explicit legacy `[monitors].interval_seconds`,
+then module policy. Remove the legacy global value to use different module defaults;
+it is not silently ignored in existing deployments. `stale_after_seconds` must
+exceed the effective normal interval. `monitor explain` reports effective timing
+and whether the input is due without running a check.
+
+OBS, Git and nvchecker remain batch collectors, not one adapter invocation per
+package. Their modules expose `polling(config)`/`polling(spec)` using the same
+`Schedule`; the supervisor only runs and waits. Operational intervals remain in
+`[collector]` and `[spec]`. OBS status is a single project-wide request, Git skips
+unchanged history. Git traverses commits since its saved ancestor and retries
+failed packages; a missing ancestor, macro change or parser-policy change performs
+full reconciliation. New OBS inventory members get their own historical changelogs.
+The upstream heartbeat uses `--due` to select changed rules, expired observations
+or retryable failures. A source-only RPM change needs a new comparison, not a new
+provider query. Each track still expires periodically; no manual heartbeat is needed.
+A normal collector invocation without `--due` remains an explicit full check. No poll is started by an HTTP page request.
 
 ## Executable example and acceptance
 
@@ -119,7 +189,7 @@ For a real port:
    credentials in these identities.
 3. Run the existing [development and native checks](../CONTRIBUTING.md). Include
    wrong/missing identity, malformed responses, no finding, timeout, unchanged
-   evidence and changed inputs. Upgrade ports also test no upgrade, disabled
+   evidence, due-time boundaries, cache expiry and changed inputs. Upgrade ports also test no upgrade, disabled
    comparison, stale upstream and changed target through the shared runner.
 4. The next heartbeat publishes the catalog and results. The selector, labels,
    evidence detail and check-status counts work without edits to API routes or

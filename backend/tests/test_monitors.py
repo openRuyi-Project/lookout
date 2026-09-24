@@ -12,7 +12,7 @@ class FixtureIO:
         self.responses = responses
         self.calls = []
 
-    def for_hosts(self, hosts):
+    def for_hosts(self, hosts, *, max_age=None):
         return self
 
     def json(self, method, url, body=None):

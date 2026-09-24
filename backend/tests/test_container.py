@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / 'backend'))
 spec = importlib.util.spec_from_file_location('container_entrypoint', ROOT / 'deploy/container-entrypoint.py')
 entrypoint = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(entrypoint)
+from tracker.schedule import Schedule
 
 
 class ContainerTests(unittest.TestCase):
@@ -50,7 +51,7 @@ class ContainerTests(unittest.TestCase):
                 pass
             def join(self, timeout):
                 pass
-        config = {'collector': {'obs_interval_seconds': 60, 'nvchecker_interval_seconds': 3600},
+        config = {'collector': {'obs_interval_seconds': 60, 'build_interval_seconds': 15, 'nvchecker_interval_seconds': 3600},
                   'spec': {'repo': '/data/spec-full.git', 'url': 'https://example.invalid/spec.git',
                            'branch': 'main', 'interval_seconds': 3600}}
         entrypoint._stop.set()
@@ -67,8 +68,8 @@ class ContainerTests(unittest.TestCase):
         self.assertEqual(jobs[1][1][1], ['node', '/app/frontend/server.mjs'])
         self.assertEqual(jobs[1][1][2]['HOST'], '127.0.0.2')
         self.assertIn((entrypoint.specs, (config['spec'],)), jobs)
-        self.assertIn((entrypoint.periodic, ("builds", 30)), jobs)
-        self.assertIn((entrypoint.periodic, ("obs-metadata", 60)), jobs)
+        self.assertIn((entrypoint.periodic, ("builds", Schedule(15, 30, 300))), jobs)
+        self.assertIn((entrypoint.periodic, ("obs-metadata", Schedule(60, 120, 900))), jobs)
         popen.assert_not_called()  # Main itself never performs a blocking clone.
 
     def test_monitor_heartbeat_is_automatic_and_separate_from_recheck_interval(self):
@@ -77,14 +78,14 @@ class ContainerTests(unittest.TestCase):
             def __init__(self, *, target, args, daemon): jobs.append((target, args))
             def start(self): pass
             def join(self, timeout): pass
-        config = {'collector': {'obs_interval_seconds':60, 'nvchecker_interval_seconds':3600},
+        config = {'collector': {'obs_interval_seconds':60, 'build_interval_seconds':15, 'nvchecker_interval_seconds':3600},
                   'spec': {'repo':None}, 'monitors': {'enabled':['security'], 'interval_seconds':1800}}
         entrypoint._stop.set()
         with patch.object(entrypoint, 'load_runtime', return_value=config), \
              patch.object(entrypoint.threading, 'Thread', Thread), \
              patch.object(entrypoint.os, 'makedirs'), patch.object(entrypoint.signal, 'signal'):
             entrypoint.main()
-        self.assertIn((entrypoint.periodic, ('monitors', 30)), jobs)
+        self.assertIn((entrypoint.periodic, ('monitors', Schedule(30, 60, 300))), jobs)
 
     def test_image_healthcheck_command_uses_runtime_host(self):
         line = next(line.strip() for line in (ROOT / 'Containerfile').read_text().splitlines()
@@ -121,7 +122,7 @@ class ContainerTests(unittest.TestCase):
                 entrypoint._stop.set()
         with patch.object(entrypoint, 'run_collector', side_effect=lambda _: next(results)), \
              patch.object(entrypoint._stop, 'wait', side_effect=wait):
-            entrypoint.periodic('builds', 30)
+            entrypoint.periodic('builds', Schedule(30, 60, 300))
         self.assertEqual(waits, [60, 120, 240, 300, 300, 30, 30, 30])
 
     def test_clone_uses_config_origin_and_branch(self):
@@ -133,7 +134,7 @@ class ContainerTests(unittest.TestCase):
         env = child.call_args.kwargs['env']
         self.assertEqual((env['SPEC_REPO_DIR'], env['SPEC_REPO_URL'], env['SPEC_REPO_BRANCH']),
                          (config['repo'], config['url'], config['branch']))
-        periodic.assert_called_once_with('specs', 800)
+        periodic.assert_called_once_with('specs', Schedule(800, 900, 900))
         self.assertEqual(child.call_args.kwargs['timeout'], 47)
 
     def test_init_timeout_terminates_child_and_retries_before_periodic(self):
@@ -151,7 +152,7 @@ class ContainerTests(unittest.TestCase):
             entrypoint.specs(config)
         self.assertEqual(child.call_count, 2)
         wait.assert_called_once_with(60)
-        periodic.assert_called_once_with('specs', 800)
+        periodic.assert_called_once_with('specs', Schedule(800, 900, 900))
 
     def test_shutdown_stops_active_collector_process(self):
         started = threading.Event()

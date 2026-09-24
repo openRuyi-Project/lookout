@@ -8,11 +8,22 @@ collection updates do not require rebuilding the frontend. There are no host
 collection timers or additional application replicas.
 
 OBS status uses one project-wide request every `build_interval_seconds` (default
-30, minimum 10). Failed polls back off to at most five minutes, without immediate
+15, minimum 10). Failed polls back off to at most five minutes, without immediate
 HTTP retries; recovery restores the configured delay. Source/history work runs
 separately at `obs_interval_seconds` (default 60); bulk successful-build history
 has its own `build_history_interval_seconds` (default 300). Intervals are minimum
-pauses after completion: no catch-up bursts or overlapping jobs.
+pauses after completion: no catch-up bursts or overlapping jobs. Git checks default
+to 60 seconds (`[spec].interval_seconds`). An unchanged HEAD skips history
+traversal; changed commits select package directories. Missing ancestors and changed
+macro/parser inputs require full reconciliation. Failed package parses are retried.
+Failed Git checks retain old timestamps and back off to at most 15 minutes.
+Upstream selection runs on a 60-second local heartbeat: new/changed rules run
+immediately, successful tracks expire at `nvchecker_interval_seconds` (six hours
+by default), and failed tracks retry from five minutes up to one hour. No due
+tracks means no provider command or snapshot write. Supplemental module defaults
+and per-module overrides are documented in the monitor porting guide.
+Explicit operator intervals remain authoritative; an image upgrade does not
+rewrite the mounted configuration.
 
 For diagnostics, `--only builds` refreshes current status, `--only obs-metadata`
 refreshes source/history, and the existing `--only obs` command runs both. Page

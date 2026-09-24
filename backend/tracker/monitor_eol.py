@@ -4,14 +4,33 @@ from datetime import date
 import re
 from urllib.parse import quote
 from .monitor_model import finding, evidence
+from .schedule import Schedule
+
 
 TITLE = 'EOL'
 VERSION = 2
 HOSTS = {"endoflife.date"}
 
 
+def refresh(subject, inputs, previous):
+    return Schedule(interval_seconds=21600)
+
+
 def inputs(package, configured):
     return configured
+
+
+def release_cycle(version, parts):
+    if type(parts) is not int or not 1 <= parts <= 3:
+        raise ValueError('cycle_parts must be in 1..3')
+    match = re.fullmatch(r"(\d+(?:\.\d+)*)(?:[a-z][0-9]*)?", version or '')
+    if not match or len(match[1].split('.')) < parts:
+        return None
+    return '.'.join(match[1].split('.')[:parts])
+
+
+def query_subject(subject, settings):
+    return {'cycle': release_cycle(subject['version'], settings['cycle_parts'])}
 
 
 def check(subject, settings, io):
@@ -25,10 +44,9 @@ def check(subject, settings, io):
         or not 1 <= parts <= 3
     ):
         raise ValueError("lifecycle requires a product slug and cycle_parts in 1..3")
-    match = re.fullmatch(r"(\d+(?:\.\d+)*)(?:[a-z][0-9]*)?", subject["version"])
-    if not match or len(match[1].split(".")) < parts:
-        return {"status": "unsupported", "findings": [], "note": "Version does not establish a release cycle."}
-    cycle = ".".join(match[1].split(".")[:parts])
+    cycle = release_cycle(subject['version'], parts)
+    if cycle is None:
+        return {'status': 'unsupported', 'findings': [], 'note': 'Version does not establish a release cycle.'}
     data = io.json("GET", "https://endoflife.date/api/v1/products/" + quote(product, safe="") + "/")
     releases = data["result"]["releases"]
     release = next((r for r in releases if r["name"] == cycle), None)

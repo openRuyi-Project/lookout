@@ -89,7 +89,7 @@ def test_one_broken_input_does_not_stop_other_packages(config, snapshot, monkeyp
     monkeypatch.setattr(monitor.cfg, 'load', lambda path: config)
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
-    result = monitor.collect(config, 'unused', db, io=SimpleNamespace(for_hosts=lambda hosts: None))
+    result = monitor.collect(config, 'unused', db, io=SimpleNamespace(for_hosts=lambda hosts, **kwargs: None))
     assert result['monitors']['binutils']['fixture']['status'] == 'error'
     assert set(checked) == {'foo3', 'foo4', 'untracked'}
 

@@ -6,8 +6,18 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import quote, unquote, urlsplit
 from .state import usable_version
+from .schedule import Schedule
 
 MAX_XML = 20 * 1024 * 1024
+
+
+def polling(config):
+    """Keep status polling cheap; source/history requests use their separate lane."""
+    options = config['collector']
+    build = options['build_interval_seconds']
+    metadata = options['obs_interval_seconds']
+    return {'builds': Schedule(build, build * 2, max(build * 2, 300)),
+            'obs-metadata': Schedule(metadata, metadata * 2, max(metadata * 2, 900))}
 
 def xml(data, root_tag):
     if len(data) > MAX_XML:

@@ -27,6 +27,7 @@ inventory removes packages; changing a target repository/architecture invalidate
 that target's old observations. An in-flight status response for a changed scope
 is discarded.
 
+
 ## Package selection
 
 `build_status` owns OBS status meaning; `view` folds build flavors into one target
@@ -126,8 +127,8 @@ extraction, source execution or arbitrary command is exposed by the adapter.
 Dependency-Track's SBOM portfolio service is outside this lightweight tracker.
 
 Only matching inputs may retain old findings after a provider failure; their
-original observation time is not refreshed. Source changes or changed upgrade
-targets invalidate them. Dashed Maintenance labels link to detail evidence and
+original observation time is not refreshed. Query dependency changes or changed
+upgrade targets invalidate them; a source-context rebind does not refresh evidence. Dashed Maintenance labels link to detail evidence and
 coverage, rather than adding another global warning banner.
 
 Provider network policy is separate from version/SPEC collection. An operator may
@@ -158,10 +159,12 @@ VERSION changes invalidate cached inputs. Errors and stale structured evidence
 remain visible. No synthetic conversion of prior advice into provider facts.
 
 Monitor heartbeat (`heartbeat_seconds`, default 30) schedules bounded batches;
-`interval_seconds` remains the minimum per-input recheck/retry interval. New
-packages and changed inputs are automatically drained on successive heartbeats.
-A no-work heartbeat does not publish a new snapshot. Failures use attempted time
-for retry backoff and retain the last successful evidence. `checked_at` records a
+each adapter owns a pure refresh policy (see [porting](monitor-porting.md#refresh-policy)).
+Input changes queue work immediately; unchanged inputs get periodic rechecks and
+failed/partial checks use persisted retry counters. HTTP cache age is capped by
+the effective policy. New work drains through the existing bounded, fair batches.
+A no-work heartbeat does not publish a snapshot. Failed checks retain the last
+successful evidence; unrelated collection errors do not back off another lane. `checked_at` records a
 successful check; `changed_at` and `evidence_revision` change only with subject or
 evidence content, not response ordering or polling time. Daily EPSS values/dates
 are evidence changes, but do not create a new advisory identity.

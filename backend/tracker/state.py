@@ -160,6 +160,12 @@ BUILD_FIELDS = {
 }
 
 
+def owns_component(phase, key):
+    if phase == 'obs':
+        return key in ('targets', 'inventory', 'source_index') or key.startswith('build_history:')
+    return key == {'upstreams': 'nvchecker', 'specs': 'spec_git', 'builds': 'builds'}.get(phase)
+
+
 def merge(latest, phase, fields, components=None):
     """Merge only owned fields into the latest snapshot; never accept generation."""
     if phase not in PHASE_FIELDS or set(fields) - PHASE_FIELDS[phase]:
@@ -168,10 +174,7 @@ def merge(latest, phase, fields, components=None):
     for key in components:
         if phase == 'monitors':
             raise ValueError('monitor observations own no collection component')
-        valid = (key == 'nvchecker' if phase == 'upstreams' else key == 'spec_git' if phase == 'specs'
-                 else key == 'builds' if phase == 'builds'
-                 else key in ('targets', 'inventory', 'source_index') or key.startswith('build_history:'))
-        if not valid:
+        if not owns_component(phase, key):
             raise ValueError('snapshot component ownership violation')
     result = deepcopy(latest)
     result.update(deepcopy({k: v for k, v in fields.items() if k != 'builds'}),

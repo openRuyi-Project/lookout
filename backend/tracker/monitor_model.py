@@ -16,6 +16,11 @@ def subject(snapshot, name):
             'revision': source.get('revision')}
 
 
+def version_query(subject, inputs):
+    """Dependencies of external version-based evidence, not local patch applicability."""
+    return {key: subject.get(key) for key in ('version', 'target_version') if key in subject}
+
+
 def fingerprint(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 

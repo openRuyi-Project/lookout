@@ -42,7 +42,7 @@ def test_one_decision_drives_view_and_upgrade_jobs(case, expected, config, snaps
     version = version_status.evaluate(snapshot, 'binutils', now)
     row = next(r for r in view.project(snapshot, now)[0] if r['name'] == 'binutils')
     plan = monitor.plan(config, snapshot, 'binutils', 'fixture', version=version)
-    monitor.execute('fixture', plan, SimpleNamespace(for_hosts=lambda hosts: None))
+    monitor.execute('fixture', plan, SimpleNamespace(for_hosts=lambda hosts, **kwargs: None))
     assert version.relation == row['relation'] == expected
     assert bool(calls) == version.upgrading == (expected == 'outdated')
     assert plan['subject']['version'] == row['current']

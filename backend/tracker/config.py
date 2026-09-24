@@ -13,7 +13,7 @@ def load(path):
     raw = path.read_bytes()
     config = tomllib.loads(raw.decode())
     config['config_digest'] = hashlib.sha256(raw).hexdigest()
-    for key, default in (('obs_interval_seconds', 60), ('build_interval_seconds', 30), ('nvchecker_interval_seconds', 21600),
+    for key, default in (('obs_interval_seconds', 60), ('build_interval_seconds', 15), ('nvchecker_interval_seconds', 21600),
                          ('nvchecker_timeout_seconds', 7200), ('build_history_interval_seconds', 300)):
         value = config['collector'].setdefault(key, default)
         if type(value) is not int or value <= 0:
@@ -71,7 +71,7 @@ def load(path):
     timeout = config['spec']['fetch_timeout_seconds']
     if type(timeout) is not int or timeout <= 0:
         raise ValueError('spec.fetch_timeout_seconds must be a positive integer')
-    interval = spec.get('interval_seconds', 21600)
+    interval = spec.get('interval_seconds', 60)
     if type(interval) is not int or interval <= 0:
         raise ValueError('spec.interval_seconds must be a positive integer')
     config['spec']['interval_seconds'] = interval
