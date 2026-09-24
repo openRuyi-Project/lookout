@@ -63,6 +63,55 @@ def test_identical_build_poll_keeps_payload_revision_and_projection(config, snap
     assert client.get('/api/v2/packages/binutils').json()['monitors']['build']['data']['targets'][0]['raw_status'] == 'building'
 
 
+@pytest.mark.parametrize('old_age,new_offset,before_status,after_status', [
+    (20, 0, 'expired', 'ok'),
+    (0, 301, 'ok', 'expired'),
+])
+def test_clock_only_freshness_change_reprojects_rows_and_facets(
+        snapshot, tmp_path, monkeypatch, old_age, new_offset, before_status, after_status):
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    snapshot['obs_stale_after_seconds'] = 10
+    old_stamp = (now - timedelta(seconds=old_age)).isoformat()
+    for targets in snapshot['builds'].values():
+        for fact in targets.values():
+            fact.update(fetched_at=old_stamp, attempted_at=old_stamp)
+    snapshot['components']['builds'] = state.success({}, {}, old_stamp)
+    db = tmp_path / 'snapshot.db'
+    state.commit(db, snapshot)
+    revision = state.read_cached(db)[1]
+    monkeypatch.setattr(api, 'time', SimpleNamespace(time=lambda: now.timestamp()))
+    calls = []
+    project = view.project_monitors
+    monkeypatch.setattr(view, 'project_monitors', lambda *a, **kw: calls.append(1) or project(*a, **kw))
+    client = TestClient(api.create_app(db))
+    before = client.get('/api/v2/packages/binutils').json()['monitors']['build']
+    assert before['check']['status'] == before_status and len(calls) == 1
+
+    stamp = (now + timedelta(seconds=new_offset)).isoformat()
+    patches = collector.build_patch(snapshot, 'builds')
+    for targets in patches.values():
+        for fact in targets.values():
+            fact.update(fetched_at=stamp, attempted_at=stamp)
+    assert state.commit_build_heartbeat(db, snapshot, patches, state.success(snapshot['components']['builds'], {}, stamp))
+    assert state.read_cached(db)[1] == revision
+
+    after = client.get('/api/v2/packages/binutils').json()['monitors']['build']
+    assert after['check']['status'] == after_status and len(calls) == 2
+    expected_rows, expected_collection = project(state.read(db), now)
+    expected = next(row for row in expected_rows if row['name'] == 'binutils')['monitors']['build']
+    assert after['data'] == expected['data']
+    listing = client.get('/api/v2/packages', params={'monitor': 'build', 'check': after_status}).json()
+    assert listing['total'] == len(snapshot['sources'])
+    assert listing['check_statuses'] == {after_status: len(snapshot['sources'])}
+    assert listing['collection'] == expected_collection
+    assert listing['counts']['attention'] == sum(
+        any('attention' in module['dimensions'].get('view', []) for module in row['monitors'].values())
+        for row in expected_rows
+    )
+    assert client.get('/api/v2/packages', params={'monitor': 'build', 'check': before_status}).json()['total'] == 0
+    assert len(calls) == 2
+
+
 @pytest.mark.parametrize('change', ['missing', 'failed', 'changed', 'scope', 'unknown_field'])
 def test_partial_or_changed_status_cannot_refresh_a_whole_vector(snapshot, tmp_path, change):
     db = tmp_path / 'snapshot.db'

@@ -1,5 +1,5 @@
 """One atomic snapshot, one writer. No ORM, event log, or speculative domain model."""
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import fcntl
@@ -31,7 +31,6 @@ def read_cached(db, previous=None):
     """
     if not Path(db).is_file():
         return empty(), None
-    from contextlib import closing
     with closing(sqlite3.connect(Path(db).resolve().as_uri() + '?mode=ro', uri=True, timeout=10)) as conn:
         conn.execute('BEGIN')
         exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshot_clock'").fetchone()
@@ -80,7 +79,7 @@ def commit_build_heartbeat(db, latest, patches, component):
                 return False
     # Metadata exists after the first ordinary commit. Keep legacy databases on
     # that path rather than adding a second migration or mutating a reader.
-    with sqlite3.connect(db, timeout=10) as conn:
+    with closing(sqlite3.connect(db, timeout=10)) as conn, conn:
         exists = conn.execute("SELECT 1 FROM sqlite_master WHERE name='snapshot_clock'").fetchone()
         if not exists:
             return False
@@ -93,7 +92,7 @@ def commit(db, snapshot):
     body = json.dumps(snapshot, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
     db = Path(db)
     db.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db, timeout=10) as conn:
+    with closing(sqlite3.connect(db, timeout=10)) as conn, conn:
         # Read-only systemd API mounts cannot recreate WAL/SHM after a writer exits.
         # Short, infrequent writes use rollback journals so closed-writer reads work.
         conn.execute('PRAGMA journal_mode=DELETE')

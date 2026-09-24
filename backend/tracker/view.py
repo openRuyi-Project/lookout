@@ -74,9 +74,13 @@ def refresh_build_clock(snapshot, rows, now):
     """Only used before the cached projection's next semantic time boundary.
 
     Storage proved the entire successful status vector unchanged. Reuse source,
-    version and evidence projections; their freshness deadlines remain enforced.
+    version and evidence projections only while both build clocks are fresh:
+    a recovered or future-dated heartbeat changes more than display timestamps.
     """
     stamp = snapshot['components']['builds']['fetched_at']
+    if (state.stale({'fetched_at': stamp}, now, component_ttl(snapshot, 'builds'))
+            or any(row['monitors']['build']['check']['stale'] for row in rows)):
+        return project_monitors(snapshot, now)
     updated = []
     for row in rows:
         build = row['monitors']['build']
