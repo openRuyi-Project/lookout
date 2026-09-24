@@ -53,17 +53,40 @@ def project_monitors(snapshot, now=None):
                                         monitor_model.project(snapshot, name, now, version=version))
         results = {module.id: module.read(context) for module in modules}
         rows.append(dict(name=name, detail_url=f'/packages/{quote(name, safe="")}', monitors=results))
+    return rows, collection(snapshot, rows, now)
+
+
+def collection(snapshot, rows, now):
     errors = [v['error'] for v in snapshot['components'].values() if v.get('error')]
     if snapshot.get('last_attempt') and any(state.stale(v, now, component_ttl(snapshot, k))
                                           for k, v in snapshot['components'].items()):
         errors.append('collection observations are stale')
     components = snapshot['components']
-    return rows, dict(obs_updated_at=observed_at([components.get(k, {}) for k in
+    return dict(obs_updated_at=observed_at([components.get(k, {}) for k in
                                                 ('targets', 'inventory', 'source_index', 'builds')]),
                       upstream_updated_at=observed_at([components.get('nvchecker', {})]),
                       last_attempt=snapshot['last_attempt'], mode=snapshot['mode'], errors=errors,
                       generation=snapshot['generation'], packages=len(rows),
                       tracked_packages=sum(bool(r['monitors']['version']['data']['track']) for r in rows))
+
+
+def refresh_build_clock(snapshot, rows, now):
+    """Only used before the cached projection's next semantic time boundary.
+
+    Storage proved the entire successful status vector unchanged. Reuse source,
+    version and evidence projections; their freshness deadlines remain enforced.
+    """
+    stamp = snapshot['components']['builds']['fetched_at']
+    updated = []
+    for row in rows:
+        build = row['monitors']['build']
+        targets = [{**target, 'updated_at': stamp,
+                    'flavors': [{**fact, 'fetched_at': stamp, 'attempted_at': stamp, 'updated_at': stamp}
+                                for fact in target['flavors']]} for target in build['data']['targets']]
+        build = {**build, 'check': {**build['check'], 'checked_at': stamp, 'attempted_at': stamp},
+                 'data': {**build['data'], 'targets': targets}}
+        updated.append({**row, 'monitors': {**row['monitors'], 'build': build}})
+    return updated, collection(snapshot, updated, now)
 
 
 def legacy_package(row):

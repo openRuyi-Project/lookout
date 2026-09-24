@@ -27,6 +27,15 @@ inventory removes packages; changing a target repository/architecture invalidate
 that target's old observations. An in-flight status response for a changed scope
 is discarded.
 
+A complete successful status poll whose facts are identical only updates the SQLite
+`snapshot_clock` row. It leaves the payload and content generation unchanged.
+Failed, partial or changed vectors use the ordinary snapshot commit. The clock
+and payload revision are read in one transaction; a full write consumes the clock
+and assigns a new storage revision, even if generation was retained by an importer.
+API caching uses that storage revision plus file identity and freshness deadlines.
+A clock-only change refreshes build timestamps, not source/version/security
+projections. Missing records cannot become fresh through this path. Backup uses
+SQLite's backup API and includes both tables; old schema-1 snapshots remain readable.
 
 ## Package selection
 

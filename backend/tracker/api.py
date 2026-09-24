@@ -314,10 +314,22 @@ def create_app(db=None):
             with lock:
                 st = db.stat() if db.exists() else None
                 signature = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_ctime_ns, st.st_size) if st else None
+                clock_changed = False
                 if 'snapshot' not in cache or cache.get('signature') != signature:
-                    snap = state.read(db)
-                    cache.clear()
-                    cache.update(snapshot=snap, signature=signature)
+                    same_file = signature is not None and cache.get('signature') is not None and signature[:2] == cache['signature'][:2]
+                    previous = (cache['snapshot'], cache.get('revision')) if same_file else None
+                    snap, revision = state.read_cached(db, previous)
+                    clock_changed = bool(previous and revision is not None and revision == cache.get('revision'))
+                    if clock_changed:
+                        before = cache['snapshot']['components'].get('builds', {}).get('fetched_at')
+                        after = snap['components'].get('builds', {}).get('fetched_at')
+                        # Restoring an older backup can rewind the clock without
+                        # changing its payload revision. Re-evaluate freshness.
+                        clock_changed = bool(before and after and
+                            datetime.fromisoformat(after) >= datetime.fromisoformat(before))
+                    if not clock_changed:
+                        cache.clear()
+                    cache.update(snapshot=snap, revision=revision, signature=signature)
                 snap = cache['snapshot']
                 if not snap['generation']:
                     raise HTTPException(503, 'No collected snapshot yet')
@@ -326,6 +338,9 @@ def create_app(db=None):
                 if ('projected' not in cache or now < cache['last_seen']
                         or (deadline is not None and now >= deadline)):
                     cache['projected'] = view.project_monitors(snap, now)
+                    cache['deadline'] = view.next_transition(snap, now)
+                elif clock_changed:
+                    cache['projected'] = view.refresh_build_clock(snap, cache['projected'][0], now)
                     cache['deadline'] = view.next_transition(snap, now)
                 # Check against the latest request, not just the projection time:
                 # a clock reversal can make an expired/future observation valid.

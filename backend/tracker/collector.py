@@ -457,9 +457,12 @@ def collect_builds(config, db):
                 raise ValueError('OBS scope changed while checking builds')
             patches = {name: facts for name, facts in build_patch(observed, 'builds').items()
                        if name in latest['inventory']}
-            snapshot = state.merge(latest, 'builds', {'builds': patches},
-                                   {'builds': observed['components']['builds']})
-            state.commit(db, snapshot)
+            component = observed['components']['builds']
+            if state.commit_build_heartbeat(db, latest, patches, component):
+                snapshot = state.read(db)
+            else:
+                snapshot = state.merge(latest, 'builds', {'builds': patches}, {'builds': component})
+                state.commit(db, snapshot)
     return snapshot
 
 
