@@ -114,9 +114,12 @@ for path in ('/', '/packages/smoke-fixture'):
         name = self.start('seeded', volumes)
         self.wait_live(name)
         self.assert_seeded(name)
-        self.python(name, '''import os
+        self.python(name, '''import os, sys, importlib.util
 from pathlib import Path
 assert os.geteuid() == 10001
+assert sys.version_info >= (3, 14)
+for module in ('pytest', 'hypothesis'):
+    assert importlib.util.find_spec(module) is None, module + ' leaked into runtime'
 for root in ('/config', '/app'):
     try:
         Path(root, '.smoke-write').write_text('no')

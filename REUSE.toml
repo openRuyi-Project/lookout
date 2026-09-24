@@ -4,8 +4,8 @@ version = 1
 # Source files carry SPDX headers; data and lock files are annotated here.
 [[annotations]]
 path = [
-  "backend/requirements.in",
   "backend/requirements.lock",
+  "backend/requirements-test.lock",
   "config/tracker.toml",
   "frontend/package.json",
   "frontend/package-lock.json",

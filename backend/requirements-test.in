@@ -1,3 +1,0 @@
-# Test tooling, layered on top of the runtime requirements.
--r requirements.in
-pytest>=8,<10

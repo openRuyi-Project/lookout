@@ -6,6 +6,16 @@ For data ownership and safety boundaries, use the [maintainer reference](docs/de
 
 ## Development checks
 
+Python 3.14+ is required. Dependency inputs live in `backend/pyproject.toml`;
+`requirements.lock` contains runtime dependencies, and `requirements-test.lock`
+adds pytest/Hypothesis. Regenerate on dependency changes (uv is a developer tool):
+
+```sh
+uv pip compile backend/pyproject.toml --python-version 3.14 --python-platform linux --no-header --no-annotate -o backend/requirements.lock
+uv pip compile backend/pyproject.toml --extra test --python-version 3.14 --python-platform linux --constraint backend/requirements.lock --no-header --no-annotate -o backend/requirements-test.lock
+```
+
+
 ```sh
 python3 scripts/check-architecture.py
 # In the native Linux environment described below:
@@ -20,8 +30,9 @@ and license copies needed for reproducible builds and distribution.
 
 The CI workflow separates lightweight checks from the container/native suite.
 Native tests require RPM, Landlock ABI 6+, seccomp and an unprivileged worker.
-`deploy/check-image.sh IMAGE` runs the suite in the built image without provider
-network access. An unsupported kernel fails the check; skipped tests fail this
+`deploy/check-image.sh IMAGE` builds a disposable test layer on that image, then
+runs the suite without provider network access. Only building the test layer needs
+the package index; pytest and Hypothesis are absent from the shipped image. An unsupported kernel fails the check; skipped tests fail this
 release gate. Its temporary filesystem permits executable installer-test shims;
 production mount policy and SPEC confinement are unchanged. Live provider validation is a separate, explicitly requested check.
 

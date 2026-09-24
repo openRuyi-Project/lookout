@@ -30,7 +30,7 @@ refreshes source/history, and the existing `--only obs` command runs both. Page
 requests only read saved observations; opening more tabs does not poll OBS.
 
 Use a dedicated non-root Linux account, cgroup v2, rootless Podman with Quadlet,
-Python 3.11+ for host tools, and local persistent storage. Native SPEC parsing
+Python 3.14+ for host tools, and local persistent storage. Native SPEC parsing
 requires Landlock ABI 6+ and seccomp. Run the actual native gate on the target
 host; a kernel version string alone does not prove isolation works.
 

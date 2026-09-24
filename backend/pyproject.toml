@@ -1,6 +1,5 @@
-# Minimal packaging, test, and lint config for a read-only PoC collector.
-# Runtime dependencies are pinned in requirements.lock (tested on Fedora 43 /
-# Python 3.14); native rpm is provided by the distribution, not by pip.
+# Dependency inputs; requirements*.lock are generated from this file.
+# Native rpm is provided by the distribution, not by pip.
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -10,7 +9,7 @@ name = "openruyi-tracker"
 version = "0.1.0"
 description = "Read-only OBS and nvchecker package status snapshot"
 license = "MulanPSL-2.0"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
   "fastapi>=0.115,<1",
   "uvicorn>=0.30,<1",
@@ -18,11 +17,14 @@ dependencies = [
   "defusedxml==0.7.1",
   "nvchecker==2.22",
   "jq>=1.8,<2",
-  "packaging>=24",
+  "packaging>=24.2",
+  "pydantic>=2.12,<3",
+  "tomlkit>=0.15.1,<1",
+  "license-expression>=30.4.4,<31",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8,<10"]
+test = ["pytest>=8,<10", "hypothesis>=6.168.1,<7"]
 # ruff is a developer-only linter; it is not installed in the runtime lock.
 lint = ["ruff>=0.6"]
 
@@ -35,7 +37,7 @@ addopts = "-ra"
 
 [tool.ruff]
 line-length = 120
-target-version = "py311"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
