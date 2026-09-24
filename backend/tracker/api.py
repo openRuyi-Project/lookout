@@ -244,9 +244,18 @@ class BuildObservation(BuildSummary):
     targets: list[BuildDetail]
 
 
+class EvidenceEntry(BaseModel):
+    id: str
+    title: str
+    evidence_url: str
+    stale: bool
+
+
 class EvidenceSummary(BaseModel):
     kind: Literal['evidence']
     labels: list[MaintenanceLabel]
+    finding_count: int
+    entries: list[EvidenceEntry] = []
 
 
 class EvidenceObservation(EvidenceSummary):
@@ -299,6 +308,9 @@ class MonitoredList(BaseModel):
     maintenance_labels: dict[str, int]
     build_statuses: dict[str, list[BuildStatusOption]]
     check_statuses: dict[str, int]
+    section: Literal['results', 'coverage']
+    result_count: int
+    coverage_count: int
 
 
 def create_app(db=None):
@@ -389,21 +401,28 @@ def create_app(db=None):
                          page: int = Query(1, ge=1, le=1000000), per_page: int = Query(100, ge=1, le=200),
                          buildsystem: str = Query('', max_length=100), maintenance: str = Query('', max_length=40),
                          build: list[str] = Query(default=[], max_length=16),
-                         monitor: str = Query('', max_length=64), check: str = Query('', max_length=40)):
+                         monitor: str = Query('', max_length=64), check: str = Query('', max_length=40),
+                         section: Literal['results', 'coverage'] = Query('coverage')):
         snap, rows, collection = data()
         catalog = [module.describe() for module in monitor_views.registry(snap)]
         if monitor and monitor not in {m['id'] for m in catalog}:
             raise HTTPException(422, 'Unknown monitor')
         if check and not monitor:
             raise HTTPException(422, 'Check status requires a monitor')
+        # Existing API clients retain the all-package default. The website asks
+        # explicitly for results; old check links always enter the coverage view.
+        section = 'coverage' if check else section
+        focused = next((m for m in catalog if m['id'] == monitor), None)
         try:
             builds = package_list.build_selections(build, snap['targets'])
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
         result = package_list.PackageList(rows, snap['targets'], q, monitor=monitor).select(
             view=view_name, buildsystem=buildsystem, maintenance=maintenance,
-            builds=builds, page=page, per_page=per_page, check=check)
-        return {**result, 'items': [view.monitor_summary(row) for row in result['items']],
+            builds=builds, page=page, per_page=per_page, check=check,
+            findings_only=bool(focused and focused['kind'] == 'evidence' and section == 'results'))
+        return {**result, 'items': [view.monitor_summary(row, monitor) for row in result['items']],
+                'section': section,
                 'monitors': catalog, 'targets': snap['targets'], 'collection': collection,
                 'presentation': snap.get('presentation', {})}
 

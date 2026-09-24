@@ -241,8 +241,9 @@ def evidence(context, monitor_id):
     check.setdefault('status', 'pending')
     check['stale'] = any(f['stale'] for f in facts) or check['status'] in ('expired', 'input_changed', 'input_unavailable', 'schema_changed')
     labels = monitor_model.summarize(facts)
-    return dict(check=check, dimensions={'maintenance': [label['label'] for label in labels]},
-                data=dict(kind='evidence', findings=facts, labels=labels))
+    return dict(check=check, dimensions={'maintenance': [label['label'] for label in labels],
+                                        'findings:' + monitor_id: ['yes'] if facts else []},
+                data=dict(kind='evidence', findings=facts, finding_count=len(facts), labels=labels))
 
 
 CORE = (
@@ -263,7 +264,7 @@ def registry(snapshot):
                             partial(evidence, monitor_id=mid)) for mid in sorted(ids)))
 
 
-def summary(result):
+def summary(result, *, focused=False):
     data = result['data']
     if data['kind'] == 'source':
         data = {k: data[k] for k in ('kind', 'version', 'buildsystem', 'buildsystem_status')}
@@ -272,5 +273,9 @@ def summary(result):
     elif data['kind'] == 'build':
         data = {**data, 'targets': [{k: v for k, v in b.items() if k != 'flavors'} for b in data['targets']]}
     else:
-        data = {k: v for k, v in data.items() if k != 'findings'}
+        # A bounded preview makes focused lists useful without N+1 detail requests.
+        # Complete evidence remains on the package endpoint.
+        entries = [{k: finding[k] for k in ('id', 'title', 'evidence_url', 'stale')}
+                   for finding in data['findings'][:3]] if focused else []
+        data = {**{k: v for k, v in data.items() if k != 'findings'}, 'entries': entries}
     return {k: (data if k == 'data' else v) for k, v in result.items() if k != 'dimensions'}

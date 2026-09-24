@@ -1,0 +1,21 @@
+---
+export interface Field {
+  name: string;
+  id: string;
+  label: string;
+  value: string;
+  empty: string;
+  options: {value: string; label: string; count: number}[];
+}
+interface Props {field: Field}
+const {field} = Astro.props;
+---
+<div class="filter-field">
+  <label for={field.id}>{field.label}</label>
+  <select id={field.id} name={field.name} aria-describedby="filter-behavior">
+    <option value={field.empty}>All</option>
+    {field.options.map(option => <option value={option.value} selected={option.value === field.value}>
+      {option.label} ({option.count})
+    </option>)}
+  </select>
+</div>

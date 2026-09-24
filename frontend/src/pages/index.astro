@@ -23,7 +23,7 @@ if (!data) Astro.response.status = invalidFilters ? 422 : 503;
     {data?.collection.mode === 'fixture' && <div class="notice">Test fixture — not live openRuyi data.</div>}
     {data && <>
       <PackageTable data={data} query={query}/>
-      <p class="updated-note">Last updated: <span>OBS {data.collection.obs_updated_at ? <time datetime={data.collection.obs_updated_at}>{utcTime(data.collection.obs_updated_at)}</time> : '—'}</span> · <span>Upstream {data.collection.upstream_updated_at ? <time datetime={data.collection.upstream_updated_at}>{utcTime(data.collection.upstream_updated_at)}</time> : '—'}</span> <span class="time-zone">UTC</span></p>
+      {!query.get('monitor') && <p class="updated-note">Last updated: <span>OBS {data.collection.obs_updated_at ? <time datetime={data.collection.obs_updated_at}>{utcTime(data.collection.obs_updated_at)}</time> : '—'}</span> · <span>Upstream {data.collection.upstream_updated_at ? <time datetime={data.collection.upstream_updated_at}>{utcTime(data.collection.upstream_updated_at)}</time> : '—'}</span> <span class="time-zone">UTC</span></p>}
       <nav class="pagination" aria-label="Pages">
         <span>{data.total} packages · page {data.page} / {Math.max(data.pages, 1)}</span>
         {data.page > 1 && <a rel="prev" href={listingURL(query, {page: String(data.page - 1)})}>Previous</a>}

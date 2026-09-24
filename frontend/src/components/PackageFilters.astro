@@ -1,76 +1,79 @@
 ---
 import type {Listing} from '../lib/api';
 import MonitorSelector from './MonitorSelector.astro';
-import {listingURL, views} from '../lib/listing';
+import FacetSelect, {type Field} from './FacetSelect.astro';
+import {listingURL, removeFilter, views} from '../lib/listing';
+import {checkLabel} from '../lib/checks';
 
 interface Props {data: Listing | null; query: URLSearchParams}
 const {data, query} = Astro.props;
 const view = query.get('view') || 'all';
-const buildsystem = query.get('buildsystem') || '';
-const maintenance = query.get('maintenance') || '';
+const focus = data?.monitors.find(m => m.id === query.get('monitor'));
+const coverage = !!focus && data?.section === 'coverage';
 const builds = query.getAll('build');
-const selectedBuild = (target: string) => builds.find(value => value.startsWith(target + ':')) || target + ':';
-const selected = !!(query.get('check') || buildsystem || maintenance || builds.length || ['problems', 'attention'].includes(view));
-const clearQuery = new URLSearchParams({q: query.get('q') || '', monitor: query.get('monitor') || '', view: ['problems', 'attention'].includes(view) ? 'all' : view});
 const options = (counts: Record<string, number>) => Object.entries(counts).sort(([a], [b]) => a.localeCompare(b));
+const fields: Field[] = data ? [
+  {name: 'buildsystem', id: 'buildsystem', label: 'Build system', empty: '', value: query.get('buildsystem') || '',
+    options: options(data.buildsystems).map(([value, count]) => ({value, label: value === '_not_detected' ? 'NotDetected' : value, count}))},
+  {name: 'maintenance', id: 'maintenance', label: 'Maintenance', empty: '', value: query.get('maintenance') || '',
+    options: options(data.maintenance_labels).map(([value, count]) => ({value, label: value, count}))},
+  ...data.targets.map(target => ({name: 'build', id: 'build-' + target.id, label: target.label, empty: target.id + ':',
+    value: builds.find(value => value.startsWith(target.id + ':')) || target.id + ':',
+    options: (data.build_statuses[target.id] || []).map(option => ({...option, value: target.id + ':' + option.value}))})),
+] : [];
+const primary = (field: Field) => !focus || focus.kind === 'build' && field.name === 'build'
+  || focus.kind === 'source' && field.name === 'buildsystem';
+const additional = fields.filter(field => !primary(field));
+const selected = [...query.entries()].filter(([key, value]) => value &&
+  (['buildsystem', 'maintenance', 'build', 'check'].includes(key) || key === 'view' && value !== 'all'));
+const clear = new URLSearchParams({q: query.get('q') || '', monitor: query.get('monitor') || '',
+  section: data?.section || 'results'});
 ---
 <form class="package-filters" data-auto-submit method="get" action="/">
   <input type="hidden" name="view" value={view}/>
+  <input type="hidden" name="monitor" value={query.get('monitor') || ''}/>
+  <input type="hidden" name="section" value={data?.section || query.get('section') || 'results'}/>
+  {query.get('check') && <input type="hidden" name="check" value={query.get('check')}/>}
   <div class="toolbar">
-    <nav class="filters" aria-label="Filter packages">
-      {views.map(([key, label]) => (
-        <a href={listingURL(query, {view: key})} aria-current={view === key ? 'page' : undefined}>
-          {label} <b>{data?.counts[key] ?? '—'}</b>
-        </a>
-      ))}
-    </nav>
+    {data && <MonitorSelector data={data} query={query}/>}
     <div class="search-form" role="search">
       <label class="sr-only" for="q">Find a package</label>
       <input id="q" name="q" type="search" maxlength="100" placeholder="Find a package" value={query.get('q') || ''}/>
       <button type="submit">Search</button>
     </div>
   </div>
-  {data && (
-    <div class="secondary-filters">
-      <p id="filter-behavior" class="sr-only">Selections update the results immediately. Without scripting, use Apply.</p>
-      <MonitorSelector data={data} query={query}/>
-      <div class="filter-field">
-        <label for="buildsystem">Build system</label>
-        <select id="buildsystem" name="buildsystem" aria-describedby="filter-behavior">
-          <option value="">All</option>
-          {options(data.buildsystems).map(([value, count]) => (
-            <option value={value} selected={value === buildsystem}>
-              {value === '_not_detected' ? 'NotDetected' : value} ({count})
-            </option>
-          ))}
-        </select>
-      </div>
-      <div class="filter-field">
-        <label for="maintenance">Maintenance</label>
-        <select id="maintenance" name="maintenance" aria-describedby="filter-behavior">
-          <option value="">All</option>
-          {options(data.maintenance_labels).map(([value, count]) => (
-            <option value={value} selected={value === maintenance}>{value} ({count})</option>
-          ))}
-        </select>
-      </div>
-      {data.targets.map(target => (
-        <div class="filter-field">
-          <label for={'build-' + target.id}>{target.label}</label>
-          <select id={'build-' + target.id} name="build" aria-label={target.label + ' build status'} aria-describedby="filter-behavior">
-            <option value={target.id + ':'}>All</option>
-            {(data.build_statuses[target.id] || []).map(option => (
-              <option value={target.id + ':' + option.value} selected={selectedBuild(target.id) === target.id + ':' + option.value}>
-                {option.label} ({option.count})
-              </option>
-            ))}
-          </select>
-        </div>
-      ))}
-      <button type="submit" data-filter-submit>Apply</button>
-      {selected && <a class="filter-clear" href={listingURL(clearQuery)}>Clear filters</a>}
-      {view === 'problems' && <span class="filter-context">Build issues · all targets</span>}
-      {view === 'attention' && <span class="filter-context">Observation gaps</span>}
+  {data && <>
+    <p id="filter-behavior" class="sr-only">Selections update results immediately. Without scripting, use Apply.</p>
+    <div class="view-controls">
+      {(!focus || focus.kind === 'version') && <nav class="filters" aria-label="Version views">
+        {views.map(([key, label]) => <a href={listingURL(query, {view: key})} aria-current={view === key ? 'page' : undefined}>
+          {label} <b>{data.counts[key] ?? 0}</b>
+        </a>)}
+      </nav>}
+      {focus && <nav class="filters" aria-label="Results and coverage">
+        <a href={listingURL(query, {section: 'results', check: ''})} aria-current={!coverage ? 'page' : undefined}>
+          Results {focus.kind === 'evidence' && <b>{data.result_count}</b>}
+        </a>
+        <a href={listingURL(query, {section: 'coverage', check: ''})} aria-current={coverage ? 'page' : undefined}>
+          Coverage <b>{data.coverage_count}</b>
+        </a>
+      </nav>}
+      {additional.length > 0 && <details class="additional-filters">
+        <summary>Filters</summary>
+        <div class="secondary-filters">{additional.map(field => <FacetSelect field={field}/>)}</div>
+      </details>}
     </div>
-  )}
+    {coverage && <nav class="filters check-filters" aria-label="Coverage status">
+      <a href={listingURL(query, {check: '', section: 'coverage'})} aria-current={!query.get('check') ? 'page' : undefined}>All</a>
+      {Object.entries(data.check_statuses).map(([status, count]) => <a href={listingURL(query, {check: status, section: 'coverage'})}
+        aria-current={query.get('check') === status ? 'page' : undefined}>{checkLabel(status)} <b>{count}</b></a>)}
+    </nav>}
+    {fields.some(primary) && <div class="secondary-filters">{fields.filter(primary).map(field => <FacetSelect field={field}/>)}</div>}
+    {selected.length > 0 && <div class="active-filters" aria-label="Active filters">
+      {selected.map(([key, value]) => <a href={removeFilter(query, key, key === 'build' ? value : undefined)}
+        aria-label={'Remove ' + key + ': ' + value}>{key === 'check' ? checkLabel(value) : value} ×</a>)}
+      <a class="filter-clear" href={listingURL(clear)}>Clear filters</a>
+    </div>}
+    <button type="submit" data-filter-submit>Apply</button>
+  </>}
 </form>

@@ -21,7 +21,7 @@ collector/adapter → owned snapshot fields → Monitor.read(Context)
 | Read stored facts | `monitor_views.Monitor` | Pure `project(Context)` returns `check`, typed `data`, and filter `dimensions`. |
 | Version decision | `version_status` | One RPM-based decision, also consumed by upgrade monitors. |
 | Filter/count | `package_list.PackageList` | Intersect monitor dimensions once; each facet excludes only its own selection. |
-| HTTP schema | `api` | OpenAPI generates `api.generated.ts`; summary omits histories and full findings. |
+| HTTP schema | `api` | OpenAPI generates `api.generated.ts`; summary omits histories and full findings. Focused evidence lists include a bounded preview and total finding count. |
 | Presentation | `frontend/src/monitors/registry.ts` | Summary/detail components by payload kind; optional specialization by stable monitor ID. |
 | Page composition | `frontend/src/monitors/layout.ts` | Place components without collecting, filtering or counting. |
 | Monitor selection | `MonitorSelector.astro` | Consume the API catalog; selecting a monitor changes focus, not collection configuration. |
@@ -30,6 +30,21 @@ The payload kinds are `source`, `version`, `build`, and `evidence`. They retain
 domain-specific structure rather than stringify build matrices or source history
 into generic prose. Every monitor contributes to check-status filtering; existing
 build, version and maintenance facets consume the same package rows.
+
+The website opens a monitor's **Results** view. Evidence monitors list only
+packages with recorded findings; source, version and build retain their own table
+shape. **Coverage** lists collection status and last check time, including packages
+without a result. An empty Results view is not a successful coverage claim.
+Both views use the same query dimensions and global filter context; check-status
+counts describe coverage, not just packages with findings. Direct v2 API requests
+default to coverage for compatibility; use `section=results` explicitly.
+
+Monitor navigation comes from the catalog. Contextual controls and summary/detail
+components belong to the renderer, not to adapter-produced HTML or a UI schema.
+License reuses the Version column beside its change preview; Security shows the
+advisory count with evidence on the package page. Other evidence ports get the
+bounded title preview automatically. A renderer's `context` lists existing monitor
+IDs it needs as companion columns; it does not recompute their facts.
 
 `/api/v1/packages` is a compatibility projection of the same results, not a second
 calculation. Snapshot ownership and batching remain separate from presentation: the OBS
@@ -97,6 +112,13 @@ evidence without refreshing its successful-check time. Changed query inputs or
 upgrade targets invalidate old evidence. The default dependency set includes source
 revision; adapters that query only upstream versions can explicitly narrow it. An
 idle heartbeat writes nothing.
+
+A temporary input-availability gate is separate from the provider result. The
+runner retains the result, retry counter and timestamps; coverage shows
+`input_unavailable` and retained findings are marked old. Restoring identical
+inputs reuses a fresh result, while an expired result or changed query is checked
+again. An uncertain upgrade comparison cannot start a new upgrade check, but does
+not erase already-recorded evidence for the same version pair.
 
 ## Refresh policy
 

@@ -124,7 +124,12 @@ def test_v2_port_catalog_checks_and_facets_share_the_same_observation(config, sn
     assert listing['check_statuses'] == {'not_configured': 4, 'ok': 1}
     assert listing['maintenance_labels'] == {'Yanked': 1}
     result = listing['items'][0]['monitors']['yanked']
-    assert result['data'] == {'kind': 'evidence', 'labels': [{'label': 'Yanked', 'count': 1, 'stale': False}]}
+    assert result['data'] == {
+        'kind': 'evidence', 'finding_count': 1,
+        'labels': [{'label': 'Yanked', 'count': 1, 'stale': False}],
+        'entries': [{'id': 'yanked:release-yanked', 'title': 'upstream-fixture', 'stale': False,
+                     'evidence_url': 'https://pypi.org/pypi/upstream-fixture/3.9.0/json'}],
+    }
     assert result['check']['status'] == 'ok'
     selected = api.get('/api/v2/packages?monitor=yanked&check=not_configured').json()
     assert selected['total'] == 4 and selected['maintenance_labels'] == {}

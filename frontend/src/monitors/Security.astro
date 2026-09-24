@@ -1,9 +1,16 @@
 ---
 import type {Props} from './registry';
 import SecurityEvidence from '../components/SecurityEvidence.astro';
-const {result} = Astro.props as Props;
+import Evidence from './Evidence.astro';
+const {result, pkg, detail = false, focused = false} = Astro.props as Props;
 const data = result.data;
+const labels = data.kind === 'evidence' ? data.labels : [];
 ---
-{data.kind === 'evidence' && 'findings' in data && data.findings.length > 0 && <section aria-label={result.title}>
+{!detail && (focused ? <span class="security-preview">
+  <a href={pkg.detail_url}>{data.kind === 'evidence' ? data.finding_count : 0} advisories</a>
+  {labels.some(label => label.label === 'KEV') && <strong> · KEV</strong>}
+  {labels.some(label => label.stale) && <small>Last observed</small>}
+</span> : <Evidence {...Astro.props}/>)}
+{detail && data.kind === 'evidence' && 'findings' in data && data.findings.length > 0 && <section aria-label={result.title}>
   <SecurityEvidence title={result.title} findings={data.findings}/>
 </section>}

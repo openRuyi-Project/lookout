@@ -16,13 +16,14 @@ export interface Props {
 
 // The page composes slots; renderers format typed data, never decide domain state.
 const renderers = {
-  source: {Summary: Source, Detail: Source, placement: 'identity'},
-  version: {Summary: Version, Detail: Version, placement: 'column'},
-  build: {Summary: Build, Detail: Build, placement: 'targets'},
-  evidence: {Summary: Evidence, Detail: Evidence, placement: 'signals'},
+  source: {Summary: Source, Detail: Source, placement: 'identity', context: []},
+  version: {Summary: Version, Detail: Version, placement: 'column', context: []},
+  build: {Summary: Build, Detail: Build, placement: 'targets', context: []},
+  evidence: {Summary: Evidence, Detail: Evidence, placement: 'signals', context: []},
 } as const;
-const specializations = new Map<string, typeof renderers.evidence>([
-  ['security', {...renderers.evidence, Detail: Security}],
+const specializations = new Map<string, Omit<typeof renderers.evidence, 'context'> & {context: readonly string[]}>([
+  ['security', {...renderers.evidence, Summary: Security, Detail: Security}],
+  ['license', {...renderers.evidence, context: ['version']}],
 ]);
 
 export function renderer(monitor: {id: string; kind: keyof typeof renderers}) {

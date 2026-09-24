@@ -111,6 +111,16 @@
 .filters b {
   font: 12px var(--mono);
 }
+.monitor-nav a { border-radius: 0; border-bottom: 2px solid transparent; }
+.monitor-nav a[aria-current] { background: none; border-bottom-color: var(--fg); }
+.view-controls { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 18px; margin-bottom: 12px; }
+.additional-filters { margin-left: auto; font-size: 13px; }
+.additional-filters summary { cursor: pointer; color: var(--muted); }
+.additional-filters[open] { flex-basis: 100%; margin-left: 0; }
+.additional-filters .secondary-filters { margin-top: 12px; }
+.check-filters { margin-bottom: 16px; }
+.active-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 12px; }
+.active-filters a { color: var(--muted); text-decoration: none; }
 .search-form {
   display: flex;
   align-items: center;
@@ -193,6 +203,13 @@ thead th {
 .observation-column {
   width: 28%;
 }
+.package-table[data-columns="2"] { min-width: 0; }
+.package-table.focused { table-layout: auto; }
+.package-table.focused .identity-column { width: 34%; }
+.package-table.focused .observation-column { width: auto; }
+.package-table.coverage { min-width: 640px; }
+.checked-column { width: 26%; }
+.monitor-status { display: block; font-weight: normal; color: var(--muted); margin-top: .25rem; }
 .package-table tbody th {
   font: 500 13px/1.5 var(--mono);
 }
@@ -523,7 +540,8 @@ thead th {
 .security-scope {
   margin-top: 12px;
 }
-.monitor-checks {
+.evidence-preview a { overflow-wrap: anywhere; }
+.evidence-preview small, .security-preview small { display: block; color: var(--muted); font-size: 11px; }.monitor-checks {
   margin-top: 16px;
   color: var(--muted);
   font-size: 12px;
@@ -609,8 +627,3 @@ thead th {
     text-decoration: none;
   }
 }
-
-.package-table[data-columns="2"] { min-width: 0; }
-.package-table.focused .identity-column { width: 45%; }
-.package-table.focused .observation-column { width: auto; }
-.monitor-status { display: block; font-weight: normal; color: var(--muted); margin-top: .25rem; }

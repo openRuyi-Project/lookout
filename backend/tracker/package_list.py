@@ -44,11 +44,16 @@ class PackageList:
         return {value: count for value, count in counts.items()
                 if count or value in required or value == selections.get(dimension)}
 
-    def select(self, *, view, buildsystem, maintenance, builds, page, per_page, check=''):
+    def select(self, *, view, buildsystem, maintenance, builds, page, per_page, check='', findings_only=False):
         selections = {'view': view, 'buildsystem': buildsystem, 'maintenance': maintenance,
                       **{f'build:{target}': status for target, status in builds.items()}}
         if self.monitor:
             selections['check:' + self.monitor] = check
+        coverage = self.matching(selections, without='check:' + self.monitor)
+        results = coverage & self.index['findings:' + self.monitor].get('yes', set())
+        check_statuses = self.counts('check:' + self.monitor, selections) if self.monitor else {}
+        if findings_only:
+            selections['findings:' + self.monitor] = 'yes'
         selected = sorted(self.matching(selections))
         total = len(selected)
         pages = max(1, (total + per_page - 1) // per_page)
@@ -68,7 +73,8 @@ class PackageList:
             'buildsystems': self.counts('buildsystem', selections),
             'maintenance_labels': self.counts('maintenance', selections),
             'build_statuses': statuses,
-            'check_statuses': self.counts('check:' + self.monitor, selections) if self.monitor else {},
+            'check_statuses': check_statuses,
+            'result_count': len(results), 'coverage_count': len(coverage),
         }
 
 

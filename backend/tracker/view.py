@@ -121,8 +121,9 @@ def summary(row):
                                                 'last_known_relation', 'spec', 'maintenance_findings', 'monitor_checks')}
 
 
-def monitor_summary(row):
-    return {**row, 'monitors': {mid: monitor_views.summary(result) for mid, result in row['monitors'].items()}}
+def monitor_summary(row, focus=''):
+    return {**row, 'monitors': {mid: monitor_views.summary(result, focused=mid == focus)
+                              for mid, result in row['monitors'].items()}}
 
 
 def upstream_failures(rows):

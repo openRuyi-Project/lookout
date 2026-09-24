@@ -3,9 +3,10 @@ import type {Props} from './registry';
 import {listingURL} from '../lib/listing';
 import Maintenance from '../components/Maintenance.astro';
 import EvidenceFacts from '../components/EvidenceFacts.astro';
-const {result, filters = new URLSearchParams(), detail = false} = Astro.props as Props;
+const {result, pkg, filters = new URLSearchParams(), detail = false, focused = false} = Astro.props as Props;
 const data = result.data;
 const findings = data.kind === 'evidence' && 'findings' in data ? data.findings : [];
+const entries = data.kind === 'evidence' && 'entries' in data ? data.entries ?? [] : [];
 const aggregate = (label: string) => listingURL(filters, {monitor: result.id, maintenance: label, check: ''});
 ---
 {data.kind === 'evidence' && (detail ? findings.length > 0 && <section aria-label={result.title}>
@@ -31,4 +32,11 @@ const aggregate = (label: string) => listingURL(filters, {monitor: result.id, ma
           </tbody>
         </table>
       </div>
-</section> : <Maintenance labels={data.labels} filters={filters} monitor={result.id}/>)}
+</section> : focused ? <div class="evidence-preview">
+  {entries.map(entry => <div>
+    <a href={pkg.detail_url + '#finding-' + encodeURIComponent(entry.id)}>{entry.title}</a>
+    {entry.stale && <small>Last observed</small>}
+  </div>)}
+  {!entries.length && <span>No recorded findings</span>}
+  {data.finding_count > entries.length && <a href={pkg.detail_url}>{data.finding_count - entries.length} more</a>}
+</div> : <Maintenance labels={data.labels} filters={filters} monitor={result.id}/>)}

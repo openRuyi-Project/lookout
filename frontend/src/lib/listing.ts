@@ -15,6 +15,7 @@ export function listingQuery(input: URLSearchParams): URLSearchParams {
     maintenance: (input.get('maintenance') || '').slice(0, 40),
     monitor: (input.get('monitor') || '').slice(0, 64),
     check: input.get('monitor') ? (input.get('check') || '').slice(0, 40) : '',
+    section: input.get('check') || input.get('section') === 'coverage' ? 'coverage' : 'results',
     page: String(page),
     per_page: '100',
   });
@@ -22,6 +23,14 @@ export function listingQuery(input: URLSearchParams): URLSearchParams {
     query.append('build', build);
   }
   return query;
+}
+
+export function removeFilter(filters: URLSearchParams, key: string, value?: string): string {
+  const next = new URLSearchParams(filters);
+  const retained = value === undefined ? [] : next.getAll(key).filter(item => item !== value);
+  next.delete(key);
+  for (const item of retained) next.append(key, item);
+  return listingURL(next);
 }
 
 /** Preserve the complete selection when following labels, tabs or pagination. */

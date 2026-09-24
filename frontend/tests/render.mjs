@@ -30,7 +30,7 @@ const packages = [
     scope: 'current', tags: [], stale: false,
   }))}),
   makePackage('license-evidence', {maintenance_findings: [{
-    monitor: 'license', id: 'license-target', label: 'LicenseChange', title: 'Target license metadata',
+    monitor: 'license', id: 'license-target', label: 'LicenseChange', title: 'MIT → Apache-2.0',
     evidence_url: 'https://example.org/license', scope: 'upgrade', target_version: '2.1',
     tags: [], stale: false, facts: [
       {key: 'Licenses', value: ['MIT', 'Apache-2.0'], source: 'Registry', url: 'https://example.org/license', status: 'observed'},
@@ -81,7 +81,7 @@ packages.push(makePackage('yanked', {
     scope: 'current', target_version: null, tags: [], stale: false, evidence_url: 'https://example.org/release',
     facts: [{key: 'Files', value: 3, source: 'Registry', url: 'https://example.org/release', status: 'observed'}]}],
 }));
-function monitored(pkg, detail = true) {
+function monitored(pkg, detail = true, focus = '') {
   const check = {status: 'ok', stale: false, checked_at: '2026-09-19T11:10:00Z', attempted_at: null,
     error: null, note: null, changed_at: null, evidence_revision: null};
   const data = {
@@ -96,6 +96,21 @@ function monitored(pkg, detail = true) {
   const monitors = Object.fromEntries(catalog.map(m => [m.id, {id: m.id, title: m.title, check: {...check},
     data: data[m.id] || {kind: 'evidence', labels: m.id === 'yanked' ? pkg.maintenance : [],
       findings: pkg.maintenance_findings.filter(f => f.monitor === m.id)}}]));
+  for (const result of Object.values(monitors)) {
+    if (result.data.kind !== 'evidence') continue;
+    const findings = result.data.findings;
+    const labels = new Map();
+    for (const finding of findings) {
+      for (const label of new Set([finding.label, ...finding.tags])) {
+        const previous = labels.get(label) || {label, count: 0, stale: false};
+        labels.set(label, {...previous, count: previous.count + 1, stale: previous.stale || finding.stale});
+      }
+    }
+    if (findings.length) result.data.labels = [...labels.values()];
+    result.data.finding_count = findings.length;
+    result.data.entries = result.id === focus ? findings.slice(0, 3).map(({id, title, evidence_url, stale}) =>
+      ({id, title, evidence_url, stale})) : [];
+  }
   monitors.build.check.checked_at = pkg.builds.every(b => b.updated_at) ? pkg.builds[0].updated_at : null;
   if (!detail) {
     for (const result of Object.values(monitors)) {
@@ -126,15 +141,21 @@ const mock = createServer((req, res) => {
   }
   if (url.pathname === '/api/v2/packages') lastQuery = url.searchParams;
   const selected = packages.find(pkg => url.pathname === `/api/v2/packages/${pkg.name}`);
+  const focus = url.searchParams.get('monitor') || '';
+  const section = url.searchParams.get('check') ? 'coverage' : url.searchParams.get('section') || 'coverage';
+  const evidenceFocus = catalog.some(m => m.id === focus && m.kind === 'evidence');
+  const resultRows = packages.filter(pkg => pkg.maintenance_findings.some(f => f.monitor === focus));
+  const rows = evidenceFocus && section === 'results' ? resultRows : packages;
   const payload = url.pathname === '/api/v1/presentation'
     ? {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}}
     : selected ? monitored(selected) : {
-      monitors: catalog, check_statuses: {ok: packages.length},
+      monitors: catalog, check_statuses: {ok: packages.length}, section,
+      result_count: resultRows.length, coverage_count: packages.length,
       presentation: {buildsystems: {custom: {background: '#123456', foreground: '#ffffff'}}},
       buildsystems: {custom: 1}, maintenance_labels: {NewSignal: 1},
       build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'issues',label:'Issues',count:2}, {value:'blocked',label:'Blocked',count:1}]])),
-      items: (url.searchParams.get('q') === 'quiet' ? packages.map(pkg=>({...pkg,maintenance:[]})) : packages).map(pkg => monitored(pkg, false)),
-      total: packages.length, page: 1, per_page: 100, pages: 1,
+      items: (url.searchParams.get('q') === 'quiet' ? rows.map(pkg=>({...pkg,maintenance:[],maintenance_findings:[]})) : rows).map(pkg => monitored(pkg, false, focus)),
+      total: rows.length, page: 1, per_page: 100, pages: 1,
       counts: {all: packages.length, updates: 3, problems: 1, attention: 1, untracked: 1}, targets,
       collection: {obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
         packages: packages.length, tracked_packages: packages.length - 1}};
@@ -207,9 +228,11 @@ try {
   assert.equal(filterForms.length, 1, 'search and selections must share one GET form');
   const filterForm = filterForms[0][0];
   assert.match(filterForm, /name="q"/);
-  assert.equal((filterForm.match(/<select\b/g) || []).length, targets.length + 3);
+  assert.equal((filterForm.match(/<select\b/g) || []).length, targets.length + 2);
   assert.doesNotMatch(filterForm, /type="hidden" name="(?:q|buildsystem|maintenance|build)"/);
-  assert.equal((filterForm.match(/aria-describedby="filter-behavior"/g) || []).length, targets.length + 3);
+  assert.equal((filterForm.match(/aria-describedby="filter-behavior"/g) || []).length, targets.length + 2);
+  assert.match(filterForm, /aria-label="Monitors"/);
+  assert.doesNotMatch(filterForm, /<select[^>]*name="(?:monitor|check)"/);
 
   assert.match(listing, /<script[^>]*src="\/filters.js"[^>]*defer/);
   const script = await wire('/filters.js');
@@ -231,22 +254,36 @@ try {
   assert.equal(submissions, 5, 'every filter selection submits immediately');
   filterChange({target: {}});
   assert.equal(submissions, 5);
-  const fields = {maintenance: {value: 'Withdrawn'}, check: {value: 'error'}};
-  form.querySelector = selector => fields[selector.match(/name="(.*?)"/)[1]];
-  const monitorSelect = new Select(); monitorSelect.name = 'monitor';
-  filterChange({target: monitorSelect});
-  assert.equal(fields.maintenance.value, 'Withdrawn');
-  assert.equal(fields.check.value, '');
-  assert.equal(submissions, 6, 'switching monitor resets only monitor-local selections');
-  const focused = await read('/?monitor=yanked&buildsystem=custom&build=rva23:blocked&check=ok');
+  const focused = await read('/?monitor=yanked&buildsystem=custom&build=rva23:blocked');
   assert.equal(lastQuery.get('monitor'), 'yanked');
-  assert.equal(lastQuery.get('check'), 'ok');
+  assert.equal(lastQuery.get('check'), '');
+  assert.equal(lastQuery.get('section'), 'results');
   assert.deepEqual(lastQuery.getAll('build'), ['rva23:blocked']);
-  assert.match(focused, /value="yanked" selected/);
+  assert.match(focused, /aria-current="page">Release files<\/a>/);
   assert.match(focused, /<th scope="col">Release files<\/th>/);
   assert.equal((focused.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 2);
-  assert.match(focused, />No findings</);
-  assert.match(focused, /maintenance=Withdrawn/);
+  assert.match(focused, /Release withdrawn/);
+  assert.doesNotMatch(focused, /data-name="success"/);
+  const coverage = await read('/?monitor=yanked&buildsystem=custom&build=rva23:blocked&check=ok');
+  assert.equal(lastQuery.get('section'), 'coverage');
+  assert.equal((coverage.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 3);
+  assert.match(coverage, /<th scope="col">Status<\/th>/);
+  assert.match(coverage, /<th scope="col">Last checked<\/th>/);
+  assert.match(coverage, /Checked/);
+  assert.doesNotMatch(coverage, /<select[^>]*name="check"/);
+  const monitorNav = coverage.match(/<nav[^>]*aria-label="Monitors"[^]*?<\/nav>/)[0];
+  for (const match of monitorNav.matchAll(/href="([^"]+)"/g)) {
+    const link = new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture');
+    assert.equal(link.searchParams.get('check'), null);
+    assert.equal(link.searchParams.get('buildsystem'), 'custom');
+    assert.deepEqual(link.searchParams.getAll('build'), ['rva23:blocked']);
+  }
+  const licenseFocus = await read('/?monitor=license');
+  assert.match(licenseFocus, /MIT → Apache-2\.0/);
+  assert.match(licenseFocus, /<th scope="col">Version<\/th>/);
+  assert.equal((licenseFocus.match(/<tr data-name=/g) || []).length, 1);
+  assert.doesNotMatch(licenseFocus, /class="maintenance-labels"|data-name="security"|<details[^>]* open/);
+  assert.match(await read('/?monitor=security'), /2 advisories/);
   const sourceFocus = await read('/?monitor=source');
   assert.match(sourceFocus, /<th scope="col">Source<\/th>/);
   assert.match(sourceFocus, /class="current-version">2\.0/);
@@ -266,7 +303,10 @@ try {
   assert.deepEqual(lastQuery.getAll('build'), ['rva23:blocked', 'rva20:issues']);
   for (const target of targets) assert.match(linked, new RegExp(`id="build-${target.id}"`));
   assert.match(linked, /value="rva23:blocked" selected/);
-  const allLinks = [...linked.matchAll(/href="([^"]+)"/g)].map(match => new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture'));
+  const activeFilters = linked.match(/<div class="active-filters"[^]*?<\/div>/)[0];
+  const removeBuild = activeFilters.match(/href="([^"]+)" aria-label="Remove build: rva23:blocked"/)[1];
+  assert.deepEqual(new URL(removeBuild.replaceAll('&amp;', '&'), 'http://fixture').searchParams.getAll('build'), ['rva20:issues']);
+  const allLinks = [...linked.replace(activeFilters, '').matchAll(/href="([^"]+)"/g)].map(match => new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture'));
   for (const link of allLinks.filter(url => url.searchParams.get('buildsystem') === 'custom' || url.searchParams.get('maintenance') === 'NewSignal')) {
     assert.deepEqual(link.searchParams.getAll('build'), ['rva23:blocked', 'rva20:issues']);
   }
