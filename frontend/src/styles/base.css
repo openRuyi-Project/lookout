@@ -100,11 +100,3 @@ summary {
     scroll-behavior: auto !important;
   }
 }
-@media (forced-colors: active) {
-  .filters a[aria-current] {
-    outline: 1px solid Highlight;
-  }
-  .buildsystem-label, .maintenance-label {
-    outline: 1px solid currentColor;
-  }
-}

@@ -1,0 +1,13 @@
+---
+import type {Facet} from '../../lib/document';
+interface Props {facet: Facet}
+const {facet} = Astro.props;
+---
+<div class="filter-field">
+  <label for={facet.id}>{facet.label}</label>
+  <select id={facet.id} name={facet.name} aria-describedby="filter-behavior">
+    {facet.options.map(option => <option value={option.value} selected={option.selected}>
+      {option.label}{option.count != null ? ` (${option.count})` : ''}
+    </option>)}
+  </select>
+</div>

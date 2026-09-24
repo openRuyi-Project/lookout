@@ -246,3 +246,35 @@ def test_spec_component_failure_does_not_move_success_deadline(config):
     snap['components'] = {'spec_git': state.failure(state.success({}, {}, NOW.isoformat()),
         'git fetch timeout', (NOW+timedelta(hours=5)).isoformat())}
     assert view.next_transition(snap, NOW+timedelta(hours=6)) == NOW+timedelta(hours=12, microseconds=1)
+
+
+def test_query_index_is_shared_without_sharing_selections(tmp_path, config, monkeypatch):
+    client, db, snap, clock, _ = setup_cache(tmp_path, config, monkeypatch)
+    builds = []
+    initialize = api.package_list.PackageList.__init__
+    def counted(self, *args, **kwargs):
+        builds.append(1)
+        initialize(self, *args, **kwargs)
+    monkeypatch.setattr(api.package_list.PackageList, '__init__', counted)
+    paths = [
+        '/api/v2/packages?q=BIN&monitor=version',
+        '/api/v2/packages?q=foo&monitor=build&build=rva23:issues',
+        '/api/v1/packages?q=bin',
+        '/api/ui/packages?monitor=source&per_page=2',
+        '/api/v2/packages/binutils',
+        '/api/ui/packages/binutils',
+    ]
+    expected = [get(client, path) for path in paths]
+    assert [p['name'] for p in expected[0]['items']] == ['binutils']
+    assert all('foo' in p['name'] for p in expected[1]['items'])
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        actual = list(pool.map(lambda path: get(client, path), paths * 3))
+    assert actual == expected * 3
+    assert len(builds) == 1
+    clock[0] += timedelta(seconds=101)
+    get(client)
+    assert len(builds) == 2
+    snap['sources']['binutils']['version'] = 'replacement'
+    state.commit(db, snap)
+    assert get(client)['current'] == 'replacement'
+    assert len(builds) == 3

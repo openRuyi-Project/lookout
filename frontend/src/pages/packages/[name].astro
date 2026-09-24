@@ -1,31 +1,24 @@
 ---
 import Base from '../../layouts/Base.astro';
-import MonitorChecks from '../../components/MonitorChecks.astro';
-import {api, type PackageDetail} from '../../lib/api';
-import {renderer} from '../../monitors/registry';
-import {detailLayout} from '../../monitors/layout';
+import Values from '../../components/document/Values.astro';
+import Section from '../../components/document/Section.astro';
+import {api} from '../../lib/api';
+import type {DetailDocument} from '../../lib/document';
 const name = Astro.params.name || '';
-const apiPath = '/api/v2/packages/' + encodeURIComponent(name);
-const response = await api<PackageDetail>(apiPath);
-const pkg = response.data;
-if (!pkg) Astro.response.status = response.status === 404 ? 404 : 503;
-const modules = Object.values(pkg?.monitors || {});
-const descriptors = modules.map(m => ({id: m.id, title: m.title, kind: m.data.kind}));
+const {data, status} = await api<DetailDocument>('/api/ui/packages/' + encodeURIComponent(name));
+if (!data) Astro.response.status = status === 404 ? 404 : 503;
 ---
 <Base title={`${name} · openRuyi Packages`}>
-  <section class="package-detail"><a class="back" href="/">← Packages</a>
-  {pkg ? <>
-    <header class="package-heading">
-      <h1>{pkg.name}</h1>
-      {descriptors.filter(m => renderer(m).placement === 'identity').map(m => {
-        const {Summary} = renderer(m); return <Summary result={pkg.monitors[m.id]} pkg={pkg}/>;
-      })}
-    </header>
-    {detailLayout(descriptors).map(m => {
-      const {Detail} = renderer(m); return <Detail result={pkg.monitors[m.id]} pkg={pkg} detail/>;
-    })}
-    <MonitorChecks monitors={pkg.monitors}/>
-    <p class="provenance-link"><a href={apiPath}>Raw data (JSON)</a></p>
-  </> : <div role="alert" class="notice">{response.status === 404 ? 'No such source package.' : 'Snapshot unavailable. Please try again later.'}</div>}
-  </section>
+  <div class="package-detail"><a class="back" href="/">← Packages</a>
+  {data ? <>
+    <header class="package-heading"><h1>{data.title}</h1><div class="identity"><Values values={data.identity}/></div></header>
+    {data.subtitle && <p class="package-subtitle">{data.subtitle}</p>}
+    <nav class="package-links" aria-label="Package sources"><Values values={data.links}/></nav>
+    <nav class="section-nav" aria-label="Page sections">{data.sections.map(section => <a href={`#${section.id}`}>{section.title}</a>)}</nav>
+    <div class="detail-workspace">
+      <div class="document-sections">{data.sections.map(section => <Section section={section}/>)}</div>
+      {data.context.length > 0 && <aside class="document-context" aria-label="Package information">{data.context.map(section => <Section section={section}/>)}</aside>}
+    </div>
+  </> : <div role="alert" class="notice">{status === 404 ? 'No such source package.' : 'Snapshot unavailable. Please try again later.'}</div>}
+  </div>
 </Base>

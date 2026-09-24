@@ -1,10 +1,3 @@
-// Fixed response shapes have one author: FastAPI OpenAPI.
-export type {Target, Build, BuildFlavor, Collection, SpecMetadata, ChangelogEntry,
-  Spec, Watch} from './api.generated';
-export type {LastSuccess as BuildSuccess, MonitoredPackage as Package,
-  MonitoredDetail as PackageDetail, MonitoredList as Listing} from './api.generated';
-export type Relation = import('./api.generated').PackageSummary['relation'];
-
 export function backendURL(path: string): URL {
   // Host is operator configuration, never a query parameter or request Host header.
   const base = process.env.TRACKER_API_URL || 'http://127.0.0.1:18731';

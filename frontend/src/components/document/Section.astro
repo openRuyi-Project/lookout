@@ -1,0 +1,18 @@
+---
+import type {Section} from '../../lib/document';
+import Fields from './Fields.astro';
+import Values from './Values.astro';
+import Table from './Table.astro';
+interface Props {section: Section}
+const {section} = Astro.props;
+---
+<section class="document-section" id={section.id}>
+  <h2>{section.title}</h2>
+  <Fields fields={section.fields} compact/>
+  {section.notes.map(note => <p class="section-note">{note}</p>)}
+  {section.table && <Table table={section.table}/>}
+  {section.entries.length > 0 && <ul class="entries">{section.entries.map(entry => <li>
+    <div class="entry-heading"><Values values={entry.heading}/></div>
+    <Fields fields={entry.fields} compact/>
+  </li>)}</ul>}
+</section>

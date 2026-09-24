@@ -1,7 +1,7 @@
 # Port a monitor
 
 Source, Version, Build and supplemental evidence share one **read contract**:
-`{id, title, check, data}`. The API and pages treat each as a monitor. A monitor's
+`{id, title, check, data}`. The fact API treats each as a monitor; pages consume a separate reading document. A monitor's
 `check` describes collection, not the package: an OBS response containing `failed`
 is a successful check with a failed build result. An unavailable check is never
 converted to an empty successful result.
@@ -13,7 +13,13 @@ collector/adapter → owned snapshot fields → Monitor.read(Context)
                                                ↓
                                typed data + query dimensions
                                                ↓
-                     /api/v2/packages → renderer → page layout
+                     /api/v2/packages (typed facts)
+                                               ↓
+                          presentation.Presenter (pure read adapter)
+                                               ↓
+                        /api/ui/packages (reading document)
+                                               ↓
+                   generic Astro primitives → page layout
 ```
 
 | Responsibility | Location | Contract |
@@ -22,9 +28,10 @@ collector/adapter → owned snapshot fields → Monitor.read(Context)
 | Version decision | `version_status` | One RPM-based decision, also consumed by upgrade monitors. |
 | Filter/count | `package_list.PackageList` | Intersect monitor dimensions once; each facet excludes only its own selection. |
 | HTTP schema | `api` | OpenAPI generates `api.generated.ts`; summary omits histories and full findings. Focused evidence lists include a bounded preview and total finding count. |
-| Presentation | `frontend/src/monitors/registry.ts` | Summary/detail components by payload kind; optional specialization by stable monitor ID. |
-| Page composition | `frontend/src/monitors/layout.ts` | Place components without collecting, filtering or counting. |
-| Monitor selection | `MonitorSelector.astro` | Consume the API catalog; selecting a monitor changes focus, not collection configuration. |
+| Reading adapters | `presentation.PRESENTERS` | Source/version/build/evidence -> fields, tables, entries and links. No IO, HTML or CSS. |
+| Display contract | `presentation_model` | Bounded, typed, non-recursive documents; OpenAPI generates TypeScript. No stored copy. |
+| Website | `frontend/src/components/document/` | Values, fields, tables, navigation and facets. No monitor IDs or provider payload types. |
+| Page composition | `frontend/src/pages/` | Responsive layout of documents; monitor selection is navigation separate from filters. |
 
 The payload kinds are `source`, `version`, `build`, and `evidence`. They retain
 domain-specific structure rather than stringify build matrices or source history
@@ -39,12 +46,32 @@ Both views use the same query dimensions and global filter context; check-status
 counts describe coverage, not just packages with findings. Direct v2 API requests
 default to coverage for compatibility; use `section=results` explicitly.
 
-Monitor navigation comes from the catalog. Contextual controls and summary/detail
-components belong to the renderer, not to adapter-produced HTML or a UI schema.
-License reuses the Version column beside its change preview; Security shows the
-advisory count with evidence on the package page. Other evidence ports get the
-bounded title preview automatically. A renderer's `context` lists existing monitor
-IDs it needs as companion columns; it does not recompute their facts.
+Monitor navigation and linked facet choices are derived on the read side from the
+same package index. The UI API defaults to Results; the fact API retains Coverage.
+The website forwards the query to the API and submits one GET form immediately
+on selection. It does not reproduce filter validation, matching or counting.
+
+An ordinary new evidence adapter needs **no frontend edit**: its title, findings,
+source-attributed fields and check states flow through the existing evidence
+presenter. Add an adapter, register/configure it, test collection and the resulting
+read document. `test_new_monitor_uses_existing_document_primitives` exercises this
+path with an unfamiliar monitor; the SSR test renders the actual Python projection.
+
+A genuinely different factual shape (for example a new matrix) needs a typed read
+payload and a pure `Presenter` in `presentation.py`. Reuse fields/tables/entries;
+only introduce a display primitive when these cannot express the information.
+Do not give collectors a rendering hook, add a monitor-name switch in Astro, or
+send HTML, component names, executable expressions or arbitrary styles. The
+website owns spacing, breakpoints, themes, keyboard behavior and link safety.
+Presentation tone is not a collector-assigned workflow priority.
+
+Provider-specific formatting belongs to this reading boundary. Useful facts,
+source links, dates and explicit unavailable states are visible without opening
+individual disclosures. Common query facts appear once; an assertion repeated by
+multiple records keeps all distinct source links. The UI distinguishes primary
+observations from package context through layout, not collapsed evidence. Raw
+responses remain available through the fact API; a missing result is not negative.
+A same-name version track is an implementation detail, not a second package fact.
 
 `/api/v1/packages` is a compatibility projection of the same results, not a second
 calculation. Snapshot ownership and batching remain separate from presentation: the OBS
@@ -93,9 +120,9 @@ poll timestamp. Labels/tags are single-word or CamelCase categories, not priorit
 or action assignments. Evidence carries its source and HTTPS link.
 
 `key` is display text. Use an optional stable `code` when a machine consumer needs
-to recognize a field. Security's compact renderer consumes `query`, `fixed_events`
-and `epss_probability`; changing their display text must not change selection.
-Other codes remain ordinary visible evidence, without a frontend registration.
+to recognize a field. The evidence presenter consumes `query` and `epss_probability`; changing their
+display text must not change selection or formatting.
+Other codes remain ordinary visible evidence, without frontend registration.
 Old structured records without codes remain readable; no English-label inference
 is used to manufacture codes for them.
 
@@ -216,9 +243,9 @@ For a real port:
 4. The next heartbeat publishes the catalog and results. The selector, labels,
    evidence detail and check-status counts work without edits to API routes or
    page components. `frontend/tests/render.mjs` exercises an unregistered renderer
-   and a renamed Security finding label to protect this boundary. If a compact
-   domain-specific view is needed, add components and one specialization in the
-   renderer registry. Select by monitor ID/fact code, never English display text.
+   and a renamed Security finding label to protect this boundary. If a different
+   reading form is needed, change the pure presenter using existing document
+   primitives. Do not add domain-specific branches to the website.
 5. Inspect one real package with the read-only commands below, then promote the
    configuration and release through the [deployment procedure](deployment.md).
    Observe check statuses/errors and evidence timestamps, not only label counts.
@@ -238,18 +265,24 @@ inside the renderer or bypass the source gate to make a port appear covered.
 
 ## Change a layout or introduce a new payload kind
 
-For a different homepage arrangement, change `tableLayout`; leave the selector,
-GET query normalization and server-side facets alone. The default dense view keeps
-Version and per-target Build columns, BuildSystem beside the name and evidence
-labels below it. Focusing a monitor promotes its view; uncovered packages remain
-visible and can be filtered by check status. Changing focus resets only that
-check condition; search, version, build and Maintenance facets stay selected and
-retain their cross-monitor meaning. Detail layout uses the same renderer
-registry. It does not repeat finding-specific branches in each page.
+For a different homepage arrangement, change the document components/page layout.
+For a different selection of facts, change the pure presenter. Keep filtering and
+counting in `PackageList`; the website does not normalize or interpret dimensions.
+The default overview keeps Version and per-target Build columns, BuildSystem beside
+the name and evidence labels below it. A monitor's Results view shows its relevant
+columns; Coverage shows observed check states. Every filter remains visible and
+updates the shared context immediately. Changing focus resets only its check
+condition, not unrelated facets.
+
+Detail documents contain primary sections and supporting context. Both remain
+visible: build results and evidence in the main column, package information in the
+side column, with checks and changelog below. Normal version/track identifiers
+already expressed by the heading do not create another section. Do not turn an
+absence of duplication into extra disclosure clicks.
 
 Use the existing `evidence` payload for sourced assertions. A genuinely different
 shape (like Build's target/flavor matrix) requires a typed payload in `api`, its
-pure projection in `monitor_views`, regenerated types, and a kind renderer. That
-is an intentional schema change, not a reason to introduce untyped JSON or a
-runtime plugin loader. Keep the collector's write ownership and failure boundary
-explicit; the read model grants no collection privileges.
+pure projection in `monitor_views`, and a reading adapter using the document
+primitives. Regenerate the UI types only if the reading contract changes. This is
+an intentional schema boundary, not a reason to introduce untyped JSON or a
+runtime plugin loader. Read projections grant no collection privileges.

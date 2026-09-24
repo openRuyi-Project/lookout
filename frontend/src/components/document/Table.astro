@@ -1,0 +1,21 @@
+---
+import type {Table} from '../../lib/document';
+import Values from './Values.astro';
+interface Props {table: Table}
+const {table} = Astro.props;
+---
+<div class="table-wrap" role="region" tabindex="0" aria-label={table.label}>
+  <table class="data-table">
+    <colgroup>{table.columns.map(column => <col class={`column-${column.role}`}/>)}</colgroup>
+    <thead><tr>{table.columns.map(column => <th scope="col" class={`column-${column.role}`}>{column.title}</th>)}</tr></thead>
+    <tbody>{table.rows.map(row => <tr data-key={row.key}>
+      {row.cells.map((cell, index) => {
+        const Tag = index === 0 ? 'th' : 'td';
+        return <Tag scope={index === 0 ? 'row' : undefined} class={`column-${table.columns[index].role}`}>
+          {cell.lines.length ? cell.lines.map(line => <div class="value-line"><Values values={line}/></div>) : <span class="tone-muted">—</span>}
+        </Tag>;
+      })}
+    </tr>)}</tbody>
+  </table>
+</div>
+{!table.rows.length && <p class="empty">{table.empty}</p>}

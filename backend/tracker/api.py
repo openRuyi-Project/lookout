@@ -5,11 +5,12 @@ from pathlib import Path
 import sqlite3
 import threading
 import time
-from typing import Literal
+from typing import Annotated, Literal
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
-from . import state, view, package_list, monitor_views
+from pydantic import BaseModel, ConfigDict, Field
+from . import state, view, package_list, monitor_views, presentation as documents
+from .presentation_model import ListingDocument, DetailDocument, DocumentTheme
 
 # Fixed-shape payloads are typed so the response contract cannot silently drift.
 # Raw provenance (source, upstream, per-flavor facts) stays open on purpose.
@@ -272,14 +273,14 @@ class MonitorSummary(BaseModel):
     id: str
     title: str
     check: ObservationCheck
-    data: SourceSummary | VersionSummary | BuildSummary | EvidenceSummary
+    data: Annotated[SourceSummary | VersionSummary | BuildSummary | EvidenceSummary, Field(discriminator='kind')]
 
 
 class MonitorObservation(BaseModel):
     id: str
     title: str
     check: ObservationCheck
-    data: SourceObservation | VersionObservation | BuildObservation | EvidenceObservation
+    data: Annotated[SourceObservation | VersionObservation | BuildObservation | EvidenceObservation, Field(discriminator='kind')]
 
 
 class MonitoredPackage(BaseModel):
@@ -311,6 +312,19 @@ class MonitoredList(BaseModel):
     section: Literal['results', 'coverage']
     result_count: int
     coverage_count: int
+
+
+class ListingQuery(BaseModel):
+    q: str = Field('', max_length=100)
+    view: Literal['all', 'updates', 'problems', 'attention', 'untracked'] = 'all'
+    page: int = Field(1, ge=1, le=1000000)
+    per_page: int = Field(100, ge=1, le=200)
+    buildsystem: str = Field('', max_length=100)
+    maintenance: str = Field('', max_length=40)
+    build: list[str] = Field(default_factory=list, max_length=16)
+    monitor: str = Field('', max_length=64)
+    check: str = Field('', max_length=40)
+    section: Literal['results', 'coverage'] | None = None
 
 
 def create_app(db=None):
@@ -351,14 +365,18 @@ def create_app(db=None):
                         or (deadline is not None and now >= deadline)):
                     cache['projected'] = view.project_monitors(snap, now)
                     cache['deadline'] = view.next_transition(snap, now)
+                    cache.pop('index', None)
                 elif clock_changed:
                     cache['projected'] = view.refresh_build_clock(snap, cache['projected'][0], now)
                     cache['deadline'] = view.next_transition(snap, now)
+                    cache.pop('index', None)
                 # Check against the latest request, not just the projection time:
                 # a clock reversal can make an expired/future observation valid.
                 cache['last_seen'] = now
                 rows, collection = cache['projected']
-                return snap, rows, collection
+                if 'index' not in cache:
+                    cache['index'] = package_list.PackageList(rows, snap['targets'])
+                return snap, cache['index'], collection
         except (OSError, sqlite3.Error, ValueError):
             raise HTTPException(503, 'Snapshot unavailable') from None
     @app.get('/healthz')
@@ -366,44 +384,42 @@ def create_app(db=None):
         return {'status': 'ok'}
     @app.get('/readyz')
     def ready():
-        snap, rows, collection = data()
-        return {'status': 'degraded' if collection['errors'] else 'ready', 'packages': len(rows),
+        snap, index, collection = data()
+        return {'status': 'degraded' if collection['errors'] else 'ready', 'packages': len(index.rows),
                 'generation': snap['generation'], 'last_attempt': snap['last_attempt']}
     @app.get('/api/v1/packages', response_model=PackageList)
     def packages(q: str = Query('', max_length=100), view_name: Literal['all', 'updates', 'problems', 'attention', 'untracked'] = Query('all', alias='view'),
                  page: int = Query(1, ge=1, le=1000000), per_page: int = Query(100, ge=1, le=200),
                  buildsystem: str = Query('', max_length=100), maintenance: str = Query('', max_length=40),
                  build: list[str] = Query(default=[], max_length=16)):
-        snap, rows, collection = data()
+        snap, index, collection = data()
         try:
             builds = package_list.build_selections(build, snap['targets'])
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
-        result = package_list.PackageList(rows, snap['targets'], q).select(
+        result = index.select(query=q,
             view=view_name, buildsystem=buildsystem, maintenance=maintenance,
             builds=builds, page=page, per_page=per_page,
         )
         result['items'] = [view.summary(view.legacy_package(row)) for row in result['items']]
         return {**result, 'targets': snap['targets'], 'collection': collection,
                 'presentation': snap.get('presentation', {})}
-    def find_package(name, rows):
-        found = next((r for r in rows if r['name'] == name), None)
+    def find_package(name, index):
+        found = index.by_name.get(name)
         if found is None:
             raise HTTPException(404, 'Package not found')
         return found
     @app.get('/api/v1/packages/{name}', response_model=PackageDetail)
     def package(name: str):
-        snap, rows, _ = data()
-        return {**view.legacy_package(find_package(name, rows)), 'presentation': snap.get('presentation', {})}
-    @app.get('/api/v2/packages', response_model=MonitoredList)
-    def monitor_packages(q: str = Query('', max_length=100),
-                         view_name: Literal['all', 'updates', 'problems', 'attention', 'untracked'] = Query('all', alias='view'),
-                         page: int = Query(1, ge=1, le=1000000), per_page: int = Query(100, ge=1, le=200),
-                         buildsystem: str = Query('', max_length=100), maintenance: str = Query('', max_length=40),
-                         build: list[str] = Query(default=[], max_length=16),
-                         monitor: str = Query('', max_length=64), check: str = Query('', max_length=40),
-                         section: Literal['results', 'coverage'] = Query('coverage')):
-        snap, rows, collection = data()
+        snap, index, _ = data()
+        return {**view.legacy_package(find_package(name, index)), 'presentation': snap.get('presentation', {})}
+    def select_monitored(filters, default_section):
+        snap, index, collection = data()
+        q, view_name = filters.q, filters.view
+        page, per_page = filters.page, filters.per_page
+        buildsystem, maintenance, build = filters.buildsystem, filters.maintenance, filters.build
+        monitor, check = filters.monitor, filters.check
+        section = filters.section or default_section
         catalog = [module.describe() for module in monitor_views.registry(snap)]
         if monitor and monitor not in {m['id'] for m in catalog}:
             raise HTTPException(422, 'Unknown monitor')
@@ -417,19 +433,41 @@ def create_app(db=None):
             builds = package_list.build_selections(build, snap['targets'])
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
-        result = package_list.PackageList(rows, snap['targets'], q, monitor=monitor).select(
+        result = index.select(query=q, monitor=monitor,
             view=view_name, buildsystem=buildsystem, maintenance=maintenance,
             builds=builds, page=page, per_page=per_page, check=check,
             findings_only=bool(focused and focused['kind'] == 'evidence' and section == 'results'))
-        return {**result, 'items': [view.monitor_summary(row, monitor) for row in result['items']],
+        return {**result,
                 'section': section,
                 'monitors': catalog, 'targets': snap['targets'], 'collection': collection,
                 'presentation': snap.get('presentation', {})}
 
+    @app.get('/api/v2/packages', response_model=MonitoredList)
+    def monitor_packages(filters: Annotated[ListingQuery, Query()]):
+        result = select_monitored(filters, 'coverage')
+        return {**result, 'items': [view.monitor_summary(row, filters.monitor) for row in result['items']]}
+
+    @app.get('/api/ui/packages', response_model=ListingDocument)
+    def listing_document(filters: Annotated[ListingQuery, Query()]):
+        result = select_monitored(filters, 'results')
+        query = filters.model_dump()
+        query.update(section=result['section'], page=result['page'])
+        return documents.listing(result, query)
+
     @app.get('/api/v2/packages/{name}', response_model=MonitoredDetail)
     def monitor_package(name: str):
-        snap, rows, _ = data()
-        return {**find_package(name, rows), 'presentation': snap.get('presentation', {})}
+        snap, index, _ = data()
+        return {**find_package(name, index), 'presentation': snap.get('presentation', {})}
+
+    @app.get('/api/ui/packages/{name}', response_model=DetailDocument)
+    def package_document(name: str):
+        snap, index, _ = data()
+        return documents.detail(find_package(name, index))
+
+    @app.get('/api/ui/theme', response_model=DocumentTheme)
+    def document_theme():
+        snap, _, _ = data()
+        return documents.theme(snap.get('presentation', {}))
 
     @app.get('/api/v1/tracks/{track_id}')
     def track(track_id: str):
@@ -448,7 +486,8 @@ def create_app(db=None):
         return snap['targets']
     @app.get('/api/v1/status')
     def status():
-        snap, rows, collection = data()
+        snap, index, collection = data()
+        rows = index.rows
         coverage = {}
         for row in rows:
             for mid, module in row['monitors'].items():
@@ -461,8 +500,8 @@ def create_app(db=None):
                 'monitor_coverage': coverage, 'upstream_failures': view.upstream_failures(rows)}
     @app.get('/api/v1/export')
     def export():
-        snap, rows, collection = data()
-        return JSONResponse({'schema': 1, 'collection': collection, 'targets': snap['targets'], 'packages': [view.legacy_package(row) for row in rows]},
+        snap, index, collection = data()
+        return JSONResponse({'schema': 1, 'collection': collection, 'targets': snap['targets'], 'packages': [view.legacy_package(row) for row in index.rows]},
                             headers={'Content-Disposition': 'attachment; filename="openruyi-packages.json"'})
     @app.middleware('http')
     async def headers(request, call_next):

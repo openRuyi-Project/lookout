@@ -39,8 +39,9 @@ SQLite's backup API and includes both tables; old schema-1 snapshots remain read
 
 ## Package selection
 
-`build_status` owns OBS status meaning; `view` folds build flavors into one target
-observation. `package_list` indexes those package rows once per request. List
+`build_status` owns OBS status meaning; `monitor_views` folds build flavors into one target
+observation. `package_list` indexes each cached projection once. Requests apply
+their search and selections to the same read-only index. List
 membership and every count use intersections of the same sets, before pagination.
 A facet ignores only its own selection when calculating available choices.
 `build=TARGET:STATE` may repeat for distinct configured targets; selections across
@@ -50,9 +51,9 @@ independent of the observed status. The frontend renders API choices and preserv
 selections in links. A small same-origin script submits the GET form immediately
 on selection; it does not fetch, filter or count data. Without scripting, the form
 retains a submit button.
-Search and selections share one GET form. `listingQuery` normalizes its URL;
-`PackageFilters` renders controls and `PackageTable` renders rows. Detail sections
-reuse `EvidenceFacts` to format provider facts.
+Search and selections share one GET form. The UI API validates the query and
+returns reading documents; generic Astro components render their controls,
+tables and fields. Monitor-specific reading adapters live in `presentation.py`.
 
 `base.css` owns theme pairs, native controls and focus defaults; `app.css` owns
 shell and page layouts. Themes use CSS `light-dark()` (Baseline 2024). Wide tables
@@ -105,7 +106,7 @@ The monitor runner owns lifecycle and storage; adapters own provider inputs and
 interpretation; projection owns visibility. A new label uses the existing generic
 API and renderer. Source, Version and Build use the same result envelope, with
 typed domain payloads; v1 is a compatibility projection of v2 monitor results.
-The UI renderer registry and layout are separate from the selector and linked
+Reading adapters and page layouts are separate from the selector and linked
 query facets. See the [monitor porting guide](monitor-porting.md) for the small
 module contract, reusable components and an executable end-to-end example.
 

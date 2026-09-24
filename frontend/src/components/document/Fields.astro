@@ -1,0 +1,9 @@
+---
+import type {Field} from '../../lib/document';
+import Values from './Values.astro';
+interface Props {fields: Field[]; compact?: boolean}
+const {fields, compact = false} = Astro.props;
+---
+{fields.length > 0 && <dl class:list={['fields', {compact}]}>
+  {fields.map(field => <div><dt>{field.label}</dt><dd><Values values={field.values}/></dd></div>)}
+</dl>}

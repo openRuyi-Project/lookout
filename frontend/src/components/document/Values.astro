@@ -1,0 +1,13 @@
+---
+import {safeHref, type Text} from '../../lib/document';
+interface Props {values: Text[]}
+const {values} = Astro.props;
+---
+{values.map(value => {
+  const href = safeHref(value.href);
+  const Tag = href ? 'a' : value.kind === 'time' ? 'time' : 'span';
+  return <Tag href={href} title={value.title || undefined}
+    class:list={['value', `value-${value.kind}`, `tone-${value.tone}`]}
+    datetime={value.datetime || undefined}
+    data-appearance={value.appearance ? encodeURIComponent(value.appearance) : undefined}>{value.text}</Tag>;
+})}

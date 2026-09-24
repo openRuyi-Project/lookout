@@ -1,0 +1,23 @@
+---
+import {safeHref, type Controls} from '../../lib/document';
+import Facet from './Facet.astro';
+import Navigation from './Navigation.astro';
+interface Props {controls: Controls}
+const {controls} = Astro.props;
+---
+<form method="get" action={safeHref(controls.action)} data-auto-submit class="document-controls">
+  {controls.hidden.map(parameter => <input type="hidden" name={parameter.name} value={parameter.value}/>)}
+  <div class="control-bar">
+    <div>{controls.navigation.map(navigation => <Navigation navigation={navigation}/>)}</div>
+    <div class="search-form"><label class="sr-only" for="search">Search packages</label>
+      <input id="search" type="search" name="q" value={controls.query} placeholder="Search packages" maxlength="100"/>
+      <button type="submit">Search</button>
+    </div>
+  </div>
+  <span class="sr-only" id="filter-behavior">Selecting a filter reloads matching rows and counts.</span>
+  {controls.facets.length > 0 && <div class="facet-row">{controls.facets.map(facet => <Facet facet={facet}/>)}</div>}
+  {controls.active.length > 0 && <div class="active-filters">{controls.active.map(choice =>
+    <a href={safeHref(choice.href)} aria-label={`Remove ${choice.label}`}>{choice.label} <span aria-hidden="true">×</span></a>
+  )}</div>}
+  <button type="submit" data-filter-submit>Apply filters</button>
+</form>

@@ -2,6 +2,8 @@
 import Base from '../../layouts/Base.astro';
 ---
 <Base title="API · openRuyi Packages"><article class="prose"><h1>Query interface</h1><p>Requests read stored observations; they never start an upstream check. No account is required. <a href="/openapi.json">OpenAPI specification</a>.</p><dl class="api-list">
+<dt><a href="/api/ui/packages">GET /api/ui/packages</a></dt><dd>Website reading document: opaque navigation, linked choices and table cells. The same filters apply; results are the default. No HTML or executable layout.</dd>
+<dt><a href="/api/ui/packages/bash">GET /api/ui/packages/{'{name}'}</a></dt><dd>Fields, tables and source-attributed evidence entries. For programmatic analysis use the typed facts below.</dd>
 <dt><a href="/api/v2/packages">GET /api/v2/packages</a></dt><dd>Uniform monitor results and linked facets. Use <code>monitor</code> to focus a module and <code>check</code> to filter its check status. Search with <code>q</code>. Use <code>view=all|updates|problems|attention</code>, <code>page</code>, and <code>per_page</code> (1–200).</dd>
 <dt><a href="/api/v2/packages/bash">GET /api/v2/packages/{'{name}'}</a></dt><dd>Each monitor’s check status and typed observations, including evidence and build flavors.</dd>
 <dt><a href="/api/v1/tracks/meson">GET /api/v1/tracks/{'{id}'}</a></dt><dd>A configured native nvchecker entry.</dd>

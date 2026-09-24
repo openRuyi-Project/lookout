@@ -1,35 +1,27 @@
 ---
 import Base from '../layouts/Base.astro';
-import PackageFilters from '../components/PackageFilters.astro';
-import PackageTable from '../components/PackageTable.astro';
-import {utcTime} from '../lib/time';
-import {api, type Listing} from '../lib/api';
-import {listingQuery, listingURL} from '../lib/listing';
-
-const query = listingQuery(Astro.url.searchParams);
-const {data, status} = await api<Listing>('/api/v2/packages?' + query);
-const invalidFilters = status === 422;
-if (!data) Astro.response.status = invalidFilters ? 422 : 503;
+import Controls from '../components/document/Controls.astro';
+import Table from '../components/document/Table.astro';
+import Navigation from '../components/document/Navigation.astro';
+import Fields from '../components/document/Fields.astro';
+import {api} from '../lib/api';
+import {safeHref, type ListingDocument} from '../lib/document';
+const {data, status} = await api<ListingDocument>('/api/ui/packages' + Astro.url.search);
+if (!data) Astro.response.status = status === 422 ? 422 : 503;
 ---
 <Base>
-  <section aria-label="Package list">
-    <PackageFilters data={data} query={query}/>
-    {!data && (
-      <div role="alert" class="notice">
-        {invalidFilters ? <>Invalid filter selection. <a href="/">Clear filters</a></>
-          : <>Snapshot unavailable. <a href={listingURL(query)}>Retry</a></>}
-      </div>
-    )}
-    {data?.collection.mode === 'fixture' && <div class="notice">Test fixture — not live openRuyi data.</div>}
-    {data && <>
-      <PackageTable data={data} query={query}/>
-      {!query.get('monitor') && <p class="updated-note">Last updated: <span>OBS {data.collection.obs_updated_at ? <time datetime={data.collection.obs_updated_at}>{utcTime(data.collection.obs_updated_at)}</time> : '—'}</span> · <span>Upstream {data.collection.upstream_updated_at ? <time datetime={data.collection.upstream_updated_at}>{utcTime(data.collection.upstream_updated_at)}</time> : '—'}</span> <span class="time-zone">UTC</span></p>}
-      <nav class="pagination" aria-label="Pages">
-        <span>{data.total} packages · page {data.page} / {Math.max(data.pages, 1)}</span>
-        {data.page > 1 && <a rel="prev" href={listingURL(query, {page: String(data.page - 1)})}>Previous</a>}
-        {data.page < data.pages && <a rel="next" href={listingURL(query, {page: String(data.page + 1)})}>Next</a>}
+  {data ? <div class="workspace">
+    <aside class="monitor-rail"><span class="rail-label">Monitors</span><Navigation navigation={data.navigation} rail/></aside>
+    <section class="listing" aria-label="Package list">
+      <header class="listing-heading"><h1>{data.title}</h1></header>
+      <Controls controls={data.controls}/>
+      {data.notices.map(notice => <p class="notice">{notice}</p>)}
+      <Table table={data.table}/>
+      <nav class="pagination" aria-label="Pages"><span>{data.total} packages · page {data.page} / {data.pages}</span>
+        {data.pagination.map(choice => <a href={safeHref(choice.href)}>{choice.label}</a>)}
       </nav>
-    </>}
-  </section>
+      <div class="collection-meta"><Fields fields={data.meta} compact/></div>
+    </section>
+  </div> : <div role="alert" class="notice">{status === 422 ? 'Invalid filter selection.' : 'Snapshot unavailable.'} <a href="/">Packages</a></div>}
   <script is:inline src="/filters.js" defer></script>
 </Base>
