@@ -12,6 +12,7 @@ import signal
 import time
 import tempfile
 import tomllib
+import tomlkit
 from .state import success, failure
 from .config import public_source, track_fingerprint
 from .schedule import Schedule
@@ -112,18 +113,20 @@ def selected_names(config, tracks):
     return list(dict.fromkeys(tracks))
 
 
-def _toml_value(value):
-    if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
-    if isinstance(value, bool):
-        return str(value).lower()
-    if isinstance(value, (int, float)):
-        return str(value).lower()
-    if isinstance(value, list):
-        return '[' + ', '.join(_toml_value(item) for item in value) + ']'
-    if isinstance(value, dict):
-        return '{' + ', '.join(json.dumps(key) + ' = ' + _toml_value(item) for key, item in value.items()) + '}'
-    raise ValueError('unsupported nvchecker option type in selected-track configuration')
+def dump_config(tables):
+    """Serialize native input only when the production TOML reader agrees.
+
+    TOML Kit may support newer syntax than Python's tomllib (also used by
+    nvchecker). Validate before creating a candidate or invoking the checker.
+    """
+    text = tomlkit.dumps(tables)
+    try:
+        parsed = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as error:
+        raise ValueError('generated configuration is not supported by the TOML reader') from error
+    if not version_rules.same_values(parsed, tables):
+        raise ValueError('generated configuration differs from the requested native rules')
+    return text
 
 
 @contextmanager
@@ -145,9 +148,7 @@ def command_config(config, names):
     options.pop('oldver', None)
     options.pop('newver', None)
     tables = {'__config__': options, **{name: config['native'][name] for name in names}}
-    body = '\n\n'.join('[' + json.dumps(name) + ']\n' + '\n'.join(
-        json.dumps(key) + ' = ' + _toml_value(value) for key, value in entry.items())
-        for name, entry in tables.items()) + '\n'
+    body = dump_config(tables)
     with tempfile.TemporaryDirectory(prefix='tracker-nv-selected-') as directory:
         selected = Path(directory) / 'nvchecker.toml'
         selected.write_text(body)

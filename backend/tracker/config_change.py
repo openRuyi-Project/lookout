@@ -7,6 +7,8 @@ replaces live mounts. The existing deployment/restart selects that directory.
 """
 
 from pathlib import Path
+from collections.abc import MutableMapping
+from contextlib import contextmanager
 import hashlib
 import difflib
 import json
@@ -14,7 +16,9 @@ import os
 import shutil
 import tempfile
 import tomllib
-from . import config as cfg, nv, version_rules
+import tomlkit
+from tomlkit.items import Comment, InlineTable, Table, Whitespace
+from . import config as cfg, version_rules
 
 
 def digest(path):
@@ -40,7 +44,7 @@ def table_positions(text):
             if obj == {"__tracker_locator__": True}:
                 headers.append((tuple(path), n))
         except tomllib.TOMLDecodeError:
-            pass  # multiline strings are rejected by the semantic postcondition
+            pass  # Not a complete table header.
     return {
         key: (start, headers[n + 1][1] if n + 1 < len(headers) else len(lines))
         for n, (key, start) in enumerate(headers)
@@ -48,36 +52,47 @@ def table_positions(text):
 
 
 def edit_tables(text, changes, prefix=()):
+    """Update only changed fields, retaining the author's TOML representation."""
     if not changes:
         return text
+    document = tomlkit.parse(text)
     expected = tomllib.loads(text)
-    container = expected
+    container, expected_container = document, expected
     for key in prefix:
-        container = container.setdefault(key, {})
-    positions, lines = table_positions(text)
-    edits = []
+        if key not in container:
+            container[key] = tomlkit.table(is_super_table=True)
+        container = container[key]
+        expected_container = expected_container.setdefault(key, {})
+        if not isinstance(container, MutableMapping):
+            raise ValueError(f"TOML path {prefix!r} is not a table")
+
+    def update_table(table, values):
+        with _retain_footer(table):
+            for key in set(table) - values.keys():
+                _remove(table, key)
+            for key, value in values.items():
+                if key in table and version_rules.same_values(table[key], value):
+                    continue
+                if key in table and isinstance(table[key], MutableMapping) and isinstance(value, dict):
+                    update_table(table[key], value)
+                else:
+                    table[key] = value
+
     for name, value in changes.items():
-        path = (*prefix, name)
-        if name in container and path not in positions:
-            raise ValueError(f"format {path!r} as a separate TOML table before editing")
         if value is None:
-            container.pop(name, None)
-            replacement = ""
+            if name in container:
+                _remove(container, name)
+            expected_container.pop(name, None)
         else:
-            container[name] = value
-            replacement = (
-                "\n["
-                + ".".join(json.dumps(p) for p in path)
-                + "]\n"
-                + "".join(json.dumps(k) + " = " + nv._toml_value(v) + "\n" for k, v in value.items())
-            )
-        start, end = positions.get(path, (len(lines), len(lines)))
-        edits.append((start, end, replacement))
-    for start, end, value in sorted(edits, reverse=True):
-        lines[start:end] = [value]
-    result = "".join(lines)
+            expected_container[name] = value
+            if name in container and isinstance(container[name], MutableMapping):
+                update_table(container[name], value)
+            else:
+                container[name] = value
+    result = tomlkit.dumps(document)
     parsed = tomllib.loads(result)
     # Removing the final child also removes its implicit TOML parent table.
+    positions, _ = table_positions(text)
     for depth in range(len(prefix), 0, -1):
         parent = expected
         for part in prefix[: depth - 1]:
@@ -85,21 +100,56 @@ def edit_tables(text, changes, prefix=()):
         key = prefix[depth - 1]
         if parent.get(key) == {} and tuple(prefix[:depth]) not in positions:
             parent.pop(key)
-    if parsed != expected:
+    if not version_rules.same_values(parsed, expected):
         raise ValueError("unsupported TOML layout; refusing lossy configuration edit")
     return result
+
+
+@contextmanager
+def _retain_footer(table):
+    """Keep trailing comment/whitespace nodes after newly inserted fields.
+
+    TOML Kit attaches a next-table introduction to the preceding table. Only
+    unkeyed tail nodes are detached; keyed positions and semantic maps stay valid.
+    """
+    footer = []
+    if isinstance(table, Table):
+        body = table.value.body
+        while body and body[-1][0] is None and isinstance(body[-1][1], (Comment, Whitespace)):
+            footer.append(body.pop()[1])
+    try:
+        yield
+    finally:
+        for item in reversed(footer):
+            table.raw_append(None, item)
+
+
+def _remove(table, key):
+    """Do not guess which surviving table a deleted table's comments explain."""
+    value = table[key]
+    if isinstance(value, MutableMapping) and not isinstance(value, (Table, InlineTable)):
+        raise ValueError(f"deleting non-contiguous table {key!r} requires an explicit source edit")
+    if isinstance(value, Table):
+        pending = [value]
+        while pending:
+            for _, item in pending.pop().value.body:
+                if isinstance(item, Comment):
+                    raise ValueError(f"deleting {key!r} would discard standalone comments; edit their ownership explicitly")
+                if isinstance(item, Table):
+                    pending.append(item)
+    del table[key]
 
 
 def rebase(base, candidate, runtime):
     changes, conflicts = {}, []
     for name in sorted(base.keys() | candidate.keys()):
         old, new = base.get(name), candidate.get(name)
-        if old == new:
+        if version_rules.same_values(old, new):
             continue
         actual = runtime.get(name)
-        if actual not in (old, new):
+        if not any(version_rules.same_values(actual, value) for value in (old, new)):
             conflicts.append(name)
-        elif actual != new:
+        elif not version_rules.same_values(actual, new):
             changes[name] = new
     if conflicts:
         raise ValueError("operator changes conflict: " + ", ".join(conflicts))
@@ -157,11 +207,11 @@ def plan(base_path, candidate_path, runtime_path, output):
         b.pop(key, None)
     a.get("collector", {}).pop("nvchecker_config", None)
     b.get("collector", {}).pop("nvchecker_config", None)
-    if a != b:
+    if not version_rules.same_values(a, b):
         raise ValueError("change site settings separately; plan only promotes native rules and package bindings")
     base_options = tomllib.loads(Path(base["nvpath"]).read_text()).get("__config__", {})
     candidate_options = tomllib.loads(Path(candidate["nvpath"]).read_text()).get("__config__", {})
-    if base_options != candidate_options:
+    if not version_rules.same_values(base_options, candidate_options):
         raise ValueError("change native operator options separately from package rules")
     native_changes = rebase(base["native"], candidate["native"], runtime["native"])
     binding_changes = rebase(base["packages"], candidate["packages"], runtime["packages"])
@@ -206,11 +256,11 @@ def plan(base_path, candidate_path, runtime_path, output):
             expected_bindings.pop(name, None)
         else:
             expected_bindings[name] = entry
-    if prepared_config["packages"] != expected_bindings:
+    if not version_rules.same_values(prepared_config["packages"], expected_bindings):
         raise ValueError("text promotion differs from reviewed package bindings")
-    if prepared_config["native"] != expected_native:
+    if not version_rules.same_values(prepared_config["native"], expected_native):
         raise ValueError("text promotion differs from reviewed effective rules")
-    if prepared_config["native_options"] != runtime["native_options"]:
+    if not version_rules.same_values(prepared_config["native_options"], runtime["native_options"]):
         raise ValueError("text promotion changed native operator options")
     record = {
         "schema": 1,

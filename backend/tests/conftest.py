@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
+import tomlkit
 from tracker import state
 from tracker.config import track_fingerprint
 
@@ -46,15 +47,12 @@ def snapshot(config):
 @pytest.fixture
 def configured_path(config, tmp_path):
     """The small in-memory fixture, validated through the real file loader."""
-    from tracker import config as cfg, nv
+    from tracker import config as cfg
     native = tmp_path / 'native.toml'
-    native.write_text('\n\n'.join(
-        '[' + nv._toml_value(name) + ']\n' + '\n'.join(
-            key + ' = ' + nv._toml_value(value) for key, value in rule.items())
-        for name, rule in config['native'].items()))
+    native.write_text(tomlkit.dumps(config['native']))
     config['collector']['nvchecker_config'] = native.name
     path = tmp_path / 'tracker.toml'
-    path.write_text('\n'.join(key + ' = ' + nv._toml_value(config[key])
-                              for key in ('obs', 'targets', 'collector', 'packages')))
+    path.write_text(tomlkit.dumps({key: config[key]
+                                  for key in ('obs', 'targets', 'collector', 'packages')}))
     config.update(cfg.load(path))
     return path

@@ -1,5 +1,4 @@
 """A heartbeat publishes invalidations and new results, not redundant final reads."""
-import json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Event
@@ -7,8 +6,9 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+import tomlkit
 
-from tracker import config as cfg, monitor, nv, state
+from tracker import config as cfg, monitor, state
 
 
 @pytest.fixture
@@ -20,10 +20,9 @@ def collection(config, snapshot, tmp_path, monkeypatch):
     config['monitors'] = {'enabled': ['fixture'], 'workers': 1}
     path = tmp_path / 'tracker.toml'
     native = tmp_path / 'nvchecker.toml'
-    native.write_text('\n'.join(json.dumps(name) + ' = ' + nv._toml_value(entry)
-                               for name, entry in config['native'].items()))
+    native.write_text(tomlkit.dumps(config['native']))
     raw = {key: config[key] for key in ('obs', 'targets', 'collector', 'packages', 'monitors')}
-    path.write_text('\n'.join(key + ' = ' + nv._toml_value(value) for key, value in raw.items()))
+    path.write_text(tomlkit.dumps(raw))
     loaded = cfg.load(path)
     snapshot['sources'] = {name: snapshot['sources'][name] for name in ('binutils', 'foo3')}
     db = tmp_path / 'snapshot.db'

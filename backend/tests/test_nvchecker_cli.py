@@ -90,3 +90,121 @@ def test_native_sparse_index_excludes_yanked_and_other_streams(tmp_path):
         assert retained['fixture']['fetched_at']==result['fixture']['fetched_at']
     finally:
         server.shutdown();server.server_close();thread.join()
+
+
+def test_crates_sources_agree_for_current_release_line_policies():
+    """Compare pinned native sources, not a tracker reimplementation of selection."""
+    import asyncio
+    from nvchecker.api import GetVersionError, RawResult, RichResult
+    from nvchecker.core import _process_result
+    from nvchecker_source import cratesio, regex
+    from tracker import package_identity
+    from tracker.version_rules import load
+
+    native = load(Path(__file__).resolve().parents[2] / 'config/versions/nvchecker.toml').entries
+    policies = {}
+    for entry in native.values():
+        if entry.get('source') != 'regex' or not entry.get('url', '').startswith('https://index.crates.io/'):
+            continue
+        identity = package_identity.from_native(entry)
+        candidate = {key: value for key, value in entry.items() if key not in ('source', 'url', 'regex')}
+        candidate.update(source='cratesio', cratesio=identity['name'])
+        assert package_identity.from_native(candidate) == identity
+        policies.setdefault(entry['include_regex'], (entry, candidate))
+    assert policies
+
+    class Responses:
+        def __init__(self, records):
+            self.records = records
+
+        async def get_json(self, url):
+            return {'versions': [{'num': version, 'yanked': yanked} for version, yanked in self.records]}
+
+        async def get(self, key, fetch):
+            return '\n'.join(json.dumps({'yanked': yanked, 'vers': version})
+                             for version, yanked in self.records)
+
+    async def selected(source, entry, records):
+        try:
+            versions = await source.get_version('fixture', entry, cache=Responses(records))
+        except GetVersionError as error:
+            versions = error
+        result = _process_result(RawResult('fixture', versions, entry))
+        return result.version if isinstance(result, RichResult) else None
+
+    async def compare():
+        for pattern, (entry, candidate) in policies.items():
+            release = pattern.split('(?:', 1)[0].removeprefix('^').replace(r'\.', '.').replace('[0-9]+', '7')
+            assert re.fullmatch(pattern, release)
+            records = [(release, False), (release + '+build.5', False),
+                       (release + '-rc.1', False), (release + '-beta.1', False),
+                       (release + '+withdrawn', True), ('9999.0.0', False)]
+            for rows, expected in ((records, release), ([(release, True)], None),
+                                   ([(release + '-rc.1', False)], None), ([], None)):
+                assert await selected(regex, entry, rows) == expected
+                assert await selected(cratesio, candidate, rows) == expected
+
+    asyncio.run(compare())
+
+
+def test_crates_native_run_preserves_empty_selection_evidence(tmp_path, monkeypatch, config):
+    """Real run/subset/CLI/import path; only provider HTTP origins use a fixture."""
+    import os
+    import sys
+    import tomlkit
+    from tracker import nv, version_rules
+
+    production = version_rules.load(Path(__file__).resolve().parents[2] / 'config/versions/nvchecker.toml').entries
+    sample = next(entry for entry in production.values()
+                  if entry.get('source') == 'regex' and entry.get('url', '').startswith('https://index.crates.io/'))
+    rows = [('0.4.7', False), ('0.4.8+metadata', False), ('0.4.99', True),
+            ('0.4.100-rc.1', False), ('0.5.0', False)]
+
+    def write_responses(versions):
+        (tmp_path / 'index').write_text('\n'.join(json.dumps({'vers': v, 'yanked': y}) for v, y in versions))
+        (tmp_path / 'fixture').write_text(json.dumps({'versions': [{'num': v, 'yanked': y} for v, y in versions]}))
+
+    class Handler(SimpleHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=str(tmp_path)))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        root = f'http://127.0.0.1:{server.server_port}'
+        binary = tmp_path / 'bin' / 'nvchecker'
+        binary.parent.mkdir()
+        binary.write_text(f'#!{sys.executable}\n'
+                          'from nvchecker_source import cratesio\n'
+                          f'cratesio.API_URL = {root + "/%s"!r}\n'
+                          'from nvchecker.__main__ import main\nmain()\n')
+        binary.chmod(0o755)
+        monkeypatch.setenv('PATH', str(binary.parent) + os.pathsep + os.environ['PATH'])
+        old = {**sample, 'url': root + '/index', 'include_regex': r'^0\.4\.[0-9]+(?:\+[^ ]+)?$'}
+        candidate = {key: value for key, value in old.items() if key not in ('source', 'url', 'regex')}
+        candidate.update(source='cratesio', cratesio='fixture')
+        config['native'] = {'sparse': old, 'api': candidate}
+        path = tmp_path / 'rules.toml'
+        # Tornado is a locked runtime dependency; neither fixture needs remote access.
+        path.write_text(tomlkit.dumps({'__config__': {'httplib': 'tornado'}, **config['native']}))
+        config.update(nvpath=str(path), nv_digest=version_rules.digest(path))
+        config['collector']['nvchecker_timeout_seconds'] = 30
+        before = path.read_bytes()
+        write_responses(rows)
+        first, error = nv.run(config, {}, utcnow(), tracks=['sparse', 'api'])
+        assert error is None
+        assert [first[name]['version'] for name in ('sparse', 'api')] == ['0.4.8', '0.4.8']
+        assert not any(value.get('error') for value in first.values())
+        write_responses([('0.4.8', True)])
+        second, error = nv.run(config, first, utcnow(), tracks=['sparse', 'api'])
+        assert error is None  # CLI reports per-track errors through its JSON events.
+        for name in first:
+            assert second[name]['version'] == first[name]['version']
+            assert second[name]['fetched_at'] == first[name]['fetched_at']
+            assert second[name]['error'] == 'nvchecker no matching version'
+        assert path.read_bytes() == before
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()

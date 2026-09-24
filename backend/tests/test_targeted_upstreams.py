@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import tomllib
+import tomlkit
 
 import pytest
 from tracker import collector, config as cfg, nv, state
@@ -17,9 +18,7 @@ from tracker import collector, config as cfg, nv, state
 def write_native(tmp_path, config, options=None):
     path = tmp_path / 'native.toml'
     tables = {'__config__': options or {}, **config['native']}
-    path.write_text('\n\n'.join('[' + json.dumps(name) + ']\n' + '\n'.join(
-        json.dumps(key) + ' = ' + nv._toml_value(value) for key, value in values.items())
-        for name, values in tables.items()))
+    path.write_text(tomlkit.dumps(tables))
     config['nvpath'] = str(path)
     config['nv_digest'] = hashlib.sha256(path.read_bytes()).hexdigest()
     return path
@@ -36,6 +35,25 @@ def test_bad_names_rejected_before_lock_or_checker(config, tmp_path, tracks, mon
 def test_deduplicate_exact_names(config):
     assert nv.selected_names(config, None) is None
     assert nv.selected_names(config, ['widget@3', 'binutils', 'widget@3']) == ['widget@3', 'binutils']
+
+
+def test_generated_native_input_roundtrips_quoted_keys_nested_options_and_escapes():
+    tables = {'python.example': {'source': 'regex', 'regex': r'"version": "(.*?)"',
+                                 'url': 'https://example.org/\u03b1'},
+              '__config__': {'source': {'fixture': {'enabled': True, 'items': [1, 'x']}}}}
+    assert tomllib.loads(nv.dump_config(tables)) == tables
+
+
+def test_generated_native_input_rejects_new_toml_syntax_before_writing():
+    # TOML Kit emits TOML 1.1's \\e; Python 3.14/nvchecker still read TOML 1.0.
+    with pytest.raises(ValueError, match='not supported by the TOML reader'):
+        nv.dump_config({'fixture': {'source': 'regex', 'regex': '\x1b'}})
+
+
+def test_generated_native_input_rejects_type_changing_serializer(monkeypatch):
+    monkeypatch.setattr(nv.tomlkit, 'dumps', lambda _: '[widget]\nsource="manual"\nvalue=true\n')
+    with pytest.raises(ValueError, match='differs from the requested native rules'):
+        nv.dump_config({'widget': {'source': 'manual', 'value': 1}})
 
 
 def test_subset_config_native_options_and_no_operator_file_writes(config, tmp_path, monkeypatch):
@@ -217,12 +235,10 @@ def test_real_native_cli_two_selected_tracks_and_error_exit(config, snapshot, tm
                             for name, path in [('binutils','one'),('widget@3','two'),('widget@4','unselected')]}
         write_native(tmp_path, config, {'max_concurrency':2,'http_timeout':2})
         tracker = tmp_path / 'tracker.toml'
-        text = '[obs]\n' + '\n'.join(f'{k} = {nv._toml_value(v)}' for k,v in config['obs'].items())
-        for target in config['targets']:
-            text += '\n[[targets]]\n' + '\n'.join(f'{k} = {nv._toml_value(v)}' for k,v in target.items())
-        text += '\n[collector]\nnvchecker_config="native.toml"\nnvchecker_timeout_seconds=30\n[packages]\n'
-        text += '\n'.join(json.dumps(k)+' = '+nv._toml_value(v) for k,v in config['packages'].items())
-        tracker.write_text(text)
+        tracker.write_text(tomlkit.dumps({
+            'obs': config['obs'], 'targets': config['targets'], 'packages': config['packages'],
+            'collector': {'nvchecker_config': 'native.toml', 'nvchecker_timeout_seconds': 30},
+        }))
         for name, fact in snapshot['tracks'].items():
             fact['configuration_fingerprint'] = cfg.track_fingerprint(config['native'][name])
         snapshot['components']['nvchecker']['error'] = 'old whole-batch timeout'

@@ -2,9 +2,10 @@
 import os
 from pathlib import Path
 import sys
+import tomlkit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from tracker import config, nv, state
+from tracker import config, state
 
 PACKAGE = 'smoke-fixture'
 VERSION = '1.2.3'
@@ -20,10 +21,7 @@ def prepare(mode, config_dir=Path('/config'), data_dir=Path('/data')):
                          'native_spec_fallback': True, 'source_batch_size': 10, 'source_workers': 1}, 'monitors': {'enabled': []}}
     # Native nvchecker input, with no remote entries to fetch.
     (config_dir / 'nvchecker.toml').write_text('[__config__]\nmax_concurrency = 1\n')
-    text = ''.join(f'[{name}]\n' + ''.join(f'{k} = {nv._toml_value(v)}\n' for k, v in fields.items())
-                   for name, fields in cfg.items())
-    for target in targets:
-        text += '\n[[targets]]\n' + ''.join(f'{k} = {nv._toml_value(v)}\n' for k, v in target.items())
+    text = tomlkit.dumps({**cfg, 'targets': targets})
     path = config_dir / 'tracker.toml'
     path.write_text(text)
     config.load(path)

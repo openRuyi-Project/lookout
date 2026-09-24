@@ -190,11 +190,10 @@ def append_entries(text, entries):
     original = raw
     if set(original) & set(entries):
         raise ValueError('discovery must never overwrite an existing native track')
-    addition = ''.join('\n[' + json.dumps(name) + ']\n' + ''.join(
-        json.dumps(k) + ' = ' + nv._toml_value(v) + '\n' for k, v in entry.items())
-        for name, entry in sorted(entries.items()))
+    addition = '\n' + nv.dump_config(dict(sorted(entries.items()))) if entries else ''
     output = text + ('' if text.endswith('\n') else '\n') + addition
-    assert tomllib.loads(output) == {**original, **entries}
+    if not version_rules.same_values(tomllib.loads(output), {**original, **entries}):
+        raise ValueError('discovery output differs from the requested native rules')
     return output
 
 

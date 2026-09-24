@@ -10,12 +10,15 @@ import sys
 import threading
 import time
 import tomllib
+import tomlkit
 import pytest
 from tracker import collector, config as cfg, nv, state
 
 
 def native_file(tmp_path, config):
-    p=tmp_path/'native.toml';p.write_text('[__config__]\nmax_concurrency=2\nhttp_timeout=5\n'+''.join('\n['+json.dumps(n)+']\n'+''.join(k+'='+nv._toml_value(v)+'\n' for k,v in fields.items()) for n,fields in config['native'].items()))
+    p = tmp_path / 'native.toml'
+    p.write_text(tomlkit.dumps({'__config__': {'max_concurrency': 2, 'http_timeout': 5},
+                               **config['native']}))
     config.update(nvpath=str(p),nv_digest=hashlib.sha256(p.read_bytes()).hexdigest())
     return p
 

@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import json
+import tomlkit
 import subprocess
 import sys
 import threading
@@ -70,7 +71,7 @@ def test_native_pypi_release_and_explicit_watch_policy(tmp_path):
         'withdrawn': {'source':'pypi','pypi':'withdrawn'},
     }
     path = tmp_path / 'native.toml'
-    path.write_text('\n\n'.join('['+json.dumps(name)+']\n'+'\n'.join(json.dumps(k)+' = '+nv._toml_value(v) for k,v in entry.items()) for name,entry in entries.items()))
+    path.write_text(tomlkit.dumps(entries))
     # No plugin replacement or ordering imitation: actual CLI/plugins/HTTP client
     # process the fixture. Reject every unexpected origin rather than going online.
     script = '''import sys

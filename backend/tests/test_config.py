@@ -1,5 +1,6 @@
 from pathlib import Path
 import tomllib
+import tomlkit
 import pytest
 from tracker import config as cfg, nv, state
 
@@ -70,7 +71,9 @@ def test_configuration_guard_covers_every_loaded_input(config, configured_path, 
         if change == 'binding':
             text = text.replace('3.x', 'new-line', 1)
         elif change == 'operator_option':
-            text = text.replace('"source_workers" = 2', '"source_workers" = 3', 1)
+            document = tomlkit.parse(text)
+            document['collector']['source_workers'] += 1
+            text = tomlkit.dumps(document)
         else:
             text += '\n# reviewer-visible change\n'
     assert text != path.read_text()
