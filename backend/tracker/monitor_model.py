@@ -2,8 +2,10 @@
 
 import hashlib
 import json
-import re
 from urllib.parse import urlsplit
+from typing import Annotated, Literal, Self
+
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, TypeAdapter, ValidationInfo, field_validator, model_validator
 from . import state, version_status
 
 
@@ -53,70 +55,77 @@ def validate_url(value):
     url = urlsplit(value)
     if url.scheme != "https" or not url.hostname or url.username or url.password:
         raise ValueError("monitor evidence must be a public HTTPS link")
+    return value
+
+
+Text = Annotated[str, Field(min_length=1, max_length=8192)]
+Identifier = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9]{0,39}$")]
+EvidenceURL = Annotated[str, AfterValidator(validate_url)]
+
+
+class Evidence(BaseModel):
+    """Attributed provider fact, shared by ingestion and read-only responses."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
+
+    key: Annotated[str, Field(min_length=1, max_length=256)]
+    code: Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")] | None = None
+    value: str | bool | int | float | list[str] | None
+    source: Annotated[str, Field(min_length=1, max_length=256)]
+    url: EvidenceURL
+    status: Literal["observed", "unavailable", "not_applicable", "not_evaluated"]
+
+    @field_validator("code")
+    @classmethod
+    def supplied_code(cls, value, info: ValidationInfo):
+        # Stored facts omit absent codes; legacy API responses emitted code:null.
+        if value is None and info.context and info.context.get("stored_fact"):
+            raise ValueError("an evidence code must be a nonempty identifier when supplied")
+        return value
+
+    @model_validator(mode="after")
+    def checked_value(self) -> Self:
+        if self.status == "observed" and self.value is None:
+            raise ValueError("observed evidence requires a value")
+        if self.status != "observed" and self.value is not None:
+            raise ValueError("unobserved evidence cannot have a value")
+        if len(json.dumps(self.value, allow_nan=False)) > 16384:
+            raise ValueError("evidence value exceeds budget")
+        return self
+
+
+class RawFinding(BaseModel):
+    """Persisted monitor contract; API projections may add fields, not relax it."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    id: Text
+    label: Identifier
+    title: Text
+    facts: Annotated[list[Evidence], Field(max_length=256)]
+    evidence_url: EvidenceURL
+    scope: Literal["current", "upgrade"]
+    tags: Annotated[list[Identifier], Field(max_length=8)]
+    target_version: str | None
+
+    @model_validator(mode="after")
+    def upgrade_target(self) -> Self:
+        if self.scope == "upgrade" and not state.usable_version(self.target_version):
+            raise ValueError("upgrade finding requires its target version")
+        return self
+
+
+_FINDINGS = TypeAdapter(Annotated[list[RawFinding], Field(max_length=1000)])
 
 
 def validate_findings(findings):
-    if not isinstance(findings, list) or len(findings) > 1000:
-        raise ValueError("monitor findings must be a bounded list")
-    ids = set()
-    for item in findings:
-        if not isinstance(item, dict) or set(item) != {
-            "id",
-            "label",
-            "title",
-            "facts",
-            "evidence_url",
-            "scope",
-            "tags",
-            "target_version",
-        }:
-            raise ValueError("invalid monitor finding fields")
-        for key in ("id", "label", "title"):
-            if not isinstance(item[key], str) or not item[key] or len(item[key]) > 8192:
-                raise ValueError("invalid monitor finding text")
-        if item["id"] in ids:
-            raise ValueError("duplicate monitor finding id")
-        ids.add(item["id"])
-        if not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,39}", item["label"]):
-            raise ValueError("maintenance labels must be single-word identifiers")
-        validate_url(item["evidence_url"])
-        if item["scope"] not in ("current", "upgrade"):
-            raise ValueError("invalid finding classification")
-        if item["scope"] == "upgrade" and not state.usable_version(item["target_version"]):
-            raise ValueError("upgrade finding requires its target version")
-        if (
-            not isinstance(item["tags"], list)
-            or len(item["tags"]) > 8
-            or any(not isinstance(t, str) or not re.fullmatch(r"[A-Za-z][A-Za-z0-9]{0,39}", t) for t in item["tags"])
-        ):
-            raise ValueError("invalid finding tags")
-        facts = item["facts"]
-        if not isinstance(facts, list) or len(facts) > 256:
-            raise ValueError("invalid evidence list")
-        for fact in facts:
-            required = {"key", "value", "source", "url", "status"}
-            if not isinstance(fact, dict) or not required <= fact.keys() or fact.keys() - required - {'code'}:
-                raise ValueError("invalid evidence fields")
-            if 'code' in fact and (not isinstance(fact['code'], str)
-                                   or not re.fullmatch(r'[a-z][a-z0-9_]{0,63}', fact['code'])):
-                raise ValueError('invalid evidence code')
-            if any(not isinstance(fact[k], str) or not fact[k] or len(fact[k]) > 256 for k in ("key", "source")):
-                raise ValueError("invalid evidence identity")
-            validate_url(fact["url"])
-            if fact["status"] not in ("observed", "unavailable", "not_applicable", "not_evaluated"):
-                raise ValueError("invalid evidence status")
-            value = fact["value"]
-            if fact["status"] != "observed":
-                if value is not None:
-                    raise ValueError("unobserved evidence cannot have a value")
-            elif not (
-                type(value) in (str, bool, int, float)
-                or isinstance(value, list)
-                and all(isinstance(v, str) for v in value)
-            ):
-                raise ValueError("invalid evidence value")
-            if len(json.dumps(value, allow_nan=False)) > 16384:
-                raise ValueError("evidence value exceeds budget")
+    # Validate without rewriting provider dictionaries or adding optional defaults.
+    parsed = _FINDINGS.validate_python(findings, strict=True, context={"stored_fact": True})
+    if any(not isinstance(item, dict) or any(not isinstance(fact, dict) for fact in item["facts"])
+           for item in findings):
+        raise ValueError("stored findings and evidence must be dictionaries")
+    if len({item.id for item in parsed}) != len(parsed):
+        raise ValueError("duplicate monitor finding id")
 
 
 def project(snapshot, name, now, *, version=None):

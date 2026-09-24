@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from . import state, view, package_list, monitor_views, presentation as documents
 from .presentation_model import ListingDocument, DetailDocument, DocumentTheme
+from .monitor_model import RawFinding
 
 # Fixed-shape payloads are typed so the response contract cannot silently drift.
 # Raw provenance (source, upstream, per-flavor facts) stays open on purpose.
@@ -87,23 +88,7 @@ class MaintenanceLabel(BaseModel):
     count: int
     stale: bool
 
-class Evidence(BaseModel):
-    key: str
-    code: str | None = None
-    value: str | bool | int | float | list[str] | None
-    source: str
-    url: str
-    status: Literal['observed', 'unavailable', 'not_applicable', 'not_evaluated']
-
-class Finding(BaseModel):
-    id: str
-    label: str
-    title: str
-    facts: list[Evidence]
-    evidence_url: str
-    scope: Literal['current', 'upgrade']
-    tags: list[str]
-    target_version: str | None
+class Finding(RawFinding):
     monitor: str
     stale: bool
 
