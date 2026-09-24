@@ -101,3 +101,39 @@ def test_additive_evidence_code_does_not_discard_older_structured_facts():
         monitor_model.finding('test', 'Signal', 'test', [fact], 'https://example.org/')
     with pytest.raises(ValueError, match='code'):
         monitor_model.finding('test', 'Signal', 'test', [{**new, 'code': 'Display text'}], 'https://example.org/')
+
+
+def test_v2_port_catalog_checks_and_facets_share_the_same_observation(config, snapshot, monkeypatch, tmp_path):
+    config['native']['binutils'] = {'source': 'pypi', 'pypi': 'upstream-fixture'}
+    config.update(monitors={'enabled': ['yanked']}, config_digest='fixture', nv_digest='fixture')
+    monkeypatch.setitem(monitor.REGISTRY, 'yanked', monitor_yanked)
+    monkeypatch.setattr(monitor_yanked, 'TITLE', 'Release files', raising=False)
+    monkeypatch.setattr(monitor.cfg, 'load', lambda path: config)
+    db = tmp_path / 'state.db'
+    state.commit(db, snapshot)
+    with httpx.Client(transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={'urls': [{'yanked': True}]}))) as client:
+        collected = monitor.collect(config, 'unused', db, io=IO(client=client))
+        # Metadata is published with observations; an idle heartbeat writes neither.
+        generation = collected['generation']
+        assert monitor.collect(config, 'unused', db, io=IO(client=client))['generation'] == generation
+    api = TestClient(create_app(db))
+    listing = api.get('/api/v2/packages?monitor=yanked').json()
+    assert {'id': 'yanked', 'title': 'Release files', 'kind': 'evidence'} in listing['monitors']
+    assert listing['total'] == 5  # Focusing is not silently excluding unconfigured packages.
+    assert listing['check_statuses'] == {'not_configured': 4, 'ok': 1}
+    assert listing['maintenance_labels'] == {'Yanked': 1}
+    result = listing['items'][0]['monitors']['yanked']
+    assert result['data'] == {'kind': 'evidence', 'labels': [{'label': 'Yanked', 'count': 1, 'stale': False}]}
+    assert result['check']['status'] == 'ok'
+    selected = api.get('/api/v2/packages?monitor=yanked&check=not_configured').json()
+    assert selected['total'] == 4 and selected['maintenance_labels'] == {}
+    assert selected['check_statuses'] == {'not_configured': 4, 'ok': 1}
+    one = api.get('/api/v2/packages?monitor=yanked&maintenance=Yanked').json()
+    assert one['total'] == one['counts']['all'] == 1
+    assert one['check_statuses'] == {'ok': 1}
+    detail = api.get('/api/v2/packages/binutils').json()['monitors']['yanked']
+    assert detail['data']['findings'][0]['facts'][0]['value'] is True
+    assert detail['check'] == result['check']
+    assert api.get('/api/v2/packages?monitor=not-registered').status_code == 422
+    assert api.get('/api/v2/packages?check=ok').status_code == 422

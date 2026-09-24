@@ -23,11 +23,11 @@ def setup_cache(tmp_path, config, monkeypatch, change=None):
     state.commit(db, snapshot)
     clock, calls = [NOW], []
     monkeypatch.setattr(api.time, 'time', lambda: clock[0].timestamp())
-    project = view.project
+    project = view.project_monitors
     def counted(snap, now=None):
         calls.append((snap['generation'], now))
         return project(snap, now)
-    monkeypatch.setattr(view, 'project', counted)
+    monkeypatch.setattr(view, 'project_monitors', counted)
     return TestClient(api.create_app(db)), db, snapshot, clock, calls
 
 
@@ -184,13 +184,13 @@ def test_concurrent_reads_only_project_once(tmp_path, config, monkeypatch):
 def test_concurrent_replacement_never_mixes_snapshot_and_projection(tmp_path, config, monkeypatch):
     client, db, snap, _, _ = setup_cache(tmp_path, config, monkeypatch)
     started, proceed = threading.Event(), threading.Event()
-    project = view.project
+    project = view.project_monitors
     def blocked(snapshot, now=None):
         if snapshot['targets'][0]['label'] == 'rva23':
             started.set()
             assert proceed.wait(5), 'projection was not released'
         return project(snapshot, now)
-    monkeypatch.setattr(view, 'project', blocked)
+    monkeypatch.setattr(view, 'project_monitors', blocked)
     with ThreadPoolExecutor(max_workers=2) as pool:
         first = pool.submit(get, client, '/api/v1/packages')
         assert started.wait(5), 'projection did not begin'

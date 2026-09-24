@@ -9,7 +9,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
-from . import state, view, package_list
+from . import state, view, package_list, monitor_views
 
 # Fixed-shape payloads are typed so the response contract cannot silently drift.
 # Raw provenance (source, upstream, per-flavor facts) stays open on purpose.
@@ -189,6 +189,118 @@ class PackageList(BaseModel):
     maintenance_labels: dict[str, int]
     build_statuses: dict[str, list[BuildStatusOption]]
 
+
+# v2 is the uniform monitor read model. v1 below is only a field-name adapter.
+class ObservationCheck(BaseModel):
+    status: str
+    stale: bool
+    checked_at: str | None = None
+    attempted_at: str | None = None
+    error: str | None = None
+    note: str | None = None
+    changed_at: str | None = None
+    evidence_revision: str | None = None
+
+
+class SourceSummary(BaseModel):
+    kind: Literal['source']
+    version: str | None
+    buildsystem: str | None
+    buildsystem_status: Literal['declared', 'not_declared', 'unknown']
+
+
+class SourceObservation(SourceSummary, Spec):
+    revision: str | None
+    obs: dict
+
+
+class VersionSummary(BaseModel):
+    kind: Literal['version']
+    current: str | None
+    latest: str | None
+    relation: Literal['current', 'outdated', 'ahead', 'unknown', 'untracked', 'not_applicable']
+    track: str | None
+    track_label: str
+    stale: bool
+    error: str | None
+    last_known_relation: str
+    updated_at: str | None
+
+
+class VersionObservation(VersionSummary):
+    upstream: dict
+    watch: list[Watch]
+
+
+class BuildSummary(BaseModel):
+    kind: Literal['build']
+    targets: list[Build]
+    source_version: str | None
+    source_success: bool | None
+    last_successful_version: str | None
+
+
+class BuildObservation(BuildSummary):
+    targets: list[BuildDetail]
+
+
+class EvidenceSummary(BaseModel):
+    kind: Literal['evidence']
+    labels: list[MaintenanceLabel]
+
+
+class EvidenceObservation(EvidenceSummary):
+    findings: list[Finding]
+
+
+class MonitorDescription(BaseModel):
+    id: str
+    title: str
+    kind: Literal['source', 'version', 'build', 'evidence']
+
+
+class MonitorSummary(BaseModel):
+    id: str
+    title: str
+    check: ObservationCheck
+    data: SourceSummary | VersionSummary | BuildSummary | EvidenceSummary
+
+
+class MonitorObservation(BaseModel):
+    id: str
+    title: str
+    check: ObservationCheck
+    data: SourceObservation | VersionObservation | BuildObservation | EvidenceObservation
+
+
+class MonitoredPackage(BaseModel):
+    name: str
+    detail_url: str
+    monitors: dict[str, MonitorSummary]
+
+
+class MonitoredDetail(MonitoredPackage):
+    monitors: dict[str, MonitorObservation]
+    presentation: Presentation
+
+
+class MonitoredList(BaseModel):
+    items: list[MonitoredPackage]
+    monitors: list[MonitorDescription]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+    counts: dict[str, int]
+    targets: list[Target]
+    collection: Collection
+    presentation: Presentation
+    buildsystems: dict[str, int]
+    maintenance_labels: dict[str, int]
+    build_statuses: dict[str, list[BuildStatusOption]]
+    check_statuses: dict[str, int]
+
+
 def create_app(db=None):
     db = Path(db or os.environ.get('TRACKER_DB', 'state/tracker.sqlite3'))
     app = FastAPI(title='openRuyi Package Monitor', version='0.1.0', docs_url=None, redoc_url=None,
@@ -213,7 +325,7 @@ def create_app(db=None):
                 deadline = cache.get('deadline')
                 if ('projected' not in cache or now < cache['last_seen']
                         or (deadline is not None and now >= deadline)):
-                    cache['projected'] = view.project(snap, now)
+                    cache['projected'] = view.project_monitors(snap, now)
                     cache['deadline'] = view.next_transition(snap, now)
                 # Check against the latest request, not just the projection time:
                 # a clock reversal can make an expired/future observation valid.
@@ -244,7 +356,7 @@ def create_app(db=None):
             view=view_name, buildsystem=buildsystem, maintenance=maintenance,
             builds=builds, page=page, per_page=per_page,
         )
-        result['items'] = [view.summary(row) for row in result['items']]
+        result['items'] = [view.summary(view.legacy_package(row)) for row in result['items']]
         return {**result, 'targets': snap['targets'], 'collection': collection,
                 'presentation': snap.get('presentation', {})}
     def find_package(name, rows):
@@ -255,7 +367,36 @@ def create_app(db=None):
     @app.get('/api/v1/packages/{name}', response_model=PackageDetail)
     def package(name: str):
         snap, rows, _ = data()
+        return {**view.legacy_package(find_package(name, rows)), 'presentation': snap.get('presentation', {})}
+    @app.get('/api/v2/packages', response_model=MonitoredList)
+    def monitor_packages(q: str = Query('', max_length=100),
+                         view_name: Literal['all', 'updates', 'problems', 'attention', 'untracked'] = Query('all', alias='view'),
+                         page: int = Query(1, ge=1, le=1000000), per_page: int = Query(100, ge=1, le=200),
+                         buildsystem: str = Query('', max_length=100), maintenance: str = Query('', max_length=40),
+                         build: list[str] = Query(default=[], max_length=16),
+                         monitor: str = Query('', max_length=64), check: str = Query('', max_length=40)):
+        snap, rows, collection = data()
+        catalog = [module.describe() for module in monitor_views.registry(snap)]
+        if monitor and monitor not in {m['id'] for m in catalog}:
+            raise HTTPException(422, 'Unknown monitor')
+        if check and not monitor:
+            raise HTTPException(422, 'Check status requires a monitor')
+        try:
+            builds = package_list.build_selections(build, snap['targets'])
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+        result = package_list.PackageList(rows, snap['targets'], q, monitor=monitor).select(
+            view=view_name, buildsystem=buildsystem, maintenance=maintenance,
+            builds=builds, page=page, per_page=per_page, check=check)
+        return {**result, 'items': [view.monitor_summary(row) for row in result['items']],
+                'monitors': catalog, 'targets': snap['targets'], 'collection': collection,
+                'presentation': snap.get('presentation', {})}
+
+    @app.get('/api/v2/packages/{name}', response_model=MonitoredDetail)
+    def monitor_package(name: str):
+        snap, rows, _ = data()
         return {**find_package(name, rows), 'presentation': snap.get('presentation', {})}
+
     @app.get('/api/v1/tracks/{track_id}')
     def track(track_id: str):
         snap, _, _ = data()
@@ -276,16 +417,18 @@ def create_app(db=None):
         snap, rows, collection = data()
         coverage = {}
         for row in rows:
-            for check in row['monitor_checks']:
-                counts = coverage.setdefault(check['monitor'], {})
-                counts[check['status']] = counts.get(check['status'], 0) + 1
+            for mid, module in row['monitors'].items():
+                counts = coverage.setdefault(mid, {})
+                status = module['check']['status']
+                counts[status] = counts.get(status, 0) + 1
+        rows = [view.legacy_package(row) for row in rows]
         return {**collection, 'packages': len(rows), 'source_versions': sum(bool(r['current']) for r in rows),
                 'tracked_packages': sum(bool(r['track']) for r in rows), 'components': snap['components'],
                 'monitor_coverage': coverage, 'upstream_failures': view.upstream_failures(rows)}
     @app.get('/api/v1/export')
     def export():
         snap, rows, collection = data()
-        return JSONResponse({'schema': 1, 'collection': collection, 'targets': snap['targets'], 'packages': rows},
+        return JSONResponse({'schema': 1, 'collection': collection, 'targets': snap['targets'], 'packages': [view.legacy_package(row) for row in rows]},
                             headers={'Content-Disposition': 'attachment; filename="openruyi-packages.json"'})
     @app.middleware('http')
     async def headers(request, call_next):

@@ -64,7 +64,7 @@ def check_read_write_separation():
                 continue
             visited.add(name)
             for dependency in graph.get(name, ()):
-                if dependency in WRITE_PATH or (dependency.startswith('monitor_') and dependency != 'monitor_model'):
+                if dependency in WRITE_PATH or (dependency.startswith('monitor_') and dependency not in ('monitor_model', 'monitor_views')):
                     errors.append('read path reaches write module: ' + ' -> '.join([*chain, dependency]))
                 elif dependency in graph:
                     todo.append((dependency, [*chain, dependency]))

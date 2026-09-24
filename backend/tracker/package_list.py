@@ -12,32 +12,20 @@ VIEWS = ('all', 'updates', 'problems', 'attention', 'untracked')
 
 
 class PackageList:
-    def __init__(self, rows, targets, query=''):
+    def __init__(self, rows, targets, query='', *, monitor=''):
         query = query.strip().casefold()
         self.rows = [row for row in rows if query in row['name'].casefold()]
         self.all = set(range(len(self.rows)))
-        self.index = {key: defaultdict(set) for key in
-                      ('view', 'buildsystem', 'maintenance', *(f'build:{t["id"]}' for t in targets))}
+        self.monitor = monitor
+        self.index = defaultdict(lambda: defaultdict(set))
+        for key in ('view', 'buildsystem', 'maintenance', *(f'build:{t["id"]}' for t in targets)):
+            self.index[key]
         for number, row in enumerate(self.rows):
-            views = {'all'}
-            if row['relation'] == 'outdated':
-                views.add('updates')
-            if any(build['issue'] for build in row['builds']):
-                views.add('problems')
-            if row['needs_attention']:
-                views.add('attention')
-            if not row['track'] and row['relation'] != 'not_applicable':
-                views.add('untracked')
-            for value in views:
-                self.index['view'][value].add(number)
-            self.index['buildsystem'][row['buildsystem'] or '_not_detected'].add(number)
-            for finding in row['maintenance']:
-                self.index['maintenance'][finding['label']].add(number)
-            for build in row['builds']:
-                options = self.index[f'build:{build["target"]}']
-                options[build['raw_status']].add(number)
-                if build['issue']:
-                    options['issues'].add(number)
+            self.index['view']['all'].add(number)
+            for module in row['monitors'].values():
+                for dimension, values in module['dimensions'].items():
+                    for value in values:
+                        self.index[dimension][value].add(number)
 
     def matching(self, selections, *, without=None):
         result = self.all.copy()
@@ -56,9 +44,11 @@ class PackageList:
         return {value: count for value, count in counts.items()
                 if count or value in required or value == selections.get(dimension)}
 
-    def select(self, *, view, buildsystem, maintenance, builds, page, per_page):
+    def select(self, *, view, buildsystem, maintenance, builds, page, per_page, check=''):
         selections = {'view': view, 'buildsystem': buildsystem, 'maintenance': maintenance,
                       **{f'build:{target}': status for target, status in builds.items()}}
+        if self.monitor:
+            selections['check:' + self.monitor] = check
         selected = sorted(self.matching(selections))
         total = len(selected)
         pages = max(1, (total + per_page - 1) // per_page)
@@ -78,6 +68,7 @@ class PackageList:
             'buildsystems': self.counts('buildsystem', selections),
             'maintenance_labels': self.counts('maintenance', selections),
             'build_statuses': statuses,
+            'check_statuses': self.counts('check:' + self.monitor, selections) if self.monitor else {},
         }
 
 

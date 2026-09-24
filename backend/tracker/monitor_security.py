@@ -4,6 +4,7 @@ import re
 from urllib.parse import quote
 from .monitor_model import finding, evidence
 
+TITLE = 'Security'
 VERSION = 5
 HOSTS = {"api.osv.dev", "www.cisa.gov", "api.first.org"}
 CVE = re.compile(r"CVE-\d{4}-\d{4,}")

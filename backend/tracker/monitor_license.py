@@ -4,6 +4,7 @@ from urllib.parse import quote
 from packaging.licenses import canonicalize_license_expression, InvalidLicenseExpression
 from .monitor_model import finding, evidence
 
+TITLE = 'License'
 VERSION = 2
 SCOPE = "upgrade"
 HOSTS = {"pypi.org"}

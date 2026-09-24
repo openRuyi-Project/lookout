@@ -5,6 +5,7 @@ import re
 from urllib.parse import quote
 from .monitor_model import finding, evidence
 
+TITLE = 'EOL'
 VERSION = 2
 HOSTS = {"endoflife.date"}
 

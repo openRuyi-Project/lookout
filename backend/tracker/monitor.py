@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Protocol
 from . import config as cfg, state, monitor_eol, monitor_security, monitor_license, version_status
 from .monitor_io import IO, ProviderIO
-from .monitor_model import fingerprint, validate_findings
+from .monitor_model import CORE_IDS, fingerprint, validate_findings
 
 class Adapter(Protocol):
     """Structural contract: a module implements this without a base class."""
@@ -34,6 +34,8 @@ def settings(config):
               'batch_size': 256, 'workers': 4, 'heartbeat_seconds': 30, **raw}
     if not isinstance(result['enabled'], list) or len(set(result['enabled'])) != len(result['enabled']) or set(result['enabled']) - set(REGISTRY):
         raise ValueError('enabled monitor must be registered')
+    if set(result['enabled']) & CORE_IDS:
+        raise ValueError('monitor identity is reserved for a core observation')
     for key, maximum in [('interval_seconds', 604800), ('stale_after_seconds', 2592000), ('batch_size', 10000), ('workers', 8), ('heartbeat_seconds', 3600)]:
         if type(result[key]) is not int or not 1 <= result[key] <= maximum:
             raise ValueError('invalid monitor setting: ' + key)
@@ -180,6 +182,7 @@ def collect(config, config_path, db, *, io=None):
                     selected_jobs.append(queues[provider].popleft())
                     if not queues[provider]:
                         del queues[provider]
+            catalog = {mid: {'title': getattr(REGISTRY[mid], 'TITLE', mid)} for mid in options['enabled']}
             def publish():
                 active = cfg.load(config_path)
                 if (active['config_digest'], active['nv_digest']) != (config['config_digest'], config['nv_digest']):
@@ -197,10 +200,10 @@ def collect(config, config_path, db, *, io=None):
                         for provider, fact in providers.items():
                             expected = plan(config, latest, name, provider, version=versions[name])
                             valid[name][provider] = fact if expected['fingerprint'] == fact['fingerprint'] else expected
-                    if (latest.get('monitors') == valid and
+                    if (latest.get('monitors') == valid and latest.get('monitor_catalog') == catalog and
                             latest.get('monitor_stale_after_seconds') == options['stale_after_seconds']):
                         return latest
-                    result = state.merge(latest, 'monitors', {'monitors': valid,
+                    result = state.merge(latest, 'monitors', {'monitors': valid, 'monitor_catalog': catalog,
                         'monitor_stale_after_seconds': options['stale_after_seconds']})
                     state.commit(db, result)
                 return result

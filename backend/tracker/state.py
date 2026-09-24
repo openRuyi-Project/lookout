@@ -145,7 +145,7 @@ PHASE_FIELDS = {
                       'inventory', 'index', 'sources', 'builds', 'presentation')),
     'upstreams': frozenset(('tracks', 'native_ids', 'nv_digest', 'bindings')),
     'specs': frozenset(('specs', 'spec_interval_seconds')),
-    'monitors': frozenset(('monitors', 'monitor_stale_after_seconds')),
+    'monitors': frozenset(('monitors', 'monitor_catalog', 'monitor_stale_after_seconds')),
     'builds': frozenset(('builds',)),
 }
 

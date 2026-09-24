@@ -7,6 +7,9 @@ from urllib.parse import urlsplit
 from . import state, version_status
 
 
+CORE_IDS = frozenset(('source', 'version', 'build'))
+
+
 def subject(snapshot, name):
     source = state.current_source(snapshot, name)
     return {'name': name, 'version': source.get('version'),
