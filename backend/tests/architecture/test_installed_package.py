@@ -28,18 +28,25 @@ def test_wheel_contains_subpackages_and_runs_without_checkout(tmp_path):
          '--wheel-dir', str(wheels), str(source)], tmp_path)
     wheel, = wheels.glob('*.whl')
     installed = tmp_path / 'installed'
-    expected = {p.relative_to(BACKEND).as_posix() for p in (BACKEND / 'tracker').rglob('*.py')}
+    expected = {p.relative_to(BACKEND).as_posix()
+                for package in ('tracker', 'nvchecker_source')
+                for p in (BACKEND / package).rglob('*.py')}
     with zipfile.ZipFile(wheel) as archive:
         assert {n for n in archive.namelist() if n.endswith('.py')} == expected
         archive.extractall(installed)
     program = '''
-import json, pathlib, runpy, sys
+import importlib, json, pathlib, runpy, sys
 sys.path.insert(0, sys.argv[1])
 from tracker.api import create_app
 from tracker.monitors.registry import REGISTRY
 from tracker.monitors.source import rpm
 root = pathlib.Path(sys.argv[1]).resolve()
 assert pathlib.Path(rpm.__file__).is_relative_to(root)
+for name in ('crates_index', 'go_proxy', 'anitya_stable'):
+    plugin = importlib.import_module('nvchecker_source.' + name)
+    assert pathlib.Path(plugin.__file__).is_relative_to(root)
+# Project plugins must coexist with nvchecker's installed namespace.
+assert importlib.import_module('nvchecker_source.pypi')
 assert '/api/v2/packages' in create_app().openapi()['paths']
 assert REGISTRY
 spec = b'Name: layout-probe\\nVersion: 1.0\\nRelease: 1\\nSummary: Probe\\nLicense: MIT\\n\\n%description\\nProbe.\\n'

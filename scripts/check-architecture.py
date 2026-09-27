@@ -35,7 +35,7 @@ PURE_MONITORS = {
 }
 WRITE_PATH = {'tracker.collector', 'tracker.package', 'tracker.config_change', 'tracker.runtime_checks'}
 READ_PREFIXES = ('tracker.readmodel', 'tracker.presentation')
-EXTERNAL_IO = {'httpx', 'requests', 'urllib.request', 'subprocess'}
+EXTERNAL_IO = {'httpx', 'requests', 'urllib.request', 'subprocess', 'nvchecker', 'nvchecker_source'}
 
 
 def _runtime_imports(tree):

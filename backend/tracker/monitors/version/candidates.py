@@ -145,8 +145,7 @@ def go_entry(module, base_url="https://proxy.golang.org"):
         raise ValueError("Go proxy must be an operator-owned HTTPS URL")
     # Go proxy escape algorithm: uppercase becomes !lowercase, including vanity paths.
     escaped = ''.join('!'+c.lower() if c.isupper() else c for c in module)
-    return {'source': 'jq', 'url': base_url.rstrip('/')+'/'+quote(escaped,safe='/!')+'/@latest',
-            'filter': '.Version | select(test("^v[0-9]+([.][0-9]+){2}([+]incompatible)?$"))',
+    return {'source': 'go_proxy', 'url': base_url.rstrip('/')+'/'+quote(escaped,safe='/!')+'/@latest',
             'prefix': 'v', 'from_pattern': '[+]incompatible$', 'to_pattern': ''}
 
 

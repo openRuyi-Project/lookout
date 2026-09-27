@@ -26,9 +26,9 @@ def test_verified_identity_uses_provider_order_not_largest_number():
     found = discover.match(candidate(), response())
     assert found['reason'] is None
     assert found['expected_version'] == '1.9.17p2'
-    assert found['entry'] == {'source': 'jq',
-        'url': 'https://release-monitoring.org/api/v2/versions/?project_id=123',
-        'filter': 'first(.stable_versions[])', 'prefix': 'v'}
+    assert found['entry'] == {'source': 'anitya_stable',
+        'anitya_id': 123,
+        'prefix': 'v'}
     assert not any(v in str(found['entry']) for v in ('1.9.17', '2.0rc1'))
 
 
@@ -169,7 +169,7 @@ def test_reviewed_release_policy_uses_upstream_contract_not_pinned_version():
     assert jq.compile(rule['filter']).input_value(payload).first() == '9.24.4'
     assert native['safeint'] == {'source': 'github', 'github': 'dcleblanc/SafeInt',
                                  'use_latest_release': True, 'prefix': 'v'}
-    assert native['keybinder']['url'].endswith('project_id=13401')  # Source archive identifies keybinder-3.0, not the ambiguous sibling1506
+    assert native['keybinder']['anitya_id'] == 13401  # Source archive identifies keybinder-3.0, not the ambiguous sibling1506
 
 
 @pytest.mark.parametrize('verify_success', [True, False])

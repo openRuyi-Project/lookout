@@ -58,7 +58,8 @@ COPY --from=frontend /build/frontend/node_modules/ /app/frontend/node_modules/
 COPY frontend/server.mjs /app/frontend/server.mjs
 
 # State and the managed SPEC clone live on a mounted volume, outside the image.
-ENV TRACKER_CONFIG=/config/tracker.toml \
+ENV PYTHONPATH=/app/backend \
+    TRACKER_CONFIG=/config/tracker.toml \
     TRACKER_DB=/data/state/tracker.sqlite3 \
     TRACKER_SPEC_REPO=/data/spec-full.git \
     PORT=8080 \

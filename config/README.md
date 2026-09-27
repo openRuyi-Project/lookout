@@ -11,15 +11,46 @@
 默认只加载 `collector.nvchecker_config` 指向的原生文件。旁边的单包 TOML
 不是覆盖入口；配置加载不根据包名或 Source0 自动生成规则。
 
-## 修改与验证
+## 版本来源
 
-例如在 `versions/nvchecker.toml` 添加或修改：
+配置仍由 nvchecker 直接读取。项目随镜像/安装包提供三个
+[`nvchecker_source`](../backend/nvchecker_source/) 插件，复用 nvchecker 的 HTTP、缓存、
+并发、重试和版本比较；不增加配置展开层：
+
+| source | 身份或请求地址 | 返回给 nvchecker 的候选 |
+|---|---|---|
+| `crates_index` | `cratesio = "accesskit"` → Cargo sparse index | 所有未 yanked 的版本 |
+| `go_proxy` | `url` → Go proxy `@latest`，保留所选镜像 | 正式发布，排除预发布和 pseudo-version |
+| `anitya_stable` | `anitya_id = 7306` → Anitya v2 | provider 排序的第一项 |
+
+例如，Anitya 规则只需保留项目身份和版本策略：
 
 ```toml
-[python-requests]
-source = "pypi"
-pypi = "requests"
+ModemManager = { source = "anitya_stable", anitya_id = 7306, prefix = "v" }
 ```
+
+Rust 与 Anitya 的标准请求地址由身份确定；使用自定义镜像或请求地址时，
+以 `url` **替代** `cratesio` / `anitya_id`，不能同时填写。
+版本线、前缀和归一化仍在各包规则中。`anitya_stable` 不重新排序历史；
+需要**先筛版本线再取首项**时，继续使用原生 `jq` 的 `first(... | select(...))`。
+其他特殊来源仍可直接用 nvchecker 的 `regex` / `jq`，没有隐藏覆盖优先级。
+
+源码工作区直接检查时使用 `PYTHONPATH=backend nvchecker -c config/versions/nvchecker.toml`；
+安装 backend 后也可直接运行 nvchecker。含插件规则的配置应与提供插件的镜像配套发布。
+规则字段变化会按已有 fingerprint 机制重新检查，不把旧配置的结果直接当作新配置的成功。
+
+## 修改与验证
+
+短规则使用原生 TOML 行内表，放在文件根部（第一个 `[表头]` 之前）：
+
+```toml
+python-requests = { source = "pypi", pypi = "requests" }
+```
+
+超过 120 字符或需要逐字段解释的规则保留 `[包名]` 多行表。两种写法由
+nvchecker 直接读取，没有展开或覆盖优先级；同一个包只能定义一次。
+正则可用 `'字面量字符串'`，避免额外反斜杠转义。不要为了压行删除版本线、
+身份例外或发布筛选，也不要把规则塞进一条难以审阅的长行。
 
 普通包名与 track 同名，无需额外绑定。需要旁路观察时，在同一个原生文件
 定义 `widget@prerelease` 表，再在 tracker 中关联：

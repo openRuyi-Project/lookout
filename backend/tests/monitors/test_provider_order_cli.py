@@ -1,70 +1,28 @@
-"""Production jq rules, real nvchecker CLI, and only the HTTP transport replaced.
+"""Production source rules, real nvchecker CLI, and only the HTTP transport replaced.
 
 Anitya's stable_versions is already descending in the project's own scheme.
 The saved project270 response is an actual historical-ordering regression, not a
 hand-written runtime version override. Other inputs exercise that same contract.
 """
-from functools import partial
 import hashlib
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
-import subprocess
-import threading
-import tomllib
 
 import pytest
 
 from tracker.config import track_fingerprint
-from tracker.monitors.version.nvchecker import import_events
+from tracker.monitors.version import rules
 
 ROOT = Path(__file__).resolve().parents[3]
-NATIVE = __import__('tracker.monitors.version.rules',fromlist=['expand']).load((ROOT / 'config/versions/nvchecker.toml')).entries
+NATIVE = rules.load((ROOT / 'config/versions/nvchecker.toml')).entries
 NOW = '2026-09-20T00:00:00+00:00'
 
-
-@pytest.fixture
-def native_check(tmp_path):
-    class Handler(SimpleHTTPRequestHandler):
-        def log_message(self, *args):
-            pass
-    server = ThreadingHTTPServer(('127.0.0.1', 0), partial(Handler, directory=str(tmp_path)))
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-
-    def run(entry, payload, expected, previous=None):
-        (tmp_path / 'versions.json').write_text(payload if isinstance(payload, str) else json.dumps(payload))
-        transport = {**entry, 'url': f'http://127.0.0.1:{server.server_port}/versions.json'}
-        path = tmp_path / 'native.toml'
-        path.write_text('[fixture]\n' + '\n'.join(k + ' = ' + json.dumps(v)
-                                                 for k, v in transport.items()) + '\n')
-        command = ['nvchecker', '--logger=json', '--json-log-fd=1', '--failures', '-c', str(path)]
-        process = subprocess.run(command, capture_output=True, text=True, timeout=30)
-        print('PROVIDER_ORDER:', json.dumps(dict(command=command, stdout=process.stdout,
-                                                stderr=process.stderr, exit_status=process.returncode)))
-        assert process.returncode == (0 if expected is not None else 3)
-        # Keep the real production identity when importing transport-only fixtures.
-        facts, error = import_events(process.stdout, {'fixture': entry}, previous or {}, NOW)
-        fact = facts['fixture']
-        if expected is not None:
-            assert fact['version'] == expected and not fact.get('error') and error is None
-            assert fact['configuration_fingerprint'] == track_fingerprint(entry)
-        else:
-            assert fact['error']
-        return fact
-
-    try:
-        yield run
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
 
 
 def test_real_history_baseline_modified_and_rule_rollback(native_check):
     payload = json.loads((Path(__file__).parents[1] / 'fixtures/anitya-ordered-history.json').read_text())
     fixed = NATIVE['cfitsio']
-    baseline = {**fixed, 'filter': '.stable_versions[]'}
+    baseline = {**fixed, 'source': 'jq', 'filter': '.stable_versions[]'}
     native_check(baseline, payload, '3100')
     native_check(fixed, payload, '4.7.0')
     native_check(baseline, payload, '3100')
@@ -106,7 +64,7 @@ def test_maintenance_filter_before_provider_first(native_check, name, versions, 
 
 def test_failed_new_rule_never_relabels_old_3100(native_check):
     fixed = NATIVE['cfitsio']
-    baseline = {**fixed, 'filter': '.stable_versions[]'}
+    baseline = {**fixed, 'source': 'jq', 'filter': '.stable_versions[]'}
     previous = {'fixture': {'version': '3100', 'fetched_at': '2026-09-19T00:00:00+00:00',
                             'configuration_fingerprint': track_fingerprint(baseline)}}
     fact = native_check(fixed, {'stable_versions': []}, None, previous)

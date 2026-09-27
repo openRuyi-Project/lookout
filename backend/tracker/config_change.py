@@ -29,11 +29,21 @@ def digest(path):
 
 
 def table_positions(text):
-    """Locate native TOML tables using TOML itself to parse quoted/dotted keys."""
+    """Locate table headers and single-line root inline tables using TOML keys."""
     lines = text.splitlines(keepends=True)
     headers = []
+    inline = {}
     for n, line in enumerate(lines):
         if not line.lstrip().startswith("["):
+            if not headers:
+                try:
+                    values = tomllib.loads(line)
+                except tomllib.TOMLDecodeError:
+                    continue
+                if len(values) == 1:
+                    name, value = next(iter(values.items()))
+                    if isinstance(value, dict):
+                        inline[(name,)] = (n, n + 1)
             continue
         try:
             obj = tomllib.loads(line + "\n__tracker_locator__ = true\n")
@@ -48,10 +58,12 @@ def table_positions(text):
                 headers.append((tuple(path), n))
         except tomllib.TOMLDecodeError:
             pass  # Not a complete table header.
-    return {
+    positions = {
         key: (start, headers[n + 1][1] if n + 1 < len(headers) else len(lines))
         for n, (key, start) in enumerate(headers)
-    }, lines
+    }
+    positions.update(inline)
+    return positions, lines
 
 
 def edit_tables(text, changes, prefix=()):

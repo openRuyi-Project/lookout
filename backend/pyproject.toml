@@ -30,8 +30,8 @@ lint = ["ruff>=0.6"]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["tracker", "tracker.*"]
-namespaces = false
+include = ["tracker", "tracker.*", "nvchecker_source"]
+namespaces = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

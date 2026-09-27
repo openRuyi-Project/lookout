@@ -70,12 +70,11 @@ def test_native_usable_alphabetic_versions_not_blocked(v):assert discover.versio
 def test_unsafe_repository_urls(url):assert sources.repository(url) is None
 
 
-def test_go_formal_release_not_pseudo_or_prerelease():
-    import jq
-    program=jq.compile(sources.go_entry('example.org/module')['filter'])
-    assert program.input_value({'Version':'v2.3.4'}).all()==['v2.3.4']
-    for v in ['v0.0.0-20260201000000-abcdef','v2.3.4-rc1','v2.3.4-beta.2']:
-        assert program.input_value({'Version':v}).all()==[]
+def test_go_formal_release_not_pseudo_or_prerelease(native_check):
+    entry = sources.go_entry('example.org/module')
+    native_check(entry, {'Version': 'v2.3.4'}, '2.3.4')
+    for version in ['v0.0.0-20260201000000-abcdef', 'v2.3.4-rc1', 'v2.3.4-beta.2']:
+        native_check(entry, {'Version': version}, None)
 
 
 def test_null_github_version_url_does_not_abort_batch():

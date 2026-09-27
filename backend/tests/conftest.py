@@ -10,6 +10,8 @@ import tomlkit
 from tracker import state
 from tracker.config import track_fingerprint
 
+pytest_plugins = ["tests.helpers.nvchecker"]
+
 
 class ProjectedClient(TestClient):
     """Deterministic HTTP fixtures: explicitly prepare data before each request.

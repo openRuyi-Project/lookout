@@ -7,6 +7,7 @@ import re
 import tomllib
 from urllib.parse import parse_qs, quote, urlsplit, urlunsplit
 
+from tracker.identity import request_url
 from tracker.monitors.version import rules as version_rules
 
 def load(path):
@@ -131,16 +132,28 @@ def track_fingerprint(entry):
 
 def public_source(entry):
     """Keep secrets, executable commands, arbitrary config out of the public API."""
+    if entry.get('source') in ('crates_index', 'anitya_stable'):
+        # Publish the same protocol provenance for shorthand and explicit rules.
+        # Consumers see one identity, not both an authoring key and a derived URL.
+        try:
+            url = request_url(entry)
+        except ValueError:
+            return {'source': entry['source']}
+        entry = {**entry, 'url': url}
+        entry.pop('cratesio', None)
     result = {}
     for key in ('source', 'pypi', 'cratesio', 'cpan', 'anitya', 'github', 'gitlab', 'gitea', 'git', 'url'):
         value = entry.get(key)
         if not isinstance(value, str):
             continue
         if key in ('url', 'git'):
-            u = urlsplit(value)
-            if u.scheme not in ('https', 'http') or not u.hostname:
+            try:
+                u = urlsplit(value)
+                if u.scheme not in ('https', 'http') or not u.hostname:
+                    continue
+                value = urlunsplit((u.scheme, u.hostname + (f':{u.port}' if u.port else ''), u.path, '', ''))
+            except ValueError:
                 continue
-            value = urlunsplit((u.scheme, u.hostname + (f':{u.port}' if u.port else ''), u.path, '', ''))
         result[key] = value
     if entry.get('source') in ('git', 'github', 'gitlab', 'gitea'):
         for key in ('branch', 'path', 'host'):
@@ -150,18 +163,19 @@ def public_source(entry):
         for key in ('use_commit', 'use_latest_tag', 'use_latest_release', 'use_max_tag', 'use_max_release'):
             if isinstance(entry.get(key), bool):
                 result[key] = entry[key]
-    # Expose a known public identity, not arbitrary query strings/credentials.
-    if entry.get('source') == 'jq':
-        try:
-            u = urlsplit(entry.get('url', ''))
-            ids = parse_qs(u.query).get('project_id', [])
-            if (u.scheme == 'https' and u.hostname == 'release-monitoring.org'
-                    and u.path.rstrip('/') == '/api/v2/versions'
-                    and len(ids) == 1 and re.fullmatch(r'[1-9][0-9]{0,11}', ids[0])):
-                result['project_id'] = int(ids[0])
-                result['project_url'] = 'https://release-monitoring.org/project/' + ids[0] + '/'
-        except (ValueError, TypeError):
-            pass
+    # The endpoint identifies an Anitya project independently of its parser.
+    # Expose that identity, never arbitrary query strings or credentials.
+    try:
+        u = urlsplit(entry.get('url', ''))
+        ids = parse_qs(u.query).get('project_id', [])
+        if (u.scheme == 'https' and u.hostname == 'release-monitoring.org'
+                and u.port in (None, 443)
+                and u.path.rstrip('/') == '/api/v2/versions'
+                and len(ids) == 1 and re.fullmatch(r'[1-9][0-9]{0,11}', ids[0])):
+            result['project_id'] = int(ids[0])
+            result['project_url'] = 'https://release-monitoring.org/project/' + ids[0] + '/'
+    except (ValueError, TypeError):
+        pass
     return result
 
 

@@ -6,6 +6,34 @@ Source, Version, Build and supplemental evidence share one **read contract**:
 is a successful check with a failed build result. An unavailable check is never
 converted to an empty successful result.
 
+## Add a version source
+
+An ordinary package needs only a native table in `config/versions/nvchecker.toml`.
+If an existing nvchecker source cannot express a repeated provider protocol cleanly,
+add a module under `backend/nvchecker_source/` with nvchecker's documented
+`async get_version(name, conf, *, cache, **kwargs)` interface. No project registration,
+config compiler, scheduler or frontend component is needed.
+
+A source returns raw candidates; nvchecker owns common filtering, normalization and
+comparison. `anitya_stable` deliberately returns only the provider's first stable
+value, because provider ordering is authoritative. Use the supplied cache/session
+so HTTP options and retries continue to work. Package identities and maintenance
+lines belong in native TOML, not Python conditionals.
+
+`crates_index` accepts `cratesio`, and `anitya_stable` accepts `anitya_id`;
+`identity.request_url()` derives their standard provider address. An explicit
+`url` replaces, rather than overrides, the identity field for custom endpoints.
+Collection and public identity projection share this pure request boundary;
+test the resulting URL and public identity as well as the selected version.
+Go rules keep their explicit proxy URL. Release plugin rules with the matching
+installed plugin/image, not as standalone built-in nvchecker rules.
+
+Test the real CLI against local HTTP fixtures, malformed/empty responses, filter
+ordering and shared-cache isolation. The installed-wheel test must find the plugin
+beside nvchecker's built-in namespace. If the protocol identifies a registry used
+by other monitors, extend the pure `identity.from_native` projection and verify it;
+those monitors consume identity, not this source's implementation.
+
 ## Follow one result
 
 ```text

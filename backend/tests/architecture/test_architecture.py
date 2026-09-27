@@ -70,6 +70,7 @@ def test_pure_domain_types_and_annotation_only_imports_are_allowed(tmp_path):
 
 @pytest.mark.parametrize('statement', [
     'import httpx', 'from urllib.request import urlopen', 'import subprocess',
+    'from nvchecker.api import session', 'from nvchecker_source import crates_index',
 ])
 def test_read_module_cannot_bypass_adapters_with_direct_io(tmp_path, statement):
     source(tmp_path, 'presentation/example.py', statement)

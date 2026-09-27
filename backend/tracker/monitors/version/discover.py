@@ -168,8 +168,8 @@ def match(candidate, response):
     return {'reason': None, 'project_id': project['id'], 'project_name': project.get('name'),
             'identity_evidence': 'source_or_homepage_history',
             'project_homepage': project['homepage'], 'expected_version': version(project['stable_versions'][0]),
-            'entry': {'source': 'jq', 'url': f'{API}/api/v2/versions/?project_id={project["id"]}',
-                      'filter': 'first(.stable_versions[])', 'prefix': 'v'}}
+            'entry': {'source': 'anitya_stable', 'anitya_id': project['id'],
+                      'prefix': 'v'}}
 
 
 def fetch_project(name, client):
