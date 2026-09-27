@@ -1,57 +1,23 @@
 # Deployment
 
-## Architecture and prerequisites
+## Prerequisites
 
-One container runs Astro SSR, FastAPI, and independent OBS status/source-history, upstream,
-SPEC and maintenance tasks. Web/API startup does not wait for a full Git clone;
-collection updates do not require rebuilding the frontend. There are no host
-collection timers or additional application replicas.
-
-The image uses catatonit as PID 1 to reap orphaned Git/RPM helpers. The Python
-supervisor still owns service scheduling and exit statuses. This prevents zombie
-processes from exhausting the native worker's unchanged process limit.
-
-OBS status uses one project-wide request every `build_interval_seconds` (default
-15, minimum 10). Failed polls back off to at most five minutes, without immediate
-HTTP retries; recovery restores the configured delay. Source/history work runs
-separately at `obs_interval_seconds` (default 60); bulk successful-build history
-has its own `build_history_interval_seconds` (default 300). Intervals are minimum
-pauses after completion: no catch-up bursts or overlapping jobs. Git checks default
-to 60 seconds (`[spec].interval_seconds`). An unchanged HEAD skips history
-traversal; changed commits select package directories. Missing ancestors and changed
-macro/parser inputs require full reconciliation. Failed package parses are retried.
-Failed Git checks retain old timestamps and back off to at most 15 minutes.
-Upstream selection runs on a 60-second local heartbeat: new/changed rules run
-immediately, successful tracks expire at `nvchecker_interval_seconds` (six hours
-by default), and failed tracks retry from five minutes up to one hour. No due
-tracks means no provider command or snapshot write. Supplemental module defaults
-and per-module overrides are documented in the monitor porting guide.
-Explicit operator intervals remain authoritative; an image upgrade does not
-rewrite the mounted configuration.
-
-For diagnostics, `--only builds` refreshes current status, `--only obs-metadata`
-refreshes source/history, and the existing `--only obs` command runs both. Page
-requests only read saved observations; opening more tabs does not poll OBS.
-
-The API prepares its snapshot projection and filter index in one background task.
-It checks for local changes once per second, rebuilding only when the database or
-a freshness boundary changes. Requests continue reading the previous complete
-model during preparation; a completed model is published in one swap. Before the
-first model is ready, `/livez` remains available and `/readyz` returns 503. Failed
-refreshes or overdue freshness calculations retain data with a notice and degraded
-readiness, not a claim that old evidence is newly checked.
-
-Before starting any children, the supervisor permits SQLite to recover a rollback
-journal left by an interrupted writer, under the existing writer lock. SQLite
-owns recovery; the application never deletes a journal or replaces the database.
-Integrity and read checks must pass before startup continues. The standalone
-`tracker.runtime_checks` command remains read-only against the database; a corrupt
-database still fails closed and must not be replaced by an empty snapshot.
-
-Use a dedicated non-root Linux account, cgroup v2, rootless Podman with Quadlet,
+Use a dedicated non-root Linux account, cgroup v2, Rootless Podman with Quadlet,
 Python 3.14+ for host tools, and local persistent storage. Native SPEC parsing
-requires Landlock ABI 6+ and seccomp. Run the actual native gate on the target
-host; a kernel version string alone does not prove isolation works.
+requires Landlock ABI 6+ and seccomp. Run the native check on the target host;
+a kernel version string alone does not prove the required isolation works.
+
+One container runs Astro SSR, FastAPI and independently scheduled collection for
+OBS, upstream versions, SPECs and enabled monitors. Web startup does not wait for
+Git cloning, and new observations do not require rebuilding the frontend.
+Catatonit reaps child processes; the Python supervisor schedules collection and
+handles shutdown. Do not install additional collection timers or run another
+complete collector against the same database.
+
+For consistency, caching and failure semantics, see the
+[design reference](design.md). Collection intervals belong to the mounted
+configuration and each monitor's refresh policy; changing the image does not
+replace operator settings.
 
 ## Build and test
 
@@ -74,7 +40,7 @@ The image defaults to UID/GID `10001:10001`. Rootless Podman maps the deploying
 account to this identity with `--userns=keep-id:uid=10001,gid=10001`. Docker bind
 mounts need compatible ownership; replacing the command name is not sufficient.
 
-## Initial configuration
+## Prepare configuration and storage
 
 Keep configuration, data, and backups outside the checkout, owned by the
 non-root deploying account. For example:
@@ -89,7 +55,7 @@ python3 deploy/init-config.py "$CONFIG_DIR"
 ```
 
 The initializer refuses an existing destination. Review the external config
-before starting; upgrades use [configuration promotion](../config/README.md#推广到运行配置)
+before starting; upgrades use [configuration promotion](../config/README.md)
 into a new directory, not a copy of repository defaults over operator settings.
 Do not solve permissions with `chmod 777`. Use dedicated local data directories,
 not cross-host shared SQLite storage. `:Z` assigns private SELinux labels.
@@ -109,12 +75,16 @@ podman run --rm --network none --read-only --cap-drop=all \
   --db /data/state/tracker.sqlite3
 ```
 
-This validates config, writes/removes temporary permission probes, reads any
-existing database without changing it, and tests the native worker. It neither
-contacts upstreams nor creates a database. Failures exit 2. A successful check
-does not prove external network availability.
+Preflight checks configuration, writes and removes temporary permission probes,
+reads an existing database, and probes the native worker when SPEC features are
+enabled. It neither contacts upstreams nor creates a database. Failures exit 2.
 
-## Render and validate a Quadlet unit
+The service startup additionally allows SQLite to recover a hot rollback journal
+under the writer lock. Standalone preflight does not perform this recovery. A
+corrupt database fails startup; do not delete a journal or substitute an empty
+database. Preflight success does not establish provider network availability.
+
+## Configure the service
 
 Use the tested image and absolute config/data directories. This renderer creates
 a new temporary file exclusively and rejects unresolved placeholders:
@@ -165,7 +135,7 @@ handles activation. Do not leave an old `podman run` instance or host collection
 timer running. Process restart policy and image health are different: this unit
 does not kill the service merely because a probe fails.
 
-## HTTPS and acceptance
+## Verify HTTP and collection
 
 The unit publishes only `127.0.0.1:18730`; API port 18731 stays private. Use
 [the Caddy example](../deploy/Caddyfile.example) on the **host**, not another
@@ -173,7 +143,7 @@ container's localhost. Replace the domain and arrange DNS, ports 80/443, and
 any private-site authentication/network restrictions outside the application.
 
 - `/livez`: Node → FastAPI HTTP chain only.
-- `/readyz`: a snapshot is readable, possibly degraded.
+- `/readyz` and compatibility `/healthz`: a prepared snapshot is readable, possibly degraded.
 - `/api/v2/status`: collection coverage and timestamp progression.
 
 An empty data volume may be live before ready. Degraded is not fully healthy;
@@ -202,7 +172,7 @@ backups. A failed command is not success even if publication preceded a storage
 sync error. Back up config/credentials and the image identifier separately;
 arrange at least one independent storage copy and an explicit retention policy.
 
-## Upgrade, rollback, and operator-only checks
+## Upgrade and rollback
 
 Record the image ID/tag, config directory, and backup path. Build/test the new
 image, prepare a new config, run preflight, and take a backup. Stop the old
@@ -213,6 +183,8 @@ For code rollback, stop the new instance and restore the previous tested image
 and matching config. Do not automatically rewind observations. Database restore
 is a separate explicit operation while writers are stopped; assess compatibility
 for schema changes instead of assuming an arbitrary old image can read new data.
+
+## Target-host acceptance
 
 The operator must verify on the target host: native isolation/SELinux, real
 provider timestamp progression, HTTPS, operation after logout, reboot recovery,

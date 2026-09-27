@@ -94,6 +94,11 @@ class ProjectionCache:
                 self._error = None
 
     def read(self):
+        """Borrow one complete projection; callers must not mutate its contents.
+
+        An overdue or failed refresh adds a collection-level notice; it does not
+        rewrite the retained observations. Reading never waits for recalculation.
+        """
         with self._publishing:
             prepared, error = self._prepared, self._error
         if prepared is None:

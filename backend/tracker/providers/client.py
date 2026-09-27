@@ -16,6 +16,12 @@ from tracker.providers.http import read_response
 
 
 class IO:
+    """Share request results and host pacing within one collection batch.
+
+    Successful responses may survive in the disk cache; failures and Retry-After
+    cooldowns live only in this instance. Injected clients remain caller-owned
+    and must disable redirects and configure finite transport timeouts.
+    """
     def __init__(self, cache=None, *, client=None, ttl=21600, workers=4):
         self.cache = Path(cache) if cache else None
         self.client = client or httpx.Client(
@@ -109,6 +115,11 @@ class IO:
 
 
 class ProviderIO:
+    """Restrict trusted adapters to their declared HTTPS hostnames.
+
+    This checks URL scope, not DNS destinations or arbitrary adapter code;
+    adapters are in-process code, not sandboxed plugins.
+    """
     def __init__(self, owner, hosts, max_age=None):
         self.owner, self.hosts = owner, hosts
         self.max_age = max_age

@@ -1,88 +1,84 @@
 # Contributing
 
-For a package correction, use the [configuration guide](config/README.md).
-For a new monitor, use the [porting guide](docs/monitor-porting.md).
-For data ownership and safety boundaries, use the [maintainer reference](docs/design.md).
+For package data, start with [Configuration](config/README.md). For an additional
+monitor, follow [Monitor porting](docs/monitor-porting.md).
 
 ## Where to edit
 
-| Task | Entry point |
+| Change | Entry point |
 |---|---|
-| Add/correct a package's version rule | `config/versions/nvchecker.toml` |
-| Set a package's monitor identity or comparison policy | `config/packages.toml` |
-| Set service paths, targets or collection budgets | `config/tracker.toml` |
-| Change an observation | `backend/tracker/monitors/<name>/` (small monitors are single files) |
-| Register an evidence monitor | `backend/tracker/monitors/registry.py` |
-| Change scheduling, retries or publication | `backend/tracker/monitors/runner.py` and `schedule.py` |
-| Reuse external registry data | `backend/tracker/providers/` |
-| Compose stored facts, filtering and counts | `backend/tracker/readmodel/` |
-| Choose visible facts and their grouping | `backend/tracker/presentation/` |
-| Register a new reading shape | `backend/tracker/presentation/registry.py` |
-| Change layout, controls or styling | `frontend/src/pages/`, `components/document/`, `styles/` |
-| Change persistence or HTTP contracts | `backend/tracker/state.py`, `api.py` |
+| Package version rules, comparison policy or monitor identities | [Configuration](config/README.md) |
+| Collect a monitor's observations | `backend/tracker/monitors/<name>/` or `<name>.py` |
+| Register an evidence adapter | `backend/tracker/monitors/registry.py` |
+| Schedule checks and publish their results | `backend/tracker/monitors/runner.py`, `schedule.py` |
+| Access external registry data | `backend/tracker/providers/` |
+| Derive package state, filters and counts | `backend/tracker/readmodel/` |
+| Select and group visible facts | `backend/tracker/presentation/` |
+| Render documents and controls | `frontend/src/components/document/`, `pages/`, `styles/` |
+| Persist state or change HTTP contracts | `backend/tracker/state.py`, `api.py` |
 
-Tests follow these responsibilities under `backend/tests/`. Shared fixtures live
-in `conftest.py` and `helpers/`; tests do not import other test modules. Frontend
-contract types are generated. Adding an ordinary evidence monitor does not require
-a frontend registration or a new presenter.
+Tests follow these responsibilities under `backend/tests/`. Shared fixtures belong
+in `conftest.py` or `helpers/`, not in another test module. See [Design](docs/design.md)
+for write ownership and trust boundaries.
 
-## Development checks
+## Run checks
 
-Python 3.14+ is required. Dependency inputs live in `backend/pyproject.toml`;
-`backend/requirements.lock` contains runtime dependencies;
-`backend/requirements-test.lock` adds pytest/Hypothesis and setuptools for
-installed-wheel tests. Regenerate on dependency changes (uv is a developer tool):
+Use Python 3.14+. In a Linux environment with the backend dependencies, native
+RPM bindings, Landlock ABI 6+ and seccomp:
+
+```sh
+python3 scripts/check-architecture.py
+python3 scripts/api-types.py --check
+(cd backend && python3 -m pytest -q)
+(cd frontend && npm ci && npm run check && npm test)
+```
+
+For the full image and real-entrypoint checks, use the
+[deployment build procedure](docs/deployment.md#build-and-test). The native gate
+runs without provider network access and rejects skipped tests. Building its
+disposable test layer requires the package index; the shipped image omits test
+tools. Live-provider checks are separate from this gate.
+
+After changing response models, run `python3 scripts/api-types.py` and review the
+resulting `frontend/src/lib/api.generated.ts`. Do not hand-edit generated types.
+
+Dependencies are declared in `backend/pyproject.toml`. Update the runtime and test
+locks together when changing them (`uv` is a development tool):
 
 ```sh
 uv pip compile backend/pyproject.toml --python-version 3.14 --python-platform linux --no-header --no-annotate -o backend/requirements.lock
 uv pip compile backend/pyproject.toml --extra test --python-version 3.14 --python-platform linux --constraint backend/requirements.lock --no-header --no-annotate -o backend/requirements-test.lock
 ```
 
+Regression tests fix their inputs, not today's upstream versions or package
+counts. Test shipped configuration against schema and policy. Freeze semantic
+clocks; synchronize concurrent tests with events rather than elapsed sleeps.
 
-```sh
-python3 scripts/check-architecture.py
-# In the native Linux environment described below:
-python3 scripts/api-types.py --check
-cd backend && python3 -m pytest -q
-cd ../frontend && npm ci && npm run check && npm test
-```
+## Write documentation and comments
 
-After changing response models, regenerate `frontend/src/lib/api.generated.ts`
-with `python3 scripts/api-types.py`, then review the diff. Keep lock files, fixtures
-and license copies needed for reproducible builds and distribution.
+Keep instructions with their task: package edits in the configuration guide,
+operator commands in deployment, adapter contracts in porting, and cross-cutting
+invariants in design. Link to the owner instead of copying it.
 
-The CI workflow separates lightweight checks from the container/native suite.
-Native tests require RPM, Landlock ABI 6+, seccomp and an unprivileged worker.
-`deploy/check-image.sh IMAGE` builds a disposable test layer on that image, then
-runs the suite without provider network access. The wheel test builds and imports
-subpackages away from the checkout, including the confined SPEC worker. Only
-building the test layer needs the package index; test tools are absent from the
-shipped image. An unsupported kernel fails the check; skipped tests fail this
-release gate. Its temporary filesystem permits executable installer-test shims;
-production mount policy and SPEC confinement are unchanged. Live provider validation is a separate, explicitly requested check.
+A comment should explain something the code cannot: a protocol exception, an
+ownership constraint, or the reason an apparently simpler implementation is wrong.
+Do not narrate control flow or repeat types and names. Use a docstring for a
+caller's non-obvious contract, including failure or side effects when relevant;
+use a nearby comment for an implementation constraint. Do not turn an observed
+limitation into a guarantee. Check examples against fixtures, not live releases.
 
-Regression fixtures pin inputs, including historical releases, and assert their
-outputs. Do not pin today's provider results, package counts or shipped rule
-inventory in algorithm tests. Validate shipped configuration by its schema and
-policy; keep live coverage/latency measurements outside the offline release gate.
-Freeze semantic clocks and coordinate concurrent tests by events, not machine speed.
+Reference practices: [GNU manuals](https://www.gnu.org/prep/standards/html_node/GNU-Manuals.html),
+[Python docstrings](https://peps.python.org/pep-0257/),
+[Rust documentation](https://doc.rust-lang.org/rustdoc/how-to-write-documentation.html),
+[Java API contracts](https://www.oracle.com/java/technologies/javase/api-specifications.html).
 
-## Before requesting review
+## Request review
 
-- Own and review every submitted change, including generated code and text.
-- Address one clear problem; leave unrelated refactors and documentation expansion out.
-- Give reproducible evidence, actual checks and unverified scope. Do not present
-  existing test results as tests you ran.
-- Briefly identify substantial generated content; do not commit chat transcripts.
-- Automated agents need human approval before publishing issues, review comments
-  or batches of pull requests.
+Submit one focused change. Review all code and text, including generated content;
+briefly identify substantial tool-generated material without attaching chat logs.
+Keep required lock files, fixtures and license copies. Automated agents need
+human approval before publishing issues, review comments or batches of PRs.
 
-A review request should answer these questions without retelling the diff:
-
-```text
-Problem and reproduction:
-Why this change:
-Checks actually run:
-Compatibility or unverified scope:
-Decisions needed from the maintainer:
-```
+Describe the problem and reproduction, why this fix is sufficient, checks actually
+run, and anything unverified or requiring a maintainer's decision. Do not retell
+the diff or report someone else's test results as your own.

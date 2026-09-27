@@ -1,154 +1,138 @@
 # 监控配置
 
-| 修改内容 | 唯一生效入口 |
+## 找到修改入口
+
+| 修改内容 | 文件与位置 |
 |---|---|
-| 上游身份、发布筛选、版本线、版本前缀 | [`versions/nvchecker.toml`](versions/nvchecker.toml) 中对应的原生表 |
-| compare/watch/comparable 等包策略、monitor 身份 | [`packages.toml`](packages.toml) 中的 `[<name>]` |
+| 上游版本身份、发布筛选、版本线、前缀 | [`versions/nvchecker.toml`](versions/nvchecker.toml)，按 track 名查找 |
+| 包的 compare/watch/comparable 策略、monitor 身份例外 | [`packages.toml`](packages.toml)，按包名查找 |
+| 目标、周期、路径、启用的 monitors | [`tracker.toml`](tracker.toml) |
 | BuildSystem 配色 | `tracker.toml` 的 `[openruyi.buildsystems]` |
-| 依赖身份 → openRuyi 源包映射 | `tracker.toml` 的 `[openruyi.dependencies]`；缺失映射显示未知，不猜包名 |
-| 周期、代理、凭据和路径 | 部署的外部配置及环境；凭据不入库 |
+| 依赖身份到 openRuyi 源包的映射 | `tracker.toml` 的 `[openruyi.dependencies]` |
 
-默认只加载 `collector.nvchecker_config` 指向的原生文件。旁边的单包 TOML
-不是覆盖入口；配置加载不根据包名或 Source0 自动生成规则。
+`collector.nvchecker_config` 和 `packages_config` 是显式文件引用，相对于
+`tracker.toml` 所在目录解析。同目录其他 TOML 不参与加载。运营配置放在源码
+目录外；凭据不入库。修改抓取或展示代码，见[贡献指南](../CONTRIBUTING.md#where-to-edit)。
 
-## 按包修改
-
-```text
-config/
-├── tracker.toml             # 运营设置：目标、路径、周期、启用的 monitors
-├── packages.toml            # 包策略与 monitor 身份例外，按包名查找
-└── versions/nvchecker.toml  # 上游版本规则，按 track 名查找
-```
-
-`tracker.toml` 用 `packages_config` 显式指定包策略文件；不再接受内嵌的 `[packages]`。
-不扫描目录，不合并同名文件，也不维护另一份自动生成的规则。
-
-例如，EOL 的产品和周期属于包身份；抓取与判定逻辑不在 TOML 中：
-
-```toml
-# packages.toml
-[openssl.monitors.eol]
-product = "openssl"
-cycle_parts = 2
-```
-
-License 默认复用已观测 Source0 的 registry 身份，缺失时使用版本规则身份。
-没有独立 License 配置不等于未覆盖，也不应复制上游的许可证到本地配置。
-确需身份例外时才增加对应表：
-
-```toml
-# packages.toml，示例：确认 Source0/版本规则不能表达所需身份后再添加
-[widget.monitors.license]
-pypi = "upstream-widget"
-```
-
-离线定位配置和实现；提供 `--db` 才能同时解释已采集的 Source0 和检查状态：
+先用 CLI 定位实际生效的表、行号和实现：
 
 ```sh
+PYTHONPATH=backend python -m tracker.package explain python-requests \
+  --config config/tracker.toml --format human
 PYTHONPATH=backend python -m tracker.monitors explain openssl --monitor eol \
   --config config/tracker.toml --format human
-PYTHONPATH=backend python -m tracker.monitors explain python-requests --monitor license \
-  --config config/tracker.toml --format human
 ```
 
-输出区分显式例外、推导身份和缺少身份；未定义的表不会伪造行号。
-修改抓取协议、判定或展示，见[贡献入口](../CONTRIBUTING.md#where-to-edit)，
-不是在配置中写代码。
+`explain` 不连接 provider。monitor 命令增加 `--db /path/to/snapshot-copy.sqlite3`
+可同时查看已采集的 Source0 和检查状态；不提供快照时只解释配置。
 
-## 版本来源
+## 修改版本规则
 
-配置仍由 nvchecker 直接读取。项目随镜像/安装包提供三个
-[`nvchecker_source`](../backend/nvchecker_source/) 插件，复用 nvchecker 的 HTTP、缓存、
-并发、重试和版本比较；不增加配置展开层：
-
-| source | 身份或请求地址 | 返回给 nvchecker 的候选 |
-|---|---|---|
-| `crates_index` | `cratesio = "accesskit"` → Cargo sparse index | 所有未 yanked 的版本 |
-| `go_proxy` | `url` → Go proxy `@latest`，保留所选镜像 | 正式发布，排除预发布和 pseudo-version |
-| `anitya_stable` | `anitya_id = 7306` → Anitya v2 | provider 排序的第一项 |
-
-例如，Anitya 规则只需保留项目身份和版本策略：
-
-```toml
-ModemManager = { source = "anitya_stable", anitya_id = 7306, prefix = "v" }
-```
-
-Rust 与 Anitya 的标准请求地址由身份确定；使用自定义镜像或请求地址时，
-以 `url` **替代** `cratesio` / `anitya_id`，不能同时填写。
-版本线、前缀和归一化仍在各包规则中。`anitya_stable` 不重新排序历史；
-需要**先筛版本线再取首项**时，继续使用原生 `jq` 的 `first(... | select(...))`。
-其他特殊来源仍可直接用 nvchecker 的 `regex` / `jq`，没有隐藏覆盖优先级。
-
-源码工作区直接检查时使用 `PYTHONPATH=backend nvchecker -c config/versions/nvchecker.toml`；
-安装 backend 后也可直接运行 nvchecker。含插件规则的配置应与提供插件的镜像配套发布。
-规则字段变化会按已有 fingerprint 机制重新检查，不把旧配置的结果直接当作新配置的成功。
-
-## 修改与验证
-
-短规则使用原生 TOML 行内表，放在文件根部（第一个 `[表头]` 之前）：
+`nvchecker.toml` 使用原生 nvchecker 格式。短规则放在文件根部、第一个表头之前：
 
 ```toml
 python-requests = { source = "pypi", pypi = "requests" }
 ```
 
-超过 120 字符或需要逐字段解释的规则保留 `[包名]` 多行表。两种写法由
-nvchecker 直接读取，没有展开或覆盖优先级；同一个包只能定义一次。
-正则可用 `'字面量字符串'`，避免额外反斜杠转义。不要为了压行删除版本线、
-身份例外或发布筛选，也不要把规则塞进一条难以审阅的长行。
+超过 120 字符或需要字段说明时使用多行表；同一 track 只能定义一次。
+正则可用 TOML `'字面量字符串'` 避免双重转义。
 
-普通包名与 track 同名，无需额外绑定。需要旁路观察时，在同一个原生文件
-定义 `widget@prerelease` 表，再在 packages.toml 中关联：
+包名默认对应同名 track。主比较追踪正式 release；维护线和组件身份必须明确，
+不能因为 KDE/Qt 等组件共享主页就共享版本。预发布仅作显式旁路观察：
 
 ```toml
+# nvchecker.toml：另定义旁路 track
+["widget@prerelease"]
+source = "pypi"
+pypi = "widget"
+use_pre_release = true
+```
+
+```toml
+# packages.toml：关联旁路，主比较仍使用 widget
 [widget]
 watch = ["widget@prerelease"]
 ```
 
-正式 release 仍是主比较；预发布只作为显式 watch。保留维护线筛选与
-provider 排序语义，不因某个 tag 存在就把它当作正式 release。KDE/Qt 等
-共享主页的组件，必须分别核对组件身份和发布系列。
+修改后运行独立检查；它调用 nvchecker，但不写生产快照：
 
-已经按 Git 快照打包的项目可显式追踪分支，不伪装成正式 release。
-批量监控优先使用 Git 引用查询，不克隆仓库，也不消耗 GitHub API 配额：
+```sh
+PYTHONPATH=backend python -m tracker.package check python-requests \
+  --config config/tracker.toml --format human
+```
+
+`--output FILE` 保存完整报告；省略 `--format human` 时输出 JSON。
+
+### 项目提供的 nvchecker sources
+
+插件位于 [`backend/nvchecker_source/`](../backend/nvchecker_source/)，随 backend 安装。
+它们使用 nvchecker 的请求、缓存和版本处理机制：
+
+| source | 配置身份 | 返回的候选 |
+|---|---|---|
+| `crates_index` | `cratesio = "accesskit"` | Cargo sparse index 中未 yanked 的版本 |
+| `go_proxy` | `url = "…/@latest"` | 正式 Go release，排除预发布和 pseudo-version |
+| `anitya_stable` | `anitya_id = 7306` | Anitya `stable_versions` 的第一项，保留 provider 排序 |
+
+`crates_index`、`anitya_stable` 可用自定义 `url` 替代身份字段，但不能两者同时
+填写。前缀和维护线筛选仍写在规则中。Anitya 若需**先筛维护线再取首项**，使用
+原生 `jq` 的 `first(... | select(...))`，不能在 `anitya_stable` 取首项后补筛。
+
+工作区直接运行时用 `PYTHONPATH=backend nvchecker -c config/versions/nvchecker.toml`；
+安装 backend 后无需设置该路径。含插件的配置须搭配提供插件的镜像。
+
+### Git 快照
+
+只有 Source0 的完整 commit 与 RPM `+git日期.短hash` 一致，才能用分支头比较。
+目前识别 GitHub/codeload、GitLab、Forgejo 和 cgit 归档。分支从仓库引用确认，
+不能只凭包名或 `+git` 推断；本地 tarball、短 Source0 SHA、混合 commit、独立
+子组件需额外证据。
 
 ```toml
-[widget]
+# nvchecker.toml
+["widget@commits"]
 source = "git"
 git = "https://github.com/example/widget"
 use_commit = true
 branch = "main"
 ```
 
-支持 GitHub/codeload、GitLab、Forgejo 与 cgit 的完整 commit 归档 Source0，
-且 RPM `+git日期.短hash` 必须与之相符。分支应由仓库引用验证，不按包名猜测。
-已有 release 规则保留：另加 `widget@commits` 表，在 packages.toml 的
-`[widget]` 设置 `compare = "widget@commits"`、`watch = ["widget"]`。
-只修改比较来源不应删除已配置的 monitor 身份。
-本地 tarball、短 Source0 SHA、多 commit 混合包、独立子组件需额外证据，不能只看 `+git` 就放行。
-相同 hash 为 current，不同为 changed（分支头变化，不推断提交先后或正式版本升级）。
-查询失败仍保留失败状态。首页使用 `YYYYMMDD.xxxxxx`：当前日期来自 RPM 快照版本，
-目标日期来自 nvchecker 的 `revision_creation_time`（UTC），不拿采集时间补日期。
-需要日期且 API 配额足够时可用原生 `github` / `gitlab` 分支规则；Forgejo 使用 `gitea`。
-6 位 hash 同前缀时延长；API、详情和比较保留完整 hash。原生 `git + use_commit=true`
-也可使用，但它不提供提交时间，目标只显示短 hash。此模式不会把 hash 或提交日期
-作为 License/Requires 等版本升级查询的输入。
-
-从仓库根目录运行：
-
-```sh
-PYTHONPATH=backend python -m tracker.package explain python-requests \
-  --config config/tracker.toml --format human
-PYTHONPATH=backend python -m tracker.package check python-requests \
-  --config config/tracker.toml --format human
+```toml
+# packages.toml：保留原 release 规则作为旁路
+[widget]
+compare = "widget@commits"
+watch = ["widget"]
 ```
 
-`explain` 定位实际生效的原生表与包策略；`check` 调用 nvchecker，不写生产
-快照。使用 `--output FILE` 保存完整报告；JSON 输出保留机器接口。
+相同 hash 为 current，不同为 changed，不推断提交先后或正式版本升级。
+主页面缩写为 `YYYYMMDD.xxxxxx`；当前日期取 RPM 快照版本，目标日期只取
+`revision_creation_time`（UTC）。原生 `git` 不返回提交时间，目标仅显示短 hash；
+需要时间时可选 GitHub/GitLab/Forgejo 的分支 API，并承担其配额。短 hash 冲突时
+延长，API 和详情保留完整值。commit 不作为 License/Requires 的升级版本输入。
+
+## 修改其他 monitor 的身份
+
+支持 registry 身份推导的 monitor 优先使用已观测 Source0，缺失时使用版本规则
+身份。EOL 需要显式配置产品和周期。仅在需要身份例外或额外字段时添加包策略，例如：
+
+```toml
+# packages.toml
+[openssl.monitors.eol]
+product = "openssl"
+cycle_parts = 2
+
+[widget.monitors.license]
+pypi = "upstream-widget"
+```
+
+用 `tracker.monitors explain` 检查实际输入；缺少 License 表不等于未覆盖。
+声明的依赖找不到源包映射时保留未知，不按包名猜测。各 adapter 的字段和检查
+入口见[monitor 接入指南](../docs/monitor-porting.md)。
 
 ## 新增软件包
 
-OBS 新包自动进入库存；没有版本规则时保留 Untracked，其他信息仍可展示。
-有证据的规则候选由 setup/discover 离线生成，不参与运行时规则合成：
+OBS 库存中的包即使没有版本规则也会显示，其他 monitor 独立工作。用只读快照
+提出候选，审阅 Source0、SPEC 身份和发布策略后加入原生文件：
 
 ```sh
 PYTHONPATH=backend python -m tracker.package setup 包名 \
@@ -156,14 +140,25 @@ PYTHONPATH=backend python -m tracker.package setup 包名 \
   --output /tmp/new-package-proposal.json
 ```
 
-审阅候选的 Source0、SPEC 身份和发布策略后，加入原生文件，再运行 check。
-`entry=null` 是证据不足，不是成功。普通上游别名是独立身份信息；SPEC Name
-与目录不一致则是打包问题，应保留 `TODO(drop)`，等上游修正并验证后删除。
+`entry=null` 表示证据不足。上游别名属于身份映射；SPEC Name 与目录不一致则是
+打包问题，例外需注明 `TODO(drop)` 的删除条件。
+
+批量发现使用同一套身份校验；`--verify` 调用 provider 验证，失败候选不进入
+输出规则，整个过程不改运行配置：
+
+```sh
+PYTHONPATH=backend python -m tracker.monitors.version.discover \
+  --config config/tracker.toml --db /path/to/snapshot-copy.sqlite3 \
+  --output /tmp/version-candidates --verify
+```
+
+Cargo 预发布 Source0 保留原始 release 身份；RPM 展开的 Version 用于显示，
+registry 查询不能把 `1.2.0-rc.1` 改成 `1.2.0`。主比较仍遵循配置的正式发布线。
 
 ## 推广到运行配置
 
-保留修改前配置为 `BASE`、修改副本为 `CANDIDATE`、运营配置为 `RUNTIME`。
-用同一份只读快照生成审阅目录，再生成尚不存在的新配置目录：
+保留修改前目录 `BASE`、修改副本 `CANDIDATE`、运营目录 `RUNTIME`，以及只读
+快照 `SNAPSHOT_COPY`。`REVIEW` 和 `PREPARED` 必须是尚不存在的目录：
 
 ```sh
 PYTHONPATH=backend python -m tracker.package plan \
@@ -175,26 +170,13 @@ PYTHONPATH=backend python -m tracker.package apply \
   --destination "$PREPARED" --format human
 ```
 
-先审阅 REVIEW 的有效规则、包策略和文件差异。运营冲突应停止，不能用仓库
-默认配置覆盖本地凭据或设置。apply 不切换线上挂载；升级、预检与回滚统一见
-[部署说明](../docs/deployment.md)。
+在 apply 前审阅 REVIEW 中的规则、包策略和文件差异。冲突或输入漂移会拒绝推广；
+不能用仓库默认配置覆盖运营设置。apply 只生成新目录，不切换挂载；后续预检、
+升级和回滚见[部署说明](../docs/deployment.md)。
 
-批量补规则可用同一份只读快照：
+## SPEC 解析输入
 
-```sh
-PYTHONPATH=backend python -m tracker.monitors.version.discover \
-  --config config/tracker.toml --db /path/to/snapshot-copy.sqlite3 \
-  --output /tmp/version-candidates --verify
-```
-
-单包和批量候选共用 Source0 身份校验。原生检查失败的候选不进入输出规则；
-子模块身份冲突与无法证明的 Source0/RPM 版本对应关系仍需审阅。
-
-Cargo 的预发布 Source0 可保留精确版本身份；主比较仍只查询该版本线的正式发布。
-RPM Version 用于显示，原始 release 用于 registry 查询，避免把 `1.2.0-rc.1` 当成 `1.2.0`。
-## 原生 SPEC 输入
-
-`[spec].extra_macro_packages` 从受管理的 Git 树加载额外 RPM 宏包。
-`[spec.local_sources]` 映射包名与原生 `%include` 需要的本地文件（如 patch series）。
-输入记录哈希并在现有沙箱内解析；缺失则报错。包目录或宏变化会使缓存失效。
-这里不下载 Source 压缩包，也不使用文本猜测替代 RPM Version。
+`[spec].extra_macro_packages` 指定受管理 Git 树中的额外宏包；
+`[spec.local_sources]` 映射原生 `%include` 所需的包内文件，如 patch series。
+这些输入记录哈希，在既有沙箱中解析，变化会使缓存失效，缺失则报错。
+解析不下载 Source 压缩包，也不用文本猜测替代 RPM 展开的 Version。

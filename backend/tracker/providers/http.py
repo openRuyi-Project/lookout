@@ -10,6 +10,8 @@ def read_response(response, *, max_bytes, deadline):
     Callers start the deadline before opening the stream and configure finite
     HTTPX connect/read/write/pool timeouts. This is a cooperative budget: it
     cannot interrupt an in-flight synchronous read or terminate its thread.
+    max_bytes counts decompressed bytes from iter_bytes(), not Content-Length;
+    the caller owns and closes the response stream even when a limit is exceeded.
     """
     def check_deadline():
         if time.monotonic() >= deadline:

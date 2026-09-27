@@ -67,6 +67,12 @@ class UnsupportedRequirements(ValueError):
 
 @dataclass(frozen=True)
 class Requirement:
+    """A provider declaration with a parser-specific working value.
+
+    comparison stays inside the backend (for example, to combine clauses).
+    fact() persists declaration and scheme; the read-side comparator uses those,
+    not the parser object or the collector's environment.
+    """
     dependency: str
     name: str
     kind: str

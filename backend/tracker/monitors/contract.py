@@ -8,10 +8,13 @@ if TYPE_CHECKING:
 
 
 class Adapter(Protocol):
-    """Module contract, without inheritance. Optional refresh(subject, inputs,
-    previous) returns Schedule; modules without it use DEFAULT_REFRESH.
-    Optional query_subject(subject, inputs) selects the subject fields used by
-    check(). The safe default includes the complete source context.
+    """Structural interface implemented by trusted modules, not subclasses.
+
+    Optional query_subject(subject, inputs) narrows only the observation
+    fingerprint; check() still receives the full subject. Omit a subject field
+    only if changing it cannot change the observation's meaning.
+    Optional refresh(subject, inputs, previous) returns Schedule; otherwise the
+    runner uses DEFAULT_REFRESH. Both hooks are pure.
     """
     VERSION: int
     HOSTS: set[str]

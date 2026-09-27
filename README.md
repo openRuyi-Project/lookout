@@ -1,43 +1,31 @@
 # openRuyi Package Monitor
 
-A read-only package maintenance view for [openRuyi](https://openruyi.cn):
+A read-only view of [openRuyi](https://openruyi.cn) packages: source versions,
+upstream releases, OBS builds and upstream maintenance evidence.
 
-- **Version:** packaged RPM version against the configured upstream release line.
-- **Maintenance:** actionable EOL, security-review and upgrade license findings.
-- **Build:** OBS results and last successful versions for each target architecture.
+Collectors save observations in SQLite. FastAPI and Astro serve that snapshot;
+page requests do not contact providers. Missing, failed and stale checks remain
+visible. A security match concerns the queried upstream component, not the
+exploitability of the distributed RPM; local patches and bundled dependencies
+are not evaluated.
 
-OBS, the packaging Git repository and upstream providers supply observations.
-The collector saves an atomic SQLite snapshot; FastAPI and Astro render it without
-network collection in page requests. Failed or stale observations remain visible.
-Security matches require review of local patches and build options; they do not
-prove that an RPM is exploitable. ABI checking and bundled-dependency scanning are
-not implemented.
-
-## Start here
-
-| Task | Guide |
+| I want to… | Read |
 |---|---|
 | Run, upgrade or roll back the service | [Deployment](docs/deployment.md) |
-| Find, add or correct a package rule | [Configuration](config/README.md) |
-| Develop and submit a change | [Contributing](CONTRIBUTING.md) |
-| Change collection boundaries or add a monitor | [Monitor porting](docs/monitor-porting.md) |
+| Add a package or correct its monitor configuration | [Configuration](config/README.md) |
+| Change code and run tests | [Contributing](CONTRIBUTING.md) |
+| Add a monitor | [Monitor porting](docs/monitor-porting.md) |
+| Understand ownership, consistency and security limits | [Design](docs/design.md) |
 
-The supported deployment is a Linux container with native RPM bindings and
-Landlock ABI 6+ for confined SPEC parsing. Configuration and data are mounted
-separately from the image. The deployment guide points to the tested initializer.
+Deployment requires a Linux container, native RPM bindings and Landlock ABI 6+
+for confined SPEC parsing. Configuration and persistent data are separate mounts.
 
-Package rules live in the native `config/versions/nvchecker.toml`; comparison and
-monitor identities live in `config/packages.toml`; `config/tracker.toml` owns
-service settings. Use the configuration guide to locate,
-check and promote one package without reading the complete rule inventory.
+## API
 
-## Interfaces
-
-The running service exposes uniform monitor results at `/api/v2/packages`, `/api/v2/status`,
-`/api/v2/export` and `/openapi.json`. The package list links to per-package source,
-build and maintenance evidence. Network access and credentials are operator-owned.
+The website exposes `/api/v2/packages`, `/api/v2/status` and `/api/v2/export`.
+`/openapi.json` describes the response contracts. Package pages link observations
+to their sources.
 
 ## License
 
-[MulanPSL-2.0](LICENSE). Required license copies and generated API types are kept
-in the repository; they are not independently maintained sources of behavior.
+[MulanPSL-2.0](LICENSE).

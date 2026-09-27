@@ -17,6 +17,8 @@ def load(path):
     config = tomllib.loads(raw.decode())
     if 'packages' in config:
         raise ValueError('inline packages are not supported; use packages_config with root package tables')
+    # Hash the bytes parsed, not a later read: collectors use these stamps to
+    # reject publication after an in-flight configuration edit.
     input_hashes = {str(path): hashlib.sha256(raw).hexdigest()}
     for key, default in (('obs_interval_seconds', 60), ('build_interval_seconds', 15), ('nvchecker_interval_seconds', 21600),
                          ('nvchecker_timeout_seconds', 7200), ('build_history_interval_seconds', 300)):
@@ -83,15 +85,10 @@ def load(path):
         for track in [binding.get('compare'), *binding.get('watch', [])]:
             if track and track not in config['native']:
                 raise ValueError(f'unknown configured track: {track}')
-    # Optional git SPEC source (third external source, peer to OBS and nvchecker).
-    # One managed full clone holds all history (changelogs) and every current SPEC
-    # blob (read via cat-file). Absent config disables the source cleanly, so tests
-    # and non-git deployments are unaffected.
     spec = config.get('spec', {})
     config['spec'] = {
-        # The clone path is environment-specific (host vs container), so an env var may
-        # override it without duplicating config; TRACKER_SPEC_REPO enables the source
-        # even when no [spec] table is present (used by the container image).
+        # The image sets TRACKER_SPEC_REPO: it enables SPEC collection even
+        # without a [spec] table. An empty environment value does not override repo.
         'repo': os.environ.get('TRACKER_SPEC_REPO') or spec.get('repo'),
         'url': spec.get('url', 'https://github.com/openRuyi-Project/openRuyi.git'),
         'branch': spec.get('branch', 'main'),
@@ -143,7 +140,7 @@ def load(path):
 
 
 def read_input(path):
-    """Read one regular configuration input without following a replacement link."""
+    """Read a regular configuration file, rejecting symlinks at the input path."""
     path = Path(path)
     if path.is_symlink() or not path.is_file():
         raise ValueError('configuration input must be a regular file: ' + str(path))

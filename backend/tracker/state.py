@@ -1,4 +1,4 @@
-"""One atomic snapshot, one writer. No ORM, event log, or speculative domain model."""
+"""Atomic SQLite snapshots with phase-owned updates and a separate build clock."""
 from contextlib import closing, contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -45,6 +45,8 @@ def read_cached(db, previous=None):
 
     Successful, unchanged build polls have a small clock row. They never relabel
     failed/missing records: commit_build_heartbeat requires a complete clean vector.
+    ``previous`` is a prior (snapshot, revision) result from this database;
+    reused nested observations are shared and must not be mutated by the caller.
     """
     if not Path(db).is_file():
         return empty(), None
@@ -107,6 +109,12 @@ def commit_build_heartbeat(db, latest, patches, component):
 
 
 def commit(db, snapshot):
+    """Replace payload and reset its heartbeat in one database transaction.
+
+    Concurrent writers must hold writer_lock across read/merge/commit; a transaction
+    alone cannot prevent overwriting a newer snapshot with old input.
+    Each payload write gets a new storage revision, even if generation is unchanged.
+    """
     # Serialization happens before opening the transaction: invalid data cannot replace a snapshot.
     body = json.dumps(snapshot, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
     db = Path(db)
