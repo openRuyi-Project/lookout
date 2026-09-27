@@ -91,6 +91,17 @@ assert len(json.loads(get('/api/v2/targets'))) == 3
 export = json.loads(get('/api/v2/export'))
 assert export['schema'] == 2
 assert any(package['name'] == 'smoke-fixture' for package in export['packages'])
+selected = json.loads(get('/api/v2/packages/smoke-fixture?include=version'))
+assert set(selected['monitors']) == {'version'}
+assert selected['monitors']['version']['data']['current'] == '1.2.3'
+batch = json.loads(get('/api/v2/packages:batchGet?names=smoke-fixture&include=version'))
+full = json.loads(get('/api/v2/packages?detail=full&per_page=20&include=version&q=smoke-fixture'))
+for result in (batch, full):
+    package = result['items'][0]
+    assert package['name'] == 'smoke-fixture'
+    assert set(package['monitors']) == {'version'}
+    assert package['monitors']['version']['data']['current'] == '1.2.3'
+assert json.loads(get('/api/v2/packages?search=observations&q=1.2.3'))['total'] >= 1
 for path in ('/', '/packages/smoke-fixture'):
     body = get(path).decode()
     assert 'smoke-fixture' in body and '1.2.3' in body

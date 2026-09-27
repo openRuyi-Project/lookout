@@ -177,7 +177,7 @@ let appearancePalette = {custom: {background: '#123456', foreground: '#ffffff'}}
 let retainedCount = 0;
 const publicPaths = [
   '/api/v2/packages', '/api/v2/packages/security', '/api/v2/tracks/widget',
-  '/api/v2/targets', '/api/v2/status', '/api/v2/export',
+  '/api/v2/targets', '/api/v2/status', '/api/v2/export', '/api/v2/packages:batchGet',
 ];
 const forwardedRequests = [];
 const mock = createServer((req, res) => {
@@ -299,7 +299,7 @@ try {
   unavailable = false;
   console.log('PASS health: liveness, readiness, degraded, no snapshot, failure, timeout, no-store');
   for (const path of publicPaths) {
-    const query = '?proxy_fixture=1&build=rva23%3Afailed&build=rva20%3Ablocked&q=with%20space';
+    const query = '?proxy_fixture=1&build=rva23%3Afailed&build=rva20%3Ablocked&q=with%20space&names=first&names=second&include=version&include=security';
     const result = await wire(path + query);
     assert.equal(result.status, 200, path);
     assert.deepEqual(JSON.parse(result.body), {path, query: [...new URLSearchParams(query)]});
@@ -315,6 +315,23 @@ try {
     assert.equal(forwardedRequests.length, count, 'rejected route must not contact backend');
   }
   console.log('PASS API proxy: v2 routes, query, status, export header, rejected paths');
+  const apiReference = await read('/api');
+  const article = apiReference.match(/<article\b[^>]*>([^]*?)<\/article>/)[1];
+  assert.match(article, /href="\/openapi\.json"/);
+  assert.match(article, /GET \/api\/v2/);
+  const examples = [...article.matchAll(/<pre\b[^>]*><code\b[^>]*><a\b[^>]*href="([^"]+)"/g)]
+    .map(([, href]) => new URL(href.replaceAll('&amp;', '&'), 'http://localhost'));
+  assert.equal(examples.length, 2);
+  assert.equal(examples[0].pathname, '/api/v2/packages');
+  assert.equal(examples[0].searchParams.get('search'), 'observations');
+  assert.equal(examples[0].searchParams.get('detail'), 'full');
+  assert.equal(examples[1].pathname, '/api/v2/packages:batchGet');
+  const names = examples[1].searchParams.getAll('names');
+  assert.equal(names.length, 2);
+  assert.equal(new Set(names).size, names.length);
+  assert.ok(names.every(Boolean));
+  assert.deepEqual(examples[1].searchParams.getAll('include'), ['version', 'security']);
+  console.log('PASS API reference: OpenAPI, endpoint table and query links');
   const invalidSelection = await wire('/?monitor=not-registered');
   assert.equal(invalidSelection.status, 422);
   assert.match(invalidSelection.body.toString(), /Invalid filter selection/);

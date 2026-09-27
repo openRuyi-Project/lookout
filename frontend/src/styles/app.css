@@ -58,14 +58,6 @@
 .prose h2 {
   font-size: 17px;
 }
-.api-list dt {
-  margin-top: 20px;
-  font-family: var(--mono);
-}
-.api-list dd {
-  margin: 5px 0;
-  color: var(--muted);
-}
 .notice {
   padding: 8px 12px;
   border-left: 3px solid var(--amber);

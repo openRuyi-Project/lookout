@@ -1,13 +1,52 @@
 ---
 import Base from '../../layouts/Base.astro';
+const evidence = '/api/v2/packages?monitor=security&search=observations&q=CVE-&include=security&detail=full&per_page=20';
+const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=version&include=security';
 ---
-<Base title="API · openRuyi Packages"><article class="prose"><h1>Query interface</h1><p>Requests read stored observations; they never start an upstream check. No account is required. <a href="/openapi.json">OpenAPI specification</a>.</p><dl class="api-list">
-<dt><a href="/api/ui/packages">GET /api/ui/packages</a></dt><dd>Website reading document: opaque navigation, linked choices and table cells. Results are the default. Only filters supported by the selected page apply; search and Build system are shared. No HTML or executable layout. Use the v2 fact API for cross-monitor filter combinations.</dd>
-<dt><a href="/api/ui/packages/bash">GET /api/ui/packages/{'{name}'}</a></dt><dd>Fields, tables and source-attributed evidence entries. For programmatic analysis use the typed facts below.</dd>
-<dt><a href="/api/v2/packages">GET /api/v2/packages</a></dt><dd>Uniform monitor results and linked facets. Results are the default; <code>section=coverage</code> includes checks without findings. Use <code>monitor</code> to focus a module and <code>check</code> to filter its check status. Search with <code>q</code>. Version-related annotations can be filtered with <code>signal</code> (the contributing monitor ID). Use <code>view=all|updates|problems|attention</code>, <code>page</code>, and <code>per_page</code> (1–200).</dd>
-<dt><a href="/api/v2/packages/bash">GET /api/v2/packages/{'{name}'}</a></dt><dd>Each monitor’s check status and typed observations, including evidence and build flavors.</dd>
-<dt><a href="/api/v2/tracks/meson">GET /api/v2/tracks/{'{id}'}</a></dt><dd>A configured native nvchecker entry.</dd>
-<dt><a href="/api/v2/targets">GET /api/v2/targets</a></dt><dd>Display labels and exact OBS target identities.</dd>
-<dt><a href="/api/v2/status">GET /api/v2/status</a></dt><dd>Collection status, coverage, and component errors.</dd>
-<dt><a href="/api/v2/export">GET /api/v2/export</a></dt><dd>Download all typed monitor observations as schema 2 JSON.</dd>
-</dl><p>An absent package or track returns 404. An unknown version is null, not an empty success. An unavailable snapshot returns 503. Untracked does not mean up to date.</p></article></Base>
+<Base title="API · openRuyi Packages">
+  <article class="prose">
+    <h1>API</h1>
+    <p>Read-only snapshots. <a href="/openapi.json">OpenAPI: parameters and response schemas</a>.</p>
+
+    <table class="data-table">
+      <thead><tr><th scope="col">GET /api/v2</th><th scope="col">Returns</th></tr></thead>
+      <tbody>
+        <tr><td><a href="/api/v2/packages"><code>/packages</code></a></td>
+          <td>Summaries + filter counts. <code>per_page</code>: default 100, max 200.
+            <code>detail=full</code> adds evidence; requires <code>per_page≤20</code>.</td></tr>
+        <tr><td><a href="/api/v2/packages/bash"><code>/packages/{'{name}'}</code></a></td>
+          <td>Full package observations.</td></tr>
+        <tr><td><code>/packages:batchGet</code></td>
+          <td>Full observations for 1–20 unique, repeated <code>names</code>, in request order.
+            Any missing name fails the batch.</td></tr>
+        <tr><td><a href="/api/v2/tracks/meson"><code>/tracks/{'{id}'}</code></a></td><td>Saved version-track observation.</td></tr>
+        <tr><td><a href="/api/v2/targets"><code>/targets</code></a></td><td>OBS target identities.</td></tr>
+        <tr><td><a href="/api/v2/status"><code>/status</code></a></td><td>Collection freshness, coverage and errors.</td></tr>
+        <tr><td><a href="/api/v2/export"><code>/export</code></a></td><td>Complete snapshot, schema 2; unpaginated.</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Queries</h2>
+    <ul>
+      <li><code>monitor</code> focuses filtering; repeated <code>include</code> selects returned monitors
+        (default: all). IDs come from the list response's <code>monitors</code>.</li>
+      <li><code>q</code> searches names; <code>search=observations</code> adds fact values,
+        restricted by <code>monitor</code> when set. Matching is case-insensitive substring.</li>
+      <li>Filters intersect. Evidence views default to findings; <code>section=coverage</code>
+        includes packages without findings.</li>
+    </ul>
+    <p>Find advisory evidence:</p>
+    <pre><code><a href={evidence}>{evidence}</a></code></pre>
+    <p>Fetch known packages:</p>
+    <pre><code><a href={batch}>{batch}</a></code></pre>
+
+    <p><code>404</code> missing resource · <code>422</code> invalid package query · <code>503</code> no snapshot.<br />
+      Preserve <code>check</code> and <code>stale</code>; null means unknown.
+      One snapshot per response, not across pages.</p>
+    <p>Website display documents: <a href="/api/ui/packages">/api/ui/packages</a>,
+      <a href="/api/ui/packages/bash">/api/ui/packages/{'{name}'}</a>.</p>
+  </article>
+</Base>
+<style>
+  pre { white-space: pre-wrap; }
+</style>

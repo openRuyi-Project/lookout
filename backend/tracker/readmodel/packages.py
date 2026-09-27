@@ -13,6 +13,18 @@ from tracker.monitors.build import status as build_status
 VIEWS = ('all', 'updates', 'problems', 'attention', 'untracked')
 
 
+def _search_values(value):
+    """Index observation values, never field names or internal facet dimensions."""
+    if isinstance(value, dict):
+        for child in value.values():
+            yield from _search_values(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _search_values(child)
+    elif isinstance(value, (str, int, float)) and not isinstance(value, bool):
+        yield str(value).casefold()
+
+
 class _Selection:
     """Request-local evaluation of fixed filters over an immutable index.
 
@@ -50,6 +62,10 @@ class PackageList:
         self.rows = tuple(rows)
         self.by_name = MappingProxyType({row['name']: row for row in self.rows})
         self.names = tuple(row['name'].casefold() for row in self.rows)
+        # Built once with the projection; request handlers only search strings.
+        self.observations = tuple({mid: '\n'.join(_search_values({
+            'check': result.get('check', {}), 'data': result.get('data', {})}))
+            for mid, result in row['monitors'].items()} for row in self.rows)
         self.all = frozenset(range(len(self.rows)))
         self.query = query
         self.monitor = monitor
@@ -78,10 +94,14 @@ class PackageList:
         } for dimension, options in self.index.items() if dimension.startswith('check:')}
 
     def select(self, *, view, buildsystem, maintenance, builds, page, per_page, check='', findings_only=False,
-               query=None, monitor=None, requires='', signal='', freshness=''):
+               query=None, monitor=None, requires='', signal='', freshness='', search='name'):
         query = (self.query if query is None else query).strip().casefold()
         monitor = self.monitor if monitor is None else monitor
         scope = {number for number, name in enumerate(self.names) if query in name} if query else self.all
+        if query and search == 'observations':
+            scope.update(number for number, observations in enumerate(self.observations)
+                         if any(query in text for mid, text in observations.items()
+                                if not monitor or mid == monitor))
         selections = {'view': view, 'buildsystem': buildsystem, 'maintenance': maintenance, 'requires': requires, 'version_signal': signal,
                       **{f'build:{target}': status for target, status in builds.items()}}
         if monitor:

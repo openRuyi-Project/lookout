@@ -2,7 +2,7 @@ import type {APIRoute} from 'astro';
 import {backendURL} from '../../lib/api';
 export const GET: APIRoute = async ({params, url}) => {
   const path = params.path || '';
-  if (!/^(?:v2\/(?:packages(?:\/[^/]+)?|tracks\/[^/]+|targets|status|export)|ui\/(packages(?:\/[^/]+)?|theme))$/.test(path)) {
+  if (!/^(?:v2\/(?:packages(?::batchGet|\/[^/]+)?|tracks\/[^/]+|targets|status|export)|ui\/(packages(?:\/[^/]+)?|theme))$/.test(path)) {
     return Response.json({detail: 'Not found'}, {status: 404});
   }
   try {

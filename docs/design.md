@@ -69,6 +69,19 @@ Before the first model exists, readiness fails. A failed refresh or overdue
 freshness calculation retains the previous model with a notice and degraded
 readiness. Liveness checks only the web-to-API HTTP chain, not collection health.
 
+### Fact API queries
+
+`api.py` owns HTTP validation and response schemas. `PackageList` owns selection,
+facet counts and the observation-value search index, built with the background
+projection. Filtering never triggers collection. `include` changes representation,
+not membership; list, detail and batch share `package_response` and the same typed
+monitor models. A batch borrows one projection rather than issuing internal HTTP
+requests. Full lists and batches have tighter bounds than summaries.
+
+The [website API reference](../frontend/src/pages/api/index.astro) documents
+response choices and consistency limits. Query parameters and response models
+produce OpenAPI directly; there is no separately maintained field schema.
+
 ## Selection and presentation
 
 `monitors.build.status` defines OBS status meaning; `readmodel.monitors` folds

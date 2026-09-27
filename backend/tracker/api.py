@@ -282,7 +282,7 @@ class MonitoredDetail(MonitoredObservation):
 
 
 class MonitoredList(BaseModel):
-    items: list[MonitoredPackage]
+    items: list[MonitoredPackage | MonitoredObservation]
     monitors: list[MonitorDescription]
     total: int
     page: int
@@ -311,6 +311,11 @@ class MonitorExport(BaseModel):
     packages: list[MonitoredObservation]
 
 
+class PackageBatch(BaseModel):
+    items: list[MonitoredObservation]
+    collection: Collection
+
+
 class ListingQuery(BaseModel):
     q: str = Field('', max_length=100)
     view: Literal['all', 'updates', 'problems', 'attention', 'untracked'] = 'all'
@@ -325,6 +330,43 @@ class ListingQuery(BaseModel):
     monitor: str = Field('', max_length=64)
     check: str = Field('', max_length=40)
     section: Literal['results', 'coverage'] = 'results'
+
+
+FULL_PAGE_LIMIT = 20
+MonitorID = Annotated[str, Field(min_length=1, max_length=64)]
+PackageName = Annotated[str, Field(min_length=1, max_length=512)]
+
+
+class MonitorSelection(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    include: list[MonitorID] = Field(default_factory=list, max_length=32,
+        description='Repeated monitor IDs to return. Omitted means all; does not change filtering.')
+
+
+class PackageQuery(ListingQuery, MonitorSelection):
+    search: Literal['name', 'observations'] = Field('name',
+        description='Case-insensitive substring search. observations searches values in the focused monitor, or all monitors when unfocused; package names always match.')
+    detail: Literal['summary', 'full'] = Field('summary',
+        description=f'Full observations include evidence and histories; require per_page <= {FULL_PAGE_LIMIT}.')
+
+
+class BatchQuery(MonitorSelection):
+    names: list[PackageName] = Field(min_length=1, max_length=FULL_PAGE_LIMIT,
+        description=f'Repeated exact package names, in response order; 1–{FULL_PAGE_LIMIT} unique names. Any missing name fails the whole request.')
+
+
+def selected_monitors(requested, catalog):
+    known = {module['id'] for module in catalog}
+    if set(requested) - known:
+        raise HTTPException(422, 'Unknown included monitor')
+    return set(requested) if requested else known
+
+
+def package_response(row, included, *, full, focus=''):
+    selected = {**row, 'monitors': {mid: result for mid, result in row['monitors'].items() if mid in included}}
+    if full:
+        return MonitoredObservation.model_validate(selected)
+    return MonitoredPackage.model_validate(view.monitor_summary(selected, focus))
 
 
 def create_app(db=None):
@@ -365,7 +407,7 @@ def create_app(db=None):
         if found is None:
             raise HTTPException(404, 'Package not found')
         return found
-    def select_monitored(filters, *, document=False):
+    def select_monitored(filters, *, document=False, search='name'):
         snap, index, collection = data()
         catalog = [module.describe() for module in monitor_views.registry(snap)]
         if filters.monitor and filters.monitor not in {m['id'] for m in catalog}:
@@ -392,6 +434,7 @@ def create_app(db=None):
             view=view_name, buildsystem=buildsystem, maintenance=maintenance,
             builds=builds, page=page, per_page=per_page, check=check, requires=filters.requires, signal=filters.signal,
             freshness=filters.freshness,
+            search=search,
             findings_only=bool(focused and focused['kind'] in ('evidence', 'requires') and section == 'results'))
         if document:
             result['query'] = {**filters.model_dump(), 'section': section, 'page': result['page']}
@@ -410,19 +453,35 @@ def create_app(db=None):
                 'presentation': snap.get('presentation', {})}
 
     @app.get('/api/v2/packages', response_model=MonitoredList)
-    def monitor_packages(filters: Annotated[ListingQuery, Query()]):
-        result = select_monitored(filters)
-        return {**result, 'items': [view.monitor_summary(row, filters.monitor) for row in result['items']]}
+    def monitor_packages(filters: Annotated[PackageQuery, Query()]):
+        if filters.detail == 'full' and filters.per_page > FULL_PAGE_LIMIT:
+            raise HTTPException(422, f'Full observations require per_page <= {FULL_PAGE_LIMIT}')
+        result = select_monitored(filters, search=filters.search)
+        included = selected_monitors(filters.include, result['monitors'])
+        return {**result, 'items': [package_response(row, included,
+            full=filters.detail == 'full', focus=filters.monitor) for row in result['items']]}
 
     @app.get('/api/ui/packages', response_model=ListingDocument)
     def listing_document(filters: Annotated[ListingQuery, Query()]):
         result = select_monitored(filters, document=True)
         return presentation_pages.listing(result, result['query'])
 
+    @app.get('/api/v2/packages:batchGet', response_model=PackageBatch)
+    def batch_packages(filters: Annotated[BatchQuery, Query()]):
+        if len(set(filters.names)) != len(filters.names):
+            raise HTTPException(422, 'Batch package names must be unique')
+        snap, index, collection = data()
+        included = selected_monitors(filters.include, [module.describe() for module in monitor_views.registry(snap)])
+        rows = [find_package(name, index) for name in filters.names]
+        return {'items': [package_response(row, included, full=True) for row in rows], 'collection': collection}
+
     @app.get('/api/v2/packages/{name}', response_model=MonitoredDetail)
-    def monitor_package(name: str):
+    def monitor_package(name: str, filters: Annotated[MonitorSelection, Query()]):
         snap, index, _ = data()
-        return {**find_package(name, index), 'presentation': snap.get('presentation', {})}
+        included = selected_monitors(filters.include, [module.describe() for module in monitor_views.registry(snap)])
+        package = package_response(find_package(name, index), included, full=True)
+        # Keep validated submodels; only the HTTP boundary serializes them.
+        return MonitoredDetail(**dict(package), presentation=snap.get('presentation', {}))
 
     @app.get('/api/ui/packages/{name}', response_model=DetailDocument)
     def package_document(name: str):
