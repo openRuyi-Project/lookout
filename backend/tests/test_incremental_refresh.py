@@ -232,3 +232,28 @@ def test_source_gate_does_not_postpone_expired_checks(config, snapshot, tmp_path
     state.commit(db, checked)
     monitor.collect(config, 'unused', db, io=io)
     assert len(calls) == 2
+
+
+def test_new_and_edited_rules_are_isolated_before_periodic_rechecks():
+    now = datetime(2030, 1, 1, tzinfo=timezone.utc)
+    expired = '2000-01-01T00:00:00+00:00'
+    rules = {n: {'source': 'manual', 'manual': '2.0'} for n in ['periodic', 'new', 'edited']}
+    settings = {'native': rules, 'native_options': {}, 'collector': {}}
+    snapshot = {
+        'components': {'nvchecker': {'options_fingerprint': cfg.track_fingerprint({})}},
+        'tracks': {n: {'configuration_fingerprint': cfg.track_fingerprint(rules[n]),
+                       'attempted_at': expired, 'fetched_at': expired, 'version': '1.0'}
+                   for n in ['periodic', 'edited']},
+    }
+    snapshot['tracks']['edited']['configuration_fingerprint'] = 'prior-rule'
+    assert set(nv.due_names(settings, snapshot, now)) == {'new', 'edited'}
+    # An attempted rule, even on failure, resumes normal backoff and cannot
+    # repeatedly jump ahead of the periodic sweep.
+    attempted, _ = nv.import_events('', {n: rules[n] for n in ['new', 'edited']},
+                                    snapshot['tracks'], now.isoformat(), 'offline')
+    snapshot['tracks'].update(attempted)
+    assert nv.due_names(settings, snapshot, now) == ['periodic']
+    assert set(nv.due_names(settings, snapshot, now + timedelta(seconds=300))) == set(rules)
+    # Operator options still invalidate all entries, not just edited rules.
+    settings['native_options']['http_timeout'] = 20
+    assert set(nv.due_names(settings, snapshot, now)) == set(rules)

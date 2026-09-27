@@ -148,3 +148,39 @@ def test_whois_next_manifest_not_pinned_and_noise_excluded(native_check):
 
 def test_whois_no_manifest_is_unknown_not_archive_version(native_check):
     native_check(NATIVE['whois'], '<a href="whois_99.0.git.tar.xz">archive</a>', None)
+
+
+@pytest.mark.parametrize('releases, expected', [
+    ([{'release_number': '91.2.3', 'status': 'stable'},
+      {'release_number': '92.0.1', 'status': 'rc'},
+      {'release_number': '93.0.0', 'status': 'preview'}], '91.2.3'),
+    ([{'release_number': '93.0.0', 'status': 'preview'}], None),
+])
+def test_mariadb_uses_publisher_release_status(native_check, releases, expected):
+    native_check(NATIVE['mariadb'], {'releases': releases}, expected)
+
+
+def test_dconf_accepts_new_numbering_without_accepting_preview(native_check):
+    versions = {v: {'tar.xz': 'fixture.tar.xz'}
+                for v in ['0.49.0', '96.0', '97.0', '98.beta', '98.rc']}
+    native_check(NATIVE['dconf'], [None, {'dconf': versions}], '97.0')
+
+
+def test_rpm_release_page_keeps_component_and_channel(native_check):
+    native_check(NATIVE['rpm'],
+                 '<a>RPM 91.2.3</a><a>RPM 92.0.0-rc1</a><a>POPT 99.0.0</a>', '91.2.3')
+
+
+def test_lame_ignores_other_sourceforge_components_and_oldfiles(native_check):
+    native_check(NATIVE['lame'], '\n'.join([
+        '/lame/91.2/lame-91.2.tar.gz',
+        '/lame/92.0/lame-92.0beta.tar.gz',
+        '/OldFiles/lame-99.0.tar.gz',
+        '/py-lame/99.0/py-lame-99.0.tar.gz',
+    ]), '91.2')
+
+
+def test_rust_toolchain_manifest_selects_rust_not_bundled_tools(native_check):
+    native_check(NATIVE['rust-bin'],
+                 '[pkg.rust]\nversion = "91.2.3 (fixture)"\n'
+                 '[pkg.cargo]\nversion = "99.0.0 (fixture)"\n', '91.2.3')

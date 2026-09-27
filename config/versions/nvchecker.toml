@@ -12779,9 +12779,11 @@
 "source" = "cpan"
 "cpan" = "Role-Tiny"
 
+# This historical distribution is downloadable but absent from the MetaCPAN release endpoint.
 ["perl-SGMLSpm"]
-"source" = "cpan"
-"cpan" = "SGMLSpm"
+"source" = "regex"
+url = "https://cpan.metacpan.org/authors/id/R/RA/RAAB/"
+regex = "SGMLSpm-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
 
 ["perl-SQL-Statement"]
 "source" = "cpan"
@@ -34008,3 +34010,3303 @@
 "url" = "https://release-monitoring.org/api/v2/versions/?project_id=21197"
 "filter" = "first(.stable_versions[])"
 "prefix" = "v"
+
+[amdsmi]
+source = "github"
+github = "ROCm/amdsmi"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[checkpolicy]
+source = "github"
+github = "SELinuxProject/selinux"
+use_max_release = true
+include_regex = "[0-9]+(?:\\.[0-9]+)*"
+
+[cockpit]
+source = "github"
+github = "cockpit-project/cockpit"
+use_max_release = true
+include_regex = "[0-9]+(?:\\.[0-9]+)*"
+
+["dotnet10.0"]
+source = "github"
+github = "dotnet/dotnet"
+use_max_release = true
+include_regex = "v10\\.0\\.[0-9]+"
+prefix = "v"
+
+[enchant]
+source = "github"
+github = "rrthomas/enchant"
+use_max_release = true
+include_regex = "v[0-9]+(?:\\.[0-9]+)*"
+prefix = "v"
+
+[fd]
+source = "github"
+github = "sharkdp/fd"
+use_max_release = true
+include_regex = "v[0-9]+(?:\\.[0-9]+)*"
+prefix = "v"
+
+[flatbuffers]
+source = "github"
+github = "google/flatbuffers"
+use_max_release = true
+include_regex = "v[0-9]+(?:\\.[0-9]+)*"
+prefix = "v"
+
+[fltk]
+source = "github"
+github = "fltk/fltk"
+use_max_release = true
+include_regex = "release\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "release-"
+
+[fonts-codenewroman-nerd]
+source = "github"
+github = "ryanoasis/nerd-fonts"
+use_max_release = true
+include_regex = "v[0-9]+(?:\\.[0-9]+)*"
+prefix = "v"
+
+[fonts-firacode-nerd]
+source = "github"
+github = "ryanoasis/nerd-fonts"
+use_max_release = true
+include_regex = "v[0-9]+(?:\\.[0-9]+)*"
+prefix = "v"
+
+[fonts-iosevka-nerd]
+source = "github"
+github = "ryanoasis/nerd-fonts"
+use_max_release = true
+include_regex = "v[0-9]+(?:\\.[0-9]+)*"
+prefix = "v"
+
+[fonts-jetbrainsmono-nerd]
+source = "github"
+github = "ryanoasis/nerd-fonts"
+use_max_release = true
+include_regex = "v[0-9]+(?:\\.[0-9]+)*"
+prefix = "v"
+
+[fonts-noto]
+source = "github"
+github = "notofonts/notofonts.github.io"
+use_max_release = true
+include_regex = "noto\\-monthly\\-release\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "noto-monthly-release-"
+
+[fonts-noto-sans-cjk]
+source = "github"
+github = "notofonts/noto-cjk"
+use_max_release = true
+include_regex = "Sans[0-9]+(?:\\.[0-9]+)*"
+prefix = "Sans"
+
+[fonts-noto-serif-cjk]
+source = "github"
+github = "notofonts/noto-cjk"
+use_max_release = true
+include_regex = "Serif[0-9]+(?:\\.[0-9]+)*"
+prefix = "Serif"
+
+[gdk-pixbuf]
+source = "jq"
+url = "https://download.gnome.org/sources/gdk-pixbuf/cache.json"
+filter = ".[1][\"gdk-pixbuf\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+\\.[0-9]*[02468](?:\\.[0-9]+)+$"
+
+[glib]
+source = "jq"
+url = "https://download.gnome.org/sources/glib/cache.json"
+filter = ".[1][\"glib\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+\\.[0-9]*[02468](?:\\.[0-9]+)+$"
+
+[glib-networking]
+source = "jq"
+url = "https://download.gnome.org/sources/glib-networking/cache.json"
+filter = ".[1][\"glib-networking\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+\\.[0-9]*[02468](?:\\.[0-9]+)+$"
+
+[go-github-cheggaaa-pb-v3]
+source = "jq"
+url = "https://proxy.golang.com.cn/github.com/cheggaaa/pb/v3/@latest"
+filter = ".Version | select(test(\"^v[0-9]+([.][0-9]+){2}([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+[go-github-victoriametrics-metrics]
+source = "jq"
+url = "https://proxy.golang.com.cn/github.com/!victoria!metrics/metrics/@latest"
+filter = ".Version | select(test(\"^v[0-9]+([.][0-9]+){2}([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+["go-gopkg-datadog-dd-trace-go.v1"]
+source = "jq"
+url = "https://proxy.golang.com.cn/gopkg.in/!data!dog/dd-trace-go.v1/@latest"
+filter = ".Version | select(test(\"^v[0-9]+([.][0-9]+){2}([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+[go-k8s-kms]
+source = "jq"
+url = "https://proxy.golang.com.cn/k8s.io/kms/@latest"
+filter = ".Version | select(test(\"^v[0-9]+([.][0-9]+){2}([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+[gobject-introspection]
+source = "jq"
+url = "https://download.gnome.org/sources/gobject-introspection/cache.json"
+filter = ".[1][\"gobject-introspection\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+\\.[0-9]*[02468](?:\\.[0-9]+)+$"
+
+[grub]
+source = "regex"
+url = "https://ftp.gnu.org/gnu/grub/"
+regex = "grub\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.(?:xz|gz|bz2|lz)"
+
+[gsettings-desktop-schemas]
+source = "jq"
+url = "https://download.gnome.org/sources/gsettings-desktop-schemas/cache.json"
+filter = ".[1][\"gsettings-desktop-schemas\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^(?:[4-9][0-9]|[1-9][0-9]{2,})(?:\\.[0-9]+){0,2}$"
+
+[gtk-doc]
+source = "jq"
+url = "https://download.gnome.org/sources/gtk-doc/cache.json"
+filter = ".[1][\"gtk-doc\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[gtk3]
+source = "jq"
+url = "https://download.gnome.org/sources/gtk/cache.json"
+filter = ".[1][\"gtk\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^3\\.24\\.[0-9]+$"
+
+[gtkmm3]
+source = "jq"
+url = "https://download.gnome.org/sources/gtkmm/cache.json"
+filter = ".[1][\"gtkmm\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^3\\.24\\.[0-9]+$"
+
+[half]
+source = "github"
+github = "ROCm/half"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hipblas]
+source = "github"
+github = "ROCm/hipBLAS"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hipblaslt]
+source = "github"
+github = "ROCm/rocm-libraries"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hipcub]
+source = "github"
+github = "ROCm/rocm-libraries"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hipfft]
+source = "github"
+github = "ROCm/rocm-libraries"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hipify]
+source = "github"
+github = "ROCm/HIPIFY"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hiprand]
+source = "github"
+github = "ROCm/rocm-libraries"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hipsolver]
+source = "github"
+github = "ROCm/hipSOLVER"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hipsparse]
+source = "github"
+github = "ROCm/hipSPARSE"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hipsparselt]
+source = "github"
+github = "ROCm/rocm-libraries"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[hunspell-en]
+source = "github"
+github = "en-wl/wordlist"
+use_max_release = true
+include_regex = "rel\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rel-"
+
+[inetutils]
+source = "regex"
+url = "https://ftp.gnu.org/gnu/inetutils/"
+regex = "inetutils-v?([0-9]+(?:\\.[0-9]+){0,3})(?:-src)?\\.tar\\.(?:xz|gz|bz2)"
+
+[jq]
+source = "github"
+github = "jqlang/jq"
+use_max_release = true
+include_regex = "jq\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "jq-"
+
+[kirigami-addons]
+source = "regex"
+url = "https://download.kde.org/stable/kirigami-addons/"
+regex = "kirigami\\-addons\\-([0-9]+(?:\\.[0-9]+){1,2})\\.tar\\.(?:xz|gz|bz2)"
+
+[less]
+source = "regex"
+url = "https://ftp.gnu.org/gnu/less/"
+regex = "less\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.(?:xz|gz|bz2|lz)"
+
+[libXcomposite]
+source = "regex"
+url = "https://xorg.freedesktop.org/archive/individual/lib/"
+regex = "libXcomposite\\-([0-9]+\\.[0-8]?[0-9](?:\\.[0-8]?[0-9])?)\\.tar\\.(?:xz|gz|bz2)"
+
+[libXfixes]
+source = "regex"
+url = "https://xorg.freedesktop.org/archive/individual/lib/"
+regex = "libXfixes\\-([0-9]+\\.[0-8]?[0-9](?:\\.[0-8]?[0-9])?)\\.tar\\.(?:xz|gz|bz2)"
+
+[libXxf86vm]
+source = "regex"
+url = "https://xorg.freedesktop.org/archive/individual/lib/"
+regex = "libXxf86vm\\-([0-9]+\\.[0-8]?[0-9](?:\\.[0-8]?[0-9])?)\\.tar\\.(?:xz|gz|bz2)"
+
+[libcroco]
+source = "jq"
+url = "https://download.gnome.org/sources/libcroco/cache.json"
+filter = ".[1][\"libcroco\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+\\.[0-9]*[02468](?:\\.[0-9]+)+$"
+
+[libgudev]
+source = "jq"
+url = "https://download.gnome.org/sources/libgudev/cache.json"
+filter = ".[1][\"libgudev\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+$"
+
+[libidl]
+source = "jq"
+url = "https://download.gnome.org/sources/libIDL/cache.json"
+filter = ".[1][\"libIDL\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^0\\.8\\.[0-9]+$"
+
+[libpciaccess]
+source = "regex"
+url = "https://xorg.freedesktop.org/archive/individual/lib/"
+regex = "libpciaccess\\-([0-9]+\\.[0-8]?[0-9](?:\\.[0-8]?[0-9])?)\\.tar\\.(?:xz|gz|bz2)"
+
+[libplist]
+source = "github"
+github = "libimobiledevice/libplist"
+use_max_release = true
+include_regex = "[0-9]+(?:\\.[0-9]+)*"
+
+[librsvg]
+source = "jq"
+url = "https://download.gnome.org/sources/librsvg/cache.json"
+filter = ".[1][\"librsvg\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+\\.[0-9]*[02468](?:\\.[0-9]+)+$"
+exclude_regex = ".*\\.9[0-9]"
+
+[libselinux]
+source = "github"
+github = "SELinuxProject/selinux"
+use_max_release = true
+include_regex = "[0-9]+(?:\\.[0-9]+)*"
+
+[libsemanage]
+source = "github"
+github = "SELinuxProject/selinux"
+use_max_release = true
+include_regex = "[0-9]+(?:\\.[0-9]+)*"
+
+[libsepol]
+source = "github"
+github = "SELinuxProject/selinux"
+use_max_release = true
+include_regex = "[0-9]+(?:\\.[0-9]+)*"
+
+["libsigc++2"]
+source = "github"
+github = "libsigcplusplus/libsigcplusplus"
+use_max_release = true
+include_regex = "2\\.12\\.[0-9]+"
+
+[libwacom]
+source = "github"
+github = "linuxwacom/libwacom"
+use_max_release = true
+include_regex = "libwacom\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "libwacom-"
+
+[libxml2]
+source = "jq"
+url = "https://download.gnome.org/sources/libxml2/cache.json"
+filter = ".[1][\"libxml2\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[libxshmfence]
+source = "regex"
+url = "https://xorg.freedesktop.org/archive/individual/lib/"
+regex = "libxshmfence\\-([0-9]+\\.[0-8]?[0-9](?:\\.[0-8]?[0-9])?)\\.tar\\.(?:xz|gz|bz2)"
+
+[mobile-broadband-provider-info]
+source = "jq"
+url = "https://download.gnome.org/sources/mobile-broadband-provider-info/cache.json"
+filter = ".[1][\"mobile-broadband-provider-info\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]{8}$"
+
+[msgpack]
+source = "github"
+github = "msgpack/msgpack-c"
+use_max_release = true
+include_regex = "cpp\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "cpp-"
+
+[nettle]
+source = "regex"
+url = "https://ftp.gnu.org/gnu/nettle/"
+regex = "nettle\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.(?:xz|gz|bz2|lz)"
+
+[openblas]
+source = "github"
+github = "OpenMathLib/OpenBLAS"
+use_max_release = true
+include_regex = "v[0-9]+(?:\\.[0-9]+)*"
+prefix = "v"
+
+[openruyi-desktop-setup-kde]
+source = "github"
+github = "openRuyi-Project/openruyi-desktop-wallpapers"
+use_max_release = true
+include_regex = "[0-9]+(?:\\.[0-9]+)*"
+
+[orbit2]
+source = "jq"
+url = "https://download.gnome.org/sources/ORBit2/cache.json"
+filter = ".[1][\"ORBit2\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^2\\.14\\.[0-9]+$"
+
+[parallel]
+source = "regex"
+url = "https://ftp.gnu.org/gnu/parallel/"
+regex = "parallel\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.(?:xz|gz|bz2|lz)"
+
+[perl-Test-Trap]
+source = "cpan"
+cpan = "Test-Trap"
+prefix = "v"
+
+[perl-Text-Tabs-Wrap]
+source = "cpan"
+cpan = "Text-Tabs+Wrap"
+
+[phonon]
+source = "regex"
+url = "https://download.kde.org/stable/phonon/"
+regex = "href=\"([0-9]+\\.[0-9]+\\.[0-9]+)/\""
+include_regex = "^4\\.[0-9]+\\.[0-9]+$"
+
+[plasma-wayland-protocols]
+source = "regex"
+url = "https://download.kde.org/stable/plasma-wayland-protocols/"
+regex = "plasma\\-wayland\\-protocols\\-([0-9]+(?:\\.[0-9]+){1,2})\\.tar\\.(?:xz|gz|bz2)"
+
+[policycoreutils]
+source = "github"
+github = "SELinuxProject/selinux"
+use_max_release = true
+include_regex = "[0-9]+(?:\\.[0-9]+)*"
+
+[python-paddlepaddle]
+source = "github"
+github = "PaddlePaddle/Paddle"
+use_max_release = true
+include_regex = "v[0-9]+(?:\\.[0-9]+)*"
+prefix = "v"
+
+[python-pyqt6]
+source = "pypi"
+pypi = "PyQt6"
+
+[python-pyzmq]
+source = "pypi"
+pypi = "pyzmq"
+
+[python-spacy]
+source = "github"
+github = "explosion/spaCy"
+use_max_release = true
+include_regex = "release\\-v[0-9]+(?:\\.[0-9]+)*"
+prefix = "release-v"
+
+[pyxdg]
+source = "pypi"
+pypi = "pyxdg"
+
+[rocclr]
+source = "github"
+github = "ROCm/rocm-systems"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[rocm-bandwidth-test]
+source = "github"
+github = "ROCm/rocm_bandwidth_test"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[rocm-origami]
+source = "github"
+github = "ROCm/rocm-libraries"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[rocm-smi]
+source = "github"
+github = "ROCm/rocm_smi_lib"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[rocminfo]
+source = "github"
+github = "ROCm/rocminfo"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+[rocr-runtime]
+source = "github"
+github = "ROCm/ROCR-Runtime"
+use_max_release = true
+include_regex = "rocm\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "rocm-"
+
+["rust-ansi-term-0.12"]
+source = "cratesio"
+cratesio = "ansi_term"
+include_regex = "^0\\.12\\.[0-9]+$"
+
+["rust-argmax-0.4"]
+source = "cratesio"
+cratesio = "argmax"
+include_regex = "^0\\.4\\.[0-9]+$"
+
+["rust-cloudflare-zlib-sys-0.3"]
+source = "cratesio"
+cratesio = "cloudflare-zlib-sys"
+include_regex = "^0\\.3\\.[0-9]+$"
+
+[rust-completest-1]
+source = "cratesio"
+cratesio = "completest"
+include_regex = "^1\\.[0-9]+\\.[0-9]+$"
+
+[rust-completest-pty-1]
+source = "cratesio"
+cratesio = "completest-pty"
+include_regex = "^1\\.[0-9]+\\.[0-9]+$"
+
+["rust-etcetera-0.11"]
+source = "cratesio"
+cratesio = "etcetera"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-faccess-0.2"]
+source = "cratesio"
+cratesio = "faccess"
+include_regex = "^0\\.2\\.[0-9]+$"
+
+["rust-getopts-0.2"]
+source = "cratesio"
+cratesio = "getopts"
+include_regex = "^0\\.2\\.[0-9]+$"
+
+[rust-imagequant-sys-4]
+source = "cratesio"
+cratesio = "imagequant-sys"
+include_regex = "^4\\.[0-9]+\\.[0-9]+$"
+
+[rust-lcms2-sys-4]
+source = "cratesio"
+cratesio = "lcms2-sys"
+include_regex = "^4\\.[0-9]+\\.[0-9]+$"
+
+[rust-libpng-sys-1]
+source = "cratesio"
+cratesio = "libpng-sys"
+include_regex = "^1\\.[0-9]+\\.[0-9]+$"
+
+["rust-lscolors-0.21"]
+source = "cratesio"
+cratesio = "lscolors"
+include_regex = "^0\\.21\\.[0-9]+$"
+
+["rust-memoffset-0.7"]
+source = "cratesio"
+cratesio = "memoffset"
+include_regex = "^0\\.7\\.[0-9]+$"
+
+[rust-os-str-bytes-7]
+source = "cratesio"
+cratesio = "os_str_bytes"
+include_regex = "^7\\.[0-9]+\\.[0-9]+$"
+
+[rust-print-bytes-2]
+source = "cratesio"
+cratesio = "print_bytes"
+include_regex = "^2\\.[0-9]+\\.[0-9]+$"
+
+["rust-ptyprocess-0.5"]
+source = "cratesio"
+cratesio = "ptyprocess"
+include_regex = "^0\\.5\\.[0-9]+$"
+
+[rust-test-case-3]
+source = "cratesio"
+cratesio = "test-case"
+include_regex = "^3\\.[0-9]+\\.[0-9]+$"
+
+[rust-test-case-core-3]
+source = "cratesio"
+cratesio = "test-case-core"
+include_regex = "^3\\.[0-9]+\\.[0-9]+$"
+
+[rust-test-case-macros-3]
+source = "cratesio"
+cratesio = "test-case-macros"
+include_regex = "^3\\.[0-9]+\\.[0-9]+$"
+
+[rust-uniquote-5]
+source = "cratesio"
+cratesio = "uniquote"
+include_regex = "^5\\.[0-9]+\\.[0-9]+$"
+
+["rust-vt100-0.16"]
+source = "cratesio"
+cratesio = "vt100"
+include_regex = "^0\\.16\\.[0-9]+$"
+
+["rust-vte-0.15"]
+source = "cratesio"
+cratesio = "vte"
+include_regex = "^0\\.15\\.[0-9]+$"
+
+[source-highlight]
+source = "regex"
+url = "https://ftp.gnu.org/gnu/src-highlite/"
+regex = "source\\-highlight\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.(?:xz|gz|bz2|lz)"
+
+[texinfo]
+source = "regex"
+url = "https://ftp.gnu.org/gnu/texinfo/"
+regex = "texinfo\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.(?:xz|gz|bz2|lz)"
+
+[tinysparql]
+source = "jq"
+url = "https://download.gnome.org/sources/tinysparql/cache.json"
+filter = ".[1][\"tinysparql\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^3\\.[0-9]*[02468]\\.[0-9]+$"
+
+[unifont]
+source = "regex"
+url = "https://ftp.gnu.org/gnu/unifont/"
+regex = "href=\"unifont-([0-9]+\\.[0-9]+\\.[0-9]+)/\""
+
+[vte]
+source = "jq"
+url = "https://download.gnome.org/sources/vte/cache.json"
+filter = ".[1][\"vte\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+\\.[0-9]*[02468](?:\\.[0-9]+)+$"
+
+[which]
+source = "regex"
+url = "https://ftp.gnu.org/gnu/which/"
+regex = "which\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.(?:xz|gz|bz2|lz)"
+
+[xcb-util-keysyms]
+source = "regex"
+url = "https://xorg.freedesktop.org/archive/individual/lib/"
+regex = "xcb\\-util\\-keysyms\\-([0-9]+\\.[0-8]?[0-9](?:\\.[0-8]?[0-9])?)\\.tar\\.(?:xz|gz|bz2)"
+
+[zfp]
+source = "github"
+github = "llnl/zfp"
+use_max_release = true
+include_regex = "[0-9]+(?:\\.[0-9]+)*"
+
+[zfs]
+source = "github"
+github = "openzfs/zfs"
+use_max_release = true
+include_regex = "zfs\\-[0-9]+(?:\\.[0-9]+)*"
+prefix = "zfs-"
+
+["autofs"]
+source = "regex"
+url = "https://www.kernel.org/pub/linux/daemons/autofs/v5/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?autofs[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["btrfs-progs"]
+source = "regex"
+url = "https://www.kernel.org/pub/linux/kernel/people/kdave/btrfs-progs/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?btrfs\\-progs[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+# Even minor/micro numbers exclude development branches and VCS snapshots.
+# https://dbus.freedesktop.org/doc/api/html/group__DBusMisc.html
+["dbus"]
+source = "regex"
+url = "https://dbus.freedesktop.org/releases/dbus/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?dbus[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+include_regex = "[0-9]+\\.(?:[0-9]*[02468])\\.(?:[0-9]*[02468])"
+
+["dbus-glib"]
+source = "regex"
+url = "https://dbus.freedesktop.org/releases/dbus-glib/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?dbus\\-glib[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["dtc"]
+source = "regex"
+url = "https://www.kernel.org/pub/software/utils/dtc/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?dtc[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["i2c-tools"]
+source = "regex"
+url = "https://www.kernel.org/pub/software/utils/i2c-tools/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?i2c\\-tools[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["ipvsadm"]
+source = "regex"
+url = "https://kernel.org/pub/linux/utils/kernel/ipvsadm/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?ipvsadm[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["iw"]
+source = "regex"
+url = "https://www.kernel.org/pub/software/network/iw/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?iw[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["iwd"]
+source = "regex"
+url = "https://www.kernel.org/pub/linux/network/wireless/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?iwd[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["kmod"]
+source = "regex"
+url = "https://www.kernel.org/pub/linux/utils/kernel/kmod/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?kmod[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["libotf"]
+source = "regex"
+url = "https://download.savannah.gnu.org/releases/m17n/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?libotf[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["libpipeline"]
+source = "regex"
+url = "https://download.savannah.gnu.org/releases/libpipeline/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?libpipeline[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["man-db"]
+source = "regex"
+url = "https://download.savannah.gnu.org/releases/man-db/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?man\\-db[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+# Binding releases use even micro numbers independently of libdbus.
+# https://dbus.freedesktop.org/doc/dbus-python/news.html
+["python-dbus-python"]
+source = "regex"
+url = "https://dbus.freedesktop.org/releases/dbus-python/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?dbus\\-python[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+include_regex = "[0-9]+\\.[0-9]+\\.(?:[0-9]*[02468])"
+
+["python-schedutils"]
+source = "regex"
+url = "https://cdn.kernel.org/pub/software/libs/python/python-schedutils/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?python\\-schedutils[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["speex"]
+source = "regex"
+url = "https://downloads.xiph.org/releases/speex/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?speex[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["usbutils"]
+source = "regex"
+url = "https://www.kernel.org/pub/linux/utils/usb/usbutils/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?usbutils[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["vorbis-tools"]
+source = "regex"
+url = "https://downloads.xiph.org/releases/vorbis/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?vorbis\\-tools[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["xcb-util"]
+source = "regex"
+url = "https://xcb.freedesktop.org/dist/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?xcb\\-util[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["xcb-util-cursor"]
+source = "regex"
+url = "https://xcb.freedesktop.org/dist/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?xcb\\-util\\-cursor[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["xcb-util-image"]
+source = "regex"
+url = "https://xcb.freedesktop.org/dist/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?xcb\\-util\\-image[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["xcb-util-renderutil"]
+source = "regex"
+url = "https://xcb.freedesktop.org/dist/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?xcb\\-util\\-renderutil[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["xfsdump"]
+source = "regex"
+url = "https://kernel.org/pub/linux/utils/fs/xfs/xfsdump/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?xfsdump[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+["xfsprogs"]
+source = "regex"
+url = "https://kernel.org/pub/linux/utils/fs/xfs/xfsprogs/"
+regex = "href=[\"\\'](?:[^\"\\'<>]*/)?xfsprogs[-_]v?([0-9]+(?:\\.[0-9]+){0,3})(?:\\.tar\\.(?:xz|gz|bz2|lz|zst)|\\.tgz)[\"\\']"
+
+# Source0-verified registry identities; formal releases only.
+["rust-aead-0.6.0-rc.10"]
+source = "cratesio"
+cratesio = "aead"
+include_regex = "^0\\.6\\.[0-9]+$"
+
+["rust-aead-0.6.0-rc.3"]
+source = "cratesio"
+cratesio = "aead"
+include_regex = "^0\\.6\\.[0-9]+$"
+
+["rust-aes-0.9.0-rc.2"]
+source = "cratesio"
+cratesio = "aes"
+include_regex = "^0\\.9\\.[0-9]+$"
+
+["rust-aes-0.9.0-rc.4"]
+source = "cratesio"
+cratesio = "aes"
+include_regex = "^0\\.9\\.[0-9]+$"
+
+["rust-aes-gcm-0.11.0-rc.2"]
+source = "cratesio"
+cratesio = "aes-gcm"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-aes-gcm-0.11.0-rc.3"]
+source = "cratesio"
+cratesio = "aes-gcm"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-block-buffer-0.11.0-rc.5"]
+source = "cratesio"
+cratesio = "block-buffer"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-cbc-0.2.0-rc.2"]
+source = "cratesio"
+cratesio = "cbc"
+include_regex = "^0\\.2\\.[0-9]+$"
+
+["rust-cipher-0.5.0-rc.2"]
+source = "cratesio"
+cratesio = "cipher"
+include_regex = "^0\\.5\\.[0-9]+$"
+
+["rust-cipher-0.5.0-rc.8"]
+source = "cratesio"
+cratesio = "cipher"
+include_regex = "^0\\.5\\.[0-9]+$"
+
+["rust-cpubits-0.1.0-rc.2"]
+source = "cratesio"
+cratesio = "cpubits"
+include_regex = "^0\\.1\\.[0-9]+$"
+
+["rust-cpubits-0.1.0-rc.3"]
+source = "cratesio"
+cratesio = "cpubits"
+include_regex = "^0\\.1\\.[0-9]+$"
+
+["rust-crypto-bigint-0.7.0-rc.25"]
+source = "cratesio"
+cratesio = "crypto-bigint"
+include_regex = "^0\\.7\\.[0-9]+$"
+
+["rust-crypto-bigint-0.7.0-rc.27"]
+source = "cratesio"
+cratesio = "crypto-bigint"
+include_regex = "^0\\.7\\.[0-9]+$"
+
+["rust-crypto-bigint-0.7.0-rc.28"]
+source = "cratesio"
+cratesio = "crypto-bigint"
+include_regex = "^0\\.7\\.[0-9]+$"
+
+["rust-crypto-common-0.2.0-rc.13"]
+source = "cratesio"
+cratesio = "crypto-common"
+include_regex = "^0\\.2\\.[0-9]+$"
+
+["rust-crypto-common-0.2.0-rc.15"]
+source = "cratesio"
+cratesio = "crypto-common"
+include_regex = "^0\\.2\\.[0-9]+$"
+
+["rust-crypto-common-0.2.0-rc.5"]
+source = "cratesio"
+cratesio = "crypto-common"
+include_regex = "^0\\.2\\.[0-9]+$"
+
+["rust-crypto-primes-0.7.0-pre.9"]
+source = "cratesio"
+cratesio = "crypto-primes"
+include_regex = "^0\\.7\\.[0-9]+$"
+
+["rust-ctr-0.10.0-rc.2"]
+source = "cratesio"
+cratesio = "ctr"
+include_regex = "^0\\.10\\.[0-9]+$"
+
+["rust-ctr-0.10.0-rc.3"]
+source = "cratesio"
+cratesio = "ctr"
+include_regex = "^0\\.10\\.[0-9]+$"
+
+["rust-curve25519-dalek-5.0.0-pre.6"]
+source = "cratesio"
+cratesio = "curve25519-dalek"
+include_regex = "^5\\.[0-9]+\\.[0-9]+$"
+
+["rust-der-0.8.0-rc.10"]
+source = "cratesio"
+cratesio = "der"
+include_regex = "^0\\.8\\.[0-9]+$"
+
+["rust-der-0.8.0-rc.12"]
+source = "cratesio"
+cratesio = "der"
+include_regex = "^0\\.8\\.[0-9]+$"
+
+["rust-der-0.8.0-rc.7"]
+source = "cratesio"
+cratesio = "der"
+include_regex = "^0\\.8\\.[0-9]+$"
+
+["rust-der-0.8.0-rc.9"]
+source = "cratesio"
+cratesio = "der"
+include_regex = "^0\\.8\\.[0-9]+$"
+
+["rust-digest-0.11.0-rc.11"]
+source = "cratesio"
+cratesio = "digest"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-digest-0.11.0-rc.4"]
+source = "cratesio"
+cratesio = "digest"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-digest-0.11.0-rc.8"]
+source = "cratesio"
+cratesio = "digest"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-ecdsa-0.17.0-rc.16"]
+source = "cratesio"
+cratesio = "ecdsa"
+include_regex = "^0\\.17\\.[0-9]+$"
+
+["rust-ed25519-3.0.0-rc.4"]
+source = "cratesio"
+cratesio = "ed25519"
+include_regex = "^3\\.[0-9]+\\.[0-9]+$"
+
+["rust-ed25519-dalek-3.0.0-pre.6"]
+source = "cratesio"
+cratesio = "ed25519-dalek"
+include_regex = "^3\\.[0-9]+\\.[0-9]+$"
+
+["rust-elliptic-curve-0.14.0-rc.28"]
+source = "cratesio"
+cratesio = "elliptic-curve"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+["rust-elliptic-curve-0.14.0-rc.34"]
+source = "cratesio"
+cratesio = "elliptic-curve"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+["rust-ghash-0.6.0-rc.3"]
+source = "cratesio"
+cratesio = "ghash"
+include_regex = "^0\\.6\\.[0-9]+$"
+
+["rust-ghash-0.6.0-rc.5"]
+source = "cratesio"
+cratesio = "ghash"
+include_regex = "^0\\.6\\.[0-9]+$"
+
+["rust-hkdf-0.13.0-rc.5"]
+source = "cratesio"
+cratesio = "hkdf"
+include_regex = "^0\\.13\\.[0-9]+$"
+
+["rust-hmac-0.13.0-rc.3"]
+source = "cratesio"
+cratesio = "hmac"
+include_regex = "^0\\.13\\.[0-9]+$"
+
+["rust-hmac-0.13.0-rc.5"]
+source = "cratesio"
+cratesio = "hmac"
+include_regex = "^0\\.13\\.[0-9]+$"
+
+["rust-keccak-0.2.0-rc.2"]
+source = "cratesio"
+cratesio = "keccak"
+include_regex = "^0\\.2\\.[0-9]+$"
+
+["rust-kem-0.3.0-rc.6"]
+source = "cratesio"
+cratesio = "kem"
+include_regex = "^0\\.3\\.[0-9]+$"
+
+["rust-ml-kem-0.3.0-rc.1"]
+source = "cratesio"
+cratesio = "ml-kem"
+include_regex = "^0\\.3\\.[0-9]+$"
+
+["rust-p256-0.14.0-rc.7"]
+source = "cratesio"
+cratesio = "p256"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+["rust-p384-0.14.0-rc.7"]
+source = "cratesio"
+cratesio = "p384"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+["rust-p521-0.14.0-rc.7"]
+source = "cratesio"
+cratesio = "p521"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+["rust-pbkdf2-0.13.0-rc.8"]
+source = "cratesio"
+cratesio = "pbkdf2"
+include_regex = "^0\\.13\\.[0-9]+$"
+
+["rust-pem-rfc7468-1.0.0-rc.3"]
+source = "cratesio"
+cratesio = "pem-rfc7468"
+include_regex = "^1\\.[0-9]+\\.[0-9]+$"
+
+["rust-pkcs5-0.8.0-rc.13"]
+source = "cratesio"
+cratesio = "pkcs5"
+include_regex = "^0\\.8\\.[0-9]+$"
+
+["rust-pkcs8-0.11.0-rc.10"]
+source = "cratesio"
+cratesio = "pkcs8"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-pkcs8-0.11.0-rc.11"]
+source = "cratesio"
+cratesio = "pkcs8"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-polyval-0.7.0-rc.3"]
+source = "cratesio"
+cratesio = "polyval"
+include_regex = "^0\\.7\\.[0-9]+$"
+
+["rust-polyval-0.7.0-rc.7"]
+source = "cratesio"
+cratesio = "polyval"
+include_regex = "^0\\.7\\.[0-9]+$"
+
+["rust-primefield-0.14.0-rc.11"]
+source = "cratesio"
+cratesio = "primefield"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+["rust-primefield-0.14.0-rc.7"]
+source = "cratesio"
+cratesio = "primefield"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+["rust-primeorder-0.14.0-rc.11"]
+source = "cratesio"
+cratesio = "primeorder"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+["rust-primeorder-0.14.0-rc.7"]
+source = "cratesio"
+cratesio = "primeorder"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+["rust-rand-core-0.10.0-rc.6"]
+source = "cratesio"
+cratesio = "rand_core"
+include_regex = "^0\\.10\\.[0-9]+$"
+
+["rust-rfc6979-0.5.0-rc.5"]
+source = "cratesio"
+cratesio = "rfc6979"
+include_regex = "^0\\.5\\.[0-9]+$"
+
+["rust-salsa20-0.11.0-rc.2"]
+source = "cratesio"
+cratesio = "salsa20"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-scrypt-0.12.0-rc.9"]
+source = "cratesio"
+cratesio = "scrypt"
+include_regex = "^0\\.12\\.[0-9]+$"
+
+["rust-sec1-0.8.0-rc.13"]
+source = "cratesio"
+cratesio = "sec1"
+include_regex = "^0\\.8\\.[0-9]+$"
+
+["rust-sha1-0.11.0-rc.5"]
+source = "cratesio"
+cratesio = "sha1"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-sha2-0.11.0-rc.3"]
+source = "cratesio"
+cratesio = "sha2"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-sha2-0.11.0-rc.4"]
+source = "cratesio"
+cratesio = "sha2"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-sha2-0.11.0-rc.5"]
+source = "cratesio"
+cratesio = "sha2"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-sha3-0.11.0-rc.9"]
+source = "cratesio"
+cratesio = "sha3"
+include_regex = "^0\\.11\\.[0-9]+$"
+
+["rust-signature-3.0.0-rc.10"]
+source = "cratesio"
+cratesio = "signature"
+include_regex = "^3\\.[0-9]+\\.[0-9]+$"
+
+["rust-spki-0.8.0-rc.4"]
+source = "cratesio"
+cratesio = "spki"
+include_regex = "^0\\.8\\.[0-9]+$"
+
+["rust-universal-hash-0.6.0-rc.10"]
+source = "cratesio"
+cratesio = "universal-hash"
+include_regex = "^0\\.6\\.[0-9]+$"
+
+["rust-universal-hash-0.6.0-rc.3"]
+source = "cratesio"
+cratesio = "universal-hash"
+include_regex = "^0\\.6\\.[0-9]+$"
+
+["rust-wnaf-0.14.0-pre.0"]
+source = "cratesio"
+cratesio = "wnaf"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+# Source0 pins this repository; the package installs all of its Go modules.
+[go-c2sp-cctv]
+source = "github"
+github = "C2SP/CCTV"
+branch = "main"
+
+[go-github-apache-arrow-go-v18] # TODO(openRuyi): reconcile module identity with Source0 go.mod; do not use the repository root.
+source = "jq"
+url = "https://proxy.golang.com.cn/github.com/apache/arrow-go/v18/@latest"
+filter = ".Version | select(test(\"^v[0-9]+[.][0-9]+[.][0-9]+([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+[go-github-azure-azure-kusto-go] # TODO(openRuyi): reconcile module identity with Source0 go.mod; do not use the repository root.
+source = "jq"
+url = "https://proxy.golang.com.cn/github.com/!azure/azure-kusto-go/azkustodata/@latest"
+filter = ".Version | select(test(\"^v[0-9]+[.][0-9]+[.][0-9]+([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+[go-k8s-sigs-apiserver-network-proxy-konnectivity-client] # TODO(openRuyi): reconcile module identity with Source0 go.mod; do not use the repository root.
+source = "jq"
+url = "https://proxy.golang.com.cn/sigs.k8s.io/apiserver-network-proxy/konnectivity-client/@latest"
+filter = ".Version | select(test(\"^v[0-9]+[.][0-9]+[.][0-9]+([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+[go-github-stackitcloud-stackit-sdk-go] # TODO(openRuyi): reconcile module identity with Source0 go.mod; do not use the repository root.
+source = "jq"
+url = "https://proxy.golang.com.cn/github.com/stackitcloud/stackit-sdk-go/core/@latest"
+filter = ".Version | select(test(\"^v[0-9]+[.][0-9]+[.][0-9]+([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+[go-github-etcd-io-raft] # TODO(openRuyi): reconcile module identity with Source0 go.mod; do not use the repository root.
+source = "jq"
+url = "https://proxy.golang.com.cn/go.etcd.io/raft/v3/@latest"
+filter = ".Version | select(test(\"^v[0-9]+[.][0-9]+[.][0-9]+([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+[go-github-go-openapi-testify] # TODO(openRuyi): reconcile module identity with Source0 go.mod; do not use the repository root.
+source = "jq"
+url = "https://proxy.golang.com.cn/github.com/go-openapi/testify/v2/@latest"
+filter = ".Version | select(test(\"^v[0-9]+[.][0-9]+[.][0-9]+([+]incompatible)?$\"))"
+prefix = "v"
+from_pattern = "[+]incompatible$"
+to_pattern = ""
+
+[linux]
+source = "jq"
+url = "https://www.kernel.org/releases.json"
+filter = ".latest_stable.version"
+
+[linux-lts]
+source = "jq"
+url = "https://www.kernel.org/releases.json"
+filter = "first(.releases[] | select(.version | test(\"^6[.]18[.][0-9]+$\")) | .version)"
+
+[linux-lts-kmhv2]
+source = "jq"
+url = "https://www.kernel.org/releases.json"
+filter = "first(.releases[] | select(.version | test(\"^6[.]18[.][0-9]+$\")) | .version)"
+
+[linux-headers]
+source = "jq"
+url = "https://www.kernel.org/releases.json"
+filter = "first(.releases[] | select(.version | test(\"^6[.]18[.][0-9]+$\")) | .version)"
+
+[linux-firmware]
+source = "regex"
+url = "https://cdn.kernel.org/pub/linux/kernel/firmware/"
+regex = "linux-firmware-([0-9]{8})[.]tar[.]xz"
+
+[accounts-qml-module]
+source = "git"
+git = "https://gitlab.com/accounts-sso/accounts-qml-module"
+use_commit = true
+branch = "master"
+
+[asmjit]
+source = "git"
+git = "https://github.com/asmjit/asmjit"
+use_commit = true
+branch = "master"
+
+[blktests]
+source = "git"
+git = "https://github.com/osandov/blktests"
+use_commit = true
+branch = "master"
+
+[ceph]
+source = "git"
+git = "https://github.com/ceph/ceph"
+use_commit = true
+branch = "main"
+
+["cloud-hypervisor@commits"]
+source = "git"
+git = "https://github.com/cloud-hypervisor/cloud-hypervisor"
+use_commit = true
+branch = "main"
+
+[cpp-threadpool]
+source = "git"
+git = "https://github.com/progschj/ThreadPool"
+use_commit = true
+branch = "master"
+
+[cpuinfo]
+source = "git"
+git = "https://github.com/pytorch/cpuinfo"
+use_commit = true
+branch = "main"
+
+[foxi]
+source = "git"
+git = "https://github.com/houseroad/foxi"
+use_commit = true
+branch = "master"
+
+[fp16]
+source = "git"
+git = "https://github.com/Maratyszcza/FP16"
+use_commit = true
+branch = "master"
+
+[fxdiv]
+source = "git"
+git = "https://github.com/Maratyszcza/FXdiv"
+use_commit = true
+branch = "master"
+
+[gemmlowp]
+source = "git"
+git = "https://github.com/google/gemmlowp"
+use_commit = true
+branch = "master"
+
+["glibc@commits"]
+source = "gitea"
+gitea = "glibc/glibc-mirror"
+host = "forge.sourceware.org"
+branch = "master"
+
+[go-bazil-fuse]
+source = "git"
+git = "https://github.com/bazil/fuse"
+use_commit = true
+branch = "master"
+
+[go-github-acarl005-stripansi]
+source = "git"
+git = "https://github.com/acarl005/stripansi"
+use_commit = true
+branch = "master"
+
+[go-github-adalogics-go-fuzz-headers]
+source = "git"
+git = "https://github.com/AdaLogics/go-fuzz-headers"
+use_commit = true
+branch = "main"
+
+[go-github-alecthomas-jsonschema]
+source = "git"
+git = "https://github.com/alecthomas/jsonschema"
+use_commit = true
+branch = "master"
+
+[go-github-alecthomas-units]
+source = "git"
+git = "https://github.com/alecthomas/units"
+use_commit = true
+branch = "master"
+
+[go-github-anmitsu-go-shlex]
+source = "git"
+git = "https://github.com/anmitsu/go-shlex"
+use_commit = true
+branch = "master"
+
+[go-github-apache-arrow-go-arrow]
+source = "git"
+git = "https://github.com/apache/arrow"
+use_commit = true
+branch = "main"
+
+[go-github-araddon-dateparse]
+source = "git"
+git = "https://github.com/araddon/dateparse"
+use_commit = true
+branch = "master"
+
+[go-github-arbovm-levenshtein]
+source = "git"
+git = "https://github.com/arbovm/levenshtein"
+use_commit = true
+branch = "master"
+
+[go-github-armon-circbuf]
+source = "git"
+git = "https://github.com/armon/circbuf"
+use_commit = true
+branch = "master"
+
+[go-github-armon-go-socks5]
+source = "git"
+git = "https://github.com/armon/go-socks5"
+use_commit = true
+branch = "master"
+
+[go-github-aybabtme-rgbterm]
+source = "git"
+git = "https://github.com/aybabtme/rgbterm"
+use_commit = true
+branch = "master"
+
+[go-github-azure-go-ansiterm]
+source = "git"
+git = "https://github.com/Azure/go-ansiterm"
+use_commit = true
+branch = "master"
+
+["go-github-basgys-goxml2json@commits"]
+source = "git"
+git = "https://github.com/basgys/goxml2json"
+use_commit = true
+branch = "master"
+
+[go-github-bboreham-go-loser]
+source = "git"
+git = "https://github.com/bboreham/go-loser"
+use_commit = true
+branch = "main"
+
+[go-github-benmathews-bench]
+source = "git"
+git = "https://github.com/benmathews/bench"
+use_commit = true
+branch = "master"
+
+[go-github-bmizerany-assert]
+source = "git"
+git = "https://github.com/bmizerany/assert"
+use_commit = true
+branch = "master"
+
+[go-github-bradfitz-gomemcache-memcache]
+source = "git"
+git = "https://github.com/bradfitz/gomemcache"
+use_commit = true
+branch = "master"
+
+["go-github-campoy-embedmd-embedmd@commits"]
+source = "git"
+git = "https://github.com/campoy/embedmd"
+use_commit = true
+branch = "master"
+
+["go-github-charmbracelet-glamour@commits"]
+source = "git"
+git = "https://github.com/charmbracelet/glamour"
+use_commit = true
+branch = "main"
+
+["go-github-charmbracelet-ssh@commits"]
+source = "git"
+git = "https://github.com/charmbracelet/ssh"
+use_commit = true
+branch = "master"
+
+["go-github-charmbracelet-x@commits"]
+source = "git"
+git = "https://github.com/charmbracelet/x"
+use_commit = true
+branch = "main"
+
+[go-github-cloudflare-golibs]
+source = "git"
+git = "https://github.com/cloudflare/golibs"
+use_commit = true
+branch = "master"
+
+[go-github-cloudfoundry-jibber-jabber]
+source = "git"
+git = "https://github.com/cloudfoundry/jibber_jabber"
+use_commit = true
+branch = "master"
+
+[go-github-cloudykit-fastprinter]
+source = "git"
+git = "https://github.com/CloudyKit/fastprinter"
+use_commit = true
+branch = "master"
+
+[go-github-cncf-xds]
+source = "git"
+git = "https://github.com/cncf/xds"
+use_commit = true
+branch = "main"
+
+[go-github-codahale-rfc6979]
+source = "git"
+git = "https://github.com/codahale/rfc6979"
+use_commit = true
+branch = "master"
+
+[go-github-d4l3k-go-bfloat16]
+source = "git"
+git = "https://github.com/d4l3k/go-bfloat16"
+use_commit = true
+branch = "main"
+
+[go-github-datadog-mmh3]
+source = "git"
+git = "https://github.com/DataDog/mmh3"
+use_commit = true
+branch = "master"
+
+["go-github-davecgh-go-spew@commits"]
+source = "git"
+git = "https://github.com/davecgh/go-spew"
+use_commit = true
+branch = "master"
+
+[go-github-dgryski-go-farm]
+source = "git"
+git = "https://github.com/dgryski/go-farm"
+use_commit = true
+branch = "master"
+
+[go-github-dgryski-go-rendezvous]
+source = "git"
+git = "https://github.com/dgryski/go-rendezvous"
+use_commit = true
+branch = "master"
+
+[go-github-digitalocean-go-metadata]
+source = "git"
+git = "https://github.com/digitalocean/go-metadata"
+use_commit = true
+branch = "master"
+
+["go-github-docker-go-events@commits"]
+source = "git"
+git = "https://github.com/docker/go-events"
+use_commit = true
+branch = "main"
+
+[go-github-eapache-go-xerial-snappy]
+source = "git"
+git = "https://github.com/eapache/go-xerial-snappy"
+use_commit = true
+branch = "master"
+
+["go-github-edsrzf-mmap-go@commits"]
+source = "git"
+git = "https://github.com/edsrzf/mmap-go"
+use_commit = true
+branch = "main"
+
+[go-github-elastic-go-perf]
+source = "git"
+git = "https://github.com/elastic/go-perf"
+use_commit = true
+branch = "master"
+
+[go-github-emersion-go-sasl]
+source = "git"
+git = "https://github.com/emersion/go-sasl"
+use_commit = true
+branch = "master"
+
+[go-github-erikgeiser-coninput]
+source = "git"
+git = "https://github.com/erikgeiser/coninput"
+use_commit = true
+branch = "main"
+
+[go-github-facette-natsort]
+source = "git"
+git = "https://github.com/facette/natsort"
+use_commit = true
+branch = "master"
+
+[go-github-fastly-go-utils]
+source = "git"
+git = "https://github.com/fastly/go-utils"
+use_commit = true
+branch = "master"
+
+[go-github-flynn-go-docopt]
+source = "git"
+git = "https://github.com/flynn/go-docopt"
+use_commit = true
+branch = "master"
+
+[go-github-franela-goreq]
+source = "git"
+git = "https://github.com/franela/goreq"
+use_commit = true
+branch = "master"
+
+[go-github-gehirninc-crypt]
+source = "git"
+git = "https://github.com/GehirnInc/crypt"
+use_commit = true
+branch = "master"
+
+[go-github-go-bdd-assert]
+source = "git"
+git = "https://github.com/go-bdd/assert"
+use_commit = true
+branch = "master"
+
+["go-github-go-git-go-git-fixtures-v4@commits"]
+source = "git"
+git = "https://github.com/go-git/go-git-fixtures"
+use_commit = true
+branch = "main"
+
+["go-github-go-task-slim-sprig-v3@commits"]
+source = "git"
+git = "https://github.com/go-task/slim-sprig"
+use_commit = true
+branch = "master"
+
+[go-github-gokillers-libsodium-go]
+source = "git"
+git = "https://github.com/GoKillers/libsodium-go"
+use_commit = true
+branch = "master"
+
+[go-github-golang-freetype]
+source = "git"
+git = "https://github.com/golang/freetype"
+use_commit = true
+branch = "master"
+
+[go-github-golang-groupcache]
+source = "git"
+git = "https://github.com/golang/groupcache"
+use_commit = true
+branch = "master"
+
+["go-github-google-martian-v3@commits"]
+source = "git"
+git = "https://github.com/google/martian"
+use_commit = true
+branch = "master"
+
+[go-github-google-shlex]
+source = "git"
+git = "https://github.com/google/shlex"
+use_commit = true
+branch = "master"
+
+["go-github-googleapis-gax-go-v2@commits"]
+source = "git"
+git = "https://github.com/googleapis/gax-go"
+use_commit = true
+branch = "main"
+
+["go-github-gorilla-websocket@commits"]
+source = "git"
+git = "https://github.com/gorilla/websocket"
+use_commit = true
+branch = "main"
+
+[go-github-grafana-regexp]
+source = "git"
+git = "https://github.com/grafana/regexp"
+use_commit = true
+branch = "main"
+
+[go-github-gregjones-httpcache]
+source = "git"
+git = "https://github.com/gregjones/httpcache"
+use_commit = true
+branch = "master"
+
+[go-github-hailocab-go-hostpool]
+source = "git"
+git = "https://github.com/hailocab/go-hostpool"
+use_commit = true
+branch = "master"
+
+[go-github-hashicorp-go-hmac-drbg]
+source = "git"
+git = "https://github.com/hashicorp/go-hmac-drbg"
+use_commit = true
+branch = "master"
+
+[go-github-hashicorp-hil]
+source = "git"
+git = "https://github.com/hashicorp/hil"
+use_commit = true
+branch = "main"
+
+[go-github-ianlancetaylor-demangle]
+source = "git"
+git = "https://github.com/ianlancetaylor/demangle"
+use_commit = true
+branch = "master"
+
+[go-github-icza-backscanner]
+source = "git"
+git = "https://github.com/icza/backscanner"
+use_commit = true
+branch = "master"
+
+[go-github-icza-mighty]
+source = "git"
+git = "https://github.com/icza/mighty"
+use_commit = true
+branch = "master"
+
+[go-github-influxdata-influxdb1-client]
+source = "git"
+git = "https://github.com/influxdata/influxdb1-client"
+use_commit = true
+branch = "master"
+
+[go-github-influxdata-line-protocol]
+source = "git"
+git = "https://github.com/influxdata/line-protocol"
+use_commit = true
+branch = "v2"
+
+[go-github-influxdata-line-protocol-corpus]
+source = "git"
+git = "https://github.com/influxdata/line-protocol-corpus"
+use_commit = true
+branch = "main"
+
+[go-github-itchyny-go-yaml]
+source = "git"
+git = "https://github.com/itchyny/go-yaml"
+use_commit = true
+branch = "main"
+
+[go-github-jbenet-go-context]
+source = "git"
+git = "https://github.com/jbenet/go-context"
+use_commit = true
+branch = "master"
+
+[go-github-jbuchbinder-go-gmetric]
+source = "git"
+git = "https://github.com/jbuchbinder/go-gmetric"
+use_commit = true
+branch = "master"
+
+[go-github-jehiah-go-strftime]
+source = "git"
+git = "https://github.com/jehiah/go-strftime"
+use_commit = true
+branch = "master"
+
+[go-github-jesseduffield-generics]
+source = "git"
+git = "https://github.com/jesseduffield/generics"
+use_commit = true
+branch = "master"
+
+["go-github-jlaffaye-ftp@commits"]
+source = "git"
+git = "https://github.com/jlaffaye/ftp"
+use_commit = true
+branch = "master"
+
+[go-github-johncgriffin-overflow]
+source = "git"
+git = "https://github.com/JohnCGriffin/overflow"
+use_commit = true
+branch = "master"
+
+[go-github-junegunn-go-shellwords]
+source = "git"
+git = "https://github.com/junegunn/go-shellwords"
+use_commit = true
+branch = "master"
+
+[go-github-kardianos-osext]
+source = "git"
+git = "https://github.com/kardianos/osext"
+use_commit = true
+branch = "master"
+
+[go-github-karimkhaleel-jsonschema]
+source = "git"
+git = "https://github.com/karimkhaleel/jsonschema"
+use_commit = true
+branch = "main"
+
+[go-github-kballard-go-shellquote]
+source = "git"
+git = "https://github.com/kballard/go-shellquote"
+use_commit = true
+branch = "master"
+
+[go-github-kisielk-sqlstruct]
+source = "git"
+git = "https://github.com/kisielk/sqlstruct"
+use_commit = true
+branch = "master"
+
+[go-github-kolo-xmlrpc]
+source = "git"
+git = "https://github.com/kolo/xmlrpc"
+use_commit = true
+branch = "master"
+
+[go-github-kr-logfmt]
+source = "git"
+git = "https://github.com/kr/logfmt"
+use_commit = true
+branch = "main"
+
+[go-github-lestrrat-go-envload]
+source = "git"
+git = "https://github.com/lestrrat-go/envload"
+use_commit = true
+branch = "master"
+
+[go-github-lk4d4-joincontext]
+source = "git"
+git = "https://github.com/lk4d4/joincontext"
+use_commit = true
+branch = "master"
+
+[go-github-lucasjones-reggen]
+source = "git"
+git = "https://github.com/lucasjones/reggen"
+use_commit = true
+branch = "master"
+
+[go-github-lufia-plan9stats]
+source = "git"
+git = "https://github.com/lufia/plan9stats"
+use_commit = true
+branch = "main"
+
+[go-github-mdlayher-kobject]
+source = "git"
+git = "https://github.com/mdlayher/kobject"
+use_commit = true
+branch = "master"
+
+[go-github-mgutz-ansi]
+source = "git"
+git = "https://github.com/mgutz/ansi"
+use_commit = true
+branch = "master"
+
+[go-github-minio-asm2plan9s]
+source = "git"
+git = "https://github.com/minio/asm2plan9s"
+use_commit = true
+branch = "master"
+
+[go-github-minio-c2goasm]
+source = "git"
+git = "https://github.com/minio/c2goasm"
+use_commit = true
+branch = "master"
+
+[go-github-mitchellh-colorstring]
+source = "git"
+git = "https://github.com/mitchellh/colorstring"
+use_commit = true
+branch = "master"
+
+["go-github-modern-go-reflect2@commits"]
+source = "git"
+git = "https://github.com/modern-go/reflect2"
+use_commit = true
+branch = "master"
+
+[go-github-mohae-deepcopy]
+source = "git"
+git = "https://github.com/mohae/deepcopy"
+use_commit = true
+branch = "master"
+
+[go-github-muesli-ansi]
+source = "git"
+git = "https://github.com/muesli/ansi"
+use_commit = true
+branch = "main"
+
+[go-github-muesli-clusters]
+source = "git"
+git = "https://github.com/muesli/clusters"
+use_commit = true
+branch = "master"
+
+[go-github-munnerz-goautoneg]
+source = "git"
+git = "https://github.com/munnerz/goautoneg"
+use_commit = true
+branch = "master"
+
+[go-github-mwitkow-go-conntrack]
+source = "git"
+git = "https://github.com/mwitkow/go-conntrack"
+use_commit = true
+branch = "master"
+
+[go-github-mxk-go-flowrate]
+source = "git"
+git = "https://github.com/mxk/go-flowrate"
+use_commit = true
+branch = "master"
+
+[go-github-nbio-st]
+source = "git"
+git = "https://github.com/nbio/st"
+use_commit = true
+branch = "master"
+
+[go-github-nfnt-resize]
+source = "git"
+git = "https://github.com/nfnt/resize"
+use_commit = true
+branch = "master"
+
+[go-github-niemeyer-pretty]
+source = "git"
+git = "https://github.com/niemeyer/pretty"
+use_commit = true
+branch = "master"
+
+[go-github-nsf-jsondiff]
+source = "git"
+git = "https://github.com/nsf/jsondiff"
+use_commit = true
+branch = "master"
+
+[go-github-olekukonko-cat]
+source = "git"
+git = "https://github.com/olekukonko/cat"
+use_commit = true
+branch = "main"
+
+[go-github-olekukonko-ts]
+source = "git"
+git = "https://github.com/olekukonko/ts"
+use_commit = true
+branch = "master"
+
+["go-github-onsi-ginkgo-v2@commits"]
+source = "git"
+git = "https://github.com/onsi/ginkgo"
+use_commit = true
+branch = "master"
+
+[go-github-openshift-api]
+source = "git"
+git = "https://github.com/openshift/api"
+use_commit = true
+branch = "master"
+
+[go-github-openshift-build-machinery-go]
+source = "git"
+git = "https://github.com/openshift/build-machinery-go"
+use_commit = true
+branch = "master"
+
+[go-github-pbnjay-memory]
+source = "git"
+git = "https://github.com/pbnjay/memory"
+use_commit = true
+branch = "master"
+
+[go-github-pdevine-tensor]
+source = "git"
+git = "https://github.com/pdevine/tensor"
+use_commit = true
+branch = "master"
+
+[go-github-petermattis-goid]
+source = "git"
+git = "https://github.com/petermattis/goid"
+use_commit = true
+branch = "master"
+
+[go-github-pkg-browser]
+source = "git"
+git = "https://github.com/pkg/browser"
+use_commit = true
+branch = "master"
+
+["go-github-planetscale-vtprotobuf@commits"]
+source = "git"
+git = "https://github.com/planetscale/vtprotobuf"
+use_commit = true
+branch = "main"
+
+["go-github-pmezard-go-difflib@commits"]
+source = "git"
+git = "https://github.com/pmezard/go-difflib"
+use_commit = true
+branch = "master"
+
+[go-github-power-devops-perfstat]
+source = "git"
+git = "https://github.com/power-devops/perfstat"
+use_commit = true
+branch = "main"
+
+[go-github-pquerna-ffjson]
+source = "git"
+git = "https://github.com/pquerna/ffjson"
+use_commit = true
+branch = "master"
+
+["go-github-prometheus-client-golang@commits"]
+source = "git"
+git = "https://github.com/prometheus/client_golang"
+use_commit = true
+branch = "main"
+
+[go-github-rcrowley-go-metrics]
+source = "git"
+git = "https://github.com/rcrowley/go-metrics"
+use_commit = true
+branch = "master"
+
+["go-github-richardartoul-molecule@commits"]
+source = "git"
+git = "https://github.com/richardartoul/molecule"
+use_commit = true
+branch = "master"
+
+[go-github-ruudk-golang-pdf417]
+source = "git"
+git = "https://github.com/ruudk/golang-pdf417"
+use_commit = true
+branch = "master"
+
+[go-github-rwcarlsen-goexif]
+source = "git"
+git = "https://github.com/rwcarlsen/goexif"
+use_commit = true
+branch = "go1"
+
+["go-github-ryanuber-columnize@commits"]
+source = "git"
+git = "https://github.com/ryanuber/columnize"
+use_commit = true
+branch = "master"
+
+[go-github-sblinch-kdl-go]
+source = "git"
+git = "https://github.com/sblinch/kdl-go"
+use_commit = true
+branch = "main"
+
+[go-github-sean--seed]
+source = "git"
+git = "https://github.com/sean-/seed"
+use_commit = true
+branch = "master"
+
+["go-github-segmentio-encoding-json@commits"]
+source = "git"
+git = "https://github.com/segmentio/encoding"
+use_commit = true
+branch = "master"
+
+[go-github-segmentio-go-camelcase]
+source = "git"
+git = "https://github.com/segmentio/go-camelcase"
+use_commit = true
+branch = "master"
+
+[go-github-shirou-w32]
+source = "git"
+git = "https://github.com/shirou/w32"
+use_commit = true
+branch = "master"
+
+[go-github-shurcool-httpfs]
+source = "git"
+git = "https://github.com/shurcooL/httpfs"
+use_commit = true
+branch = "main"
+
+[go-github-shurcool-httpgzip]
+source = "git"
+git = "https://github.com/shurcooL/httpgzip"
+use_commit = true
+branch = "main"
+
+[go-github-skip2-go-qrcode]
+source = "git"
+git = "https://github.com/skip2/go-qrcode"
+use_commit = true
+branch = "master"
+
+[go-github-stefanberger-go-pkcs11uri]
+source = "git"
+git = "https://github.com/stefanberger/go-pkcs11uri"
+use_commit = true
+branch = "master"
+
+["go-github-stefanhaller-git-todo-parser@commits"]
+source = "git"
+git = "https://github.com/stefanhaller/git-todo-parser"
+use_commit = true
+branch = "main"
+
+[go-github-streadway-handy]
+source = "git"
+git = "https://github.com/streadway/handy"
+use_commit = true
+branch = "master"
+
+[go-github-syndtr-gocapability]
+source = "git"
+git = "https://github.com/syndtr/gocapability"
+use_commit = true
+branch = "master"
+
+["go-github-syndtr-goleveldb@commits"]
+source = "git"
+git = "https://github.com/syndtr/goleveldb"
+use_commit = true
+branch = "master"
+
+[go-github-tmc-grpc-websocket-proxy]
+source = "git"
+git = "https://github.com/tmc/grpc-websocket-proxy"
+use_commit = true
+branch = "master"
+
+[go-github-tv42-httpunix]
+source = "git"
+git = "https://github.com/tv42/httpunix"
+use_commit = true
+branch = "master"
+
+[go-github-ua-parser-uap-go]
+source = "git"
+git = "https://github.com/ua-parser/uap-go"
+use_commit = true
+branch = "master"
+
+[go-github-xeipuuv-gojsonpointer]
+source = "git"
+git = "https://github.com/xeipuuv/gojsonpointer"
+use_commit = true
+branch = "master"
+
+[go-github-xeipuuv-gojsonreference]
+source = "git"
+git = "https://github.com/xeipuuv/gojsonreference"
+use_commit = true
+branch = "master"
+
+[go-github-xi2-xz]
+source = "git"
+git = "https://github.com/xi2/xz"
+use_commit = true
+branch = "master"
+
+["go-github-xo-terminfo@commits"]
+source = "git"
+git = "https://github.com/xo/terminfo"
+use_commit = true
+branch = "main"
+
+[go-github-xrash-smetrics]
+source = "git"
+git = "https://github.com/xrash/smetrics"
+use_commit = true
+branch = "master"
+
+[go-github-zclconf-go-cty-debug]
+source = "git"
+git = "https://github.com/zclconf/go-cty-debug"
+use_commit = true
+branch = "master"
+
+[go-go4]
+source = "git"
+git = "https://github.com/go4org/go4"
+use_commit = true
+branch = "master"
+
+[go-go4-unsafe-assume-no-moving-gc]
+source = "git"
+git = "https://github.com/go4org/unsafe-assume-no-moving-gc"
+use_commit = true
+branch = "main"
+
+[go-golang-x-exp]
+source = "git"
+git = "https://github.com/golang/exp"
+use_commit = true
+branch = "master"
+
+[go-golang-x-lint]
+source = "git"
+git = "https://github.com/golang/lint"
+use_commit = true
+branch = "master"
+
+[go-golang-x-xerrors]
+source = "git"
+git = "https://github.com/golang/xerrors"
+use_commit = true
+branch = "master"
+
+["go-gopkg-check.v1"]
+source = "git"
+git = "https://github.com/go-check/check"
+use_commit = true
+branch = "v1"
+
+["go-gopkg-tomb.v1"]
+source = "git"
+git = "https://github.com/go-tomb/tomb"
+use_commit = true
+branch = "v1"
+
+[go-k8s-gengo-v2]
+source = "git"
+git = "https://github.com/kubernetes/gengo"
+use_commit = true
+branch = "master"
+
+[go-k8s-kube-openapi]
+source = "git"
+git = "https://github.com/kubernetes/kube-openapi"
+use_commit = true
+branch = "master"
+
+[go-k8s-sigs-json]
+source = "git"
+git = "https://github.com/kubernetes-sigs/json"
+use_commit = true
+branch = "main"
+
+[go-k8s-utils]
+source = "git"
+git = "https://github.com/kubernetes/utils"
+use_commit = true
+branch = "master"
+
+["go-rsc-pdf@commits"]
+source = "git"
+git = "https://github.com/rsc/pdf"
+use_commit = true
+branch = "master"
+
+[kes]
+source = "git"
+git = "https://github.com/minio/kes"
+use_commit = true
+branch = "master"
+
+[kmscube]
+source = "git"
+git = "https://gitlab.freedesktop.org/mesa/kmscube"
+use_commit = true
+branch = "master"
+
+[llvmir-converter]
+source = "git"
+git = "https://github.com/openRuyi-Project/llvmir-converter"
+use_commit = true
+branch = "master"
+
+[mergerfs-tools]
+source = "git"
+git = "https://github.com/trapexit/mergerfs-tools"
+use_commit = true
+branch = "master"
+
+["mkosi@commits"]
+source = "git"
+git = "https://github.com/systemd/mkosi"
+use_commit = true
+branch = "main"
+
+[mmtests]
+source = "git"
+git = "https://github.com/gormanm/mmtests"
+use_commit = true
+branch = "master"
+
+[netperf]
+source = "git"
+git = "https://github.com/HewlettPackard/netperf"
+use_commit = true
+branch = "master"
+
+[passt]
+source = "git"
+git = "https://passt.top/passt"
+use_commit = true
+branch = "master"
+
+[phoronix-test-suite]
+source = "git"
+git = "https://github.com/phoronix-test-suite/phoronix-test-suite"
+use_commit = true
+branch = "master"
+
+[pocketfft]
+source = "git"
+git = "https://github.com/mreineck/pocketfft"
+use_commit = true
+branch = "cpp"
+
+[pprof]
+source = "git"
+git = "https://github.com/google/pprof"
+use_commit = true
+branch = "main"
+
+[psimd]
+source = "git"
+git = "https://github.com/Maratyszcza/psimd"
+use_commit = true
+branch = "master"
+
+[pthreadpool]
+source = "git"
+git = "https://github.com/Maratyszcza/pthreadpool"
+use_commit = true
+branch = "master"
+
+["shim@commits"]
+source = "git"
+git = "https://github.com/rhboot/shim"
+use_commit = true
+branch = "main"
+
+[signon-plugin-oauth2]
+source = "git"
+git = "https://gitlab.com/accounts-sso/signon-plugin-oauth2"
+use_commit = true
+branch = "master"
+
+[stb]
+source = "git"
+git = "https://github.com/nothings/stb"
+use_commit = true
+branch = "master"
+
+[tensorpipe]
+source = "git"
+git = "https://github.com/pytorch/tensorpipe"
+use_commit = true
+branch = "main"
+
+[trinity]
+source = "git"
+git = "https://github.com/kernelslacker/trinity"
+use_commit = true
+branch = "master"
+
+[warp-ctc]
+source = "git"
+git = "https://github.com/baidu-research/warp-ctc"
+use_commit = true
+branch = "master"
+
+[warp-transducer]
+source = "git"
+git = "https://github.com/PaddlePaddle/warp-transducer"
+use_commit = true
+branch = "master"
+
+[xnnpack]
+source = "git"
+git = "https://github.com/google/XNNPACK"
+use_commit = true
+branch = "master"
+
+[yarpgen]
+source = "git"
+git = "https://github.com/intel/yarpgen"
+use_commit = true
+branch = "main"
+
+[aflplusplus]
+source = "git"
+git = "https://github.com/AFLplusplus/AFLplusplus"
+include_regex = "^v[0-9]+\\.[0-9]+[a-z]$"
+prefix = "v"
+
+[atkmm]
+source = "jq"
+url = "https://download.gnome.org/sources/atkmm/cache.json"
+filter = ".[1][\"atkmm\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^2\\.28\\.[0-9]+$"
+
+[audiofile]
+source = "regex"
+url = "https://audiofile.68k.org/"
+regex = "(?<![A-Za-z0-9_.+-])audiofile\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[babl]
+source = "regex"
+url = "https://download.gimp.org/babl/0.1/"
+regex = "(?<![A-Za-z0-9_.+-])babl\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[baloo-widgets]
+source = "git"
+git = "https://github.com/KDE/baloo-widgets"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[bindfs]
+source = "regex"
+url = "https://bindfs.org/downloads/"
+regex = "(?<![A-Za-z0-9_.+-])bindfs\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+["cairomm1.0"]
+source = "regex"
+url = "https://www.cairographics.org/releases/"
+regex = "(?<![A-Za-z0-9_.+-])cairomm\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+include_regex = "^1\\.14\\.[0-9]+$"
+
+[cdparanoia]
+source = "regex"
+url = "https://downloads.xiph.org/releases/cdparanoia/"
+regex = "cdparanoia-III-([0-9]+(?:\\.[0-9]+)+)\\.src\\.tgz"
+
+[cfortran]
+source = "git"
+git = "https://github.com/bastien-roucaries/cfortran"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[cifs-utils]
+source = "regex"
+url = "https://download.samba.org/pub/linux-cifs/cifs-utils/"
+regex = "(?<![A-Za-z0-9_.+-])cifs\\-utils\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.bz2"
+
+[cldr-emoji-annotation]
+source = "git"
+git = "https://github.com/unicode-org/cldr"
+include_regex = "^release-[0-9]+(?:-[0-9]+){1,2}$"
+prefix = "release-"
+from_pattern = "-"
+to_pattern = "."
+
+[cloudpods]
+source = "git"
+git = "https://github.com/yunionio/cloudpods"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[cloudpods-dashboard]
+source = "git"
+git = "https://github.com/yunionio/dashboard"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[cloudpods-operator]
+source = "git"
+git = "https://github.com/yunionio/cloudpods-operator"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[console-setup]
+source = "git"
+git = "https://salsa.debian.org/installer-team/console-setup"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[containers-common]
+source = "git"
+git = "https://github.com/podman-container-tools/container-libs"
+include_regex = "^common/v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "common/v"
+
+[cunit]
+source = "regex"
+url = "https://sourceforge.net/projects/cunit/rss?path=/"
+regex = "CUnit-([0-9]+\\.[0-9]+-[0-9]+)\\.tar\\.bz2"
+from_pattern = "-"
+to_pattern = "."
+
+[db-ip]
+source = "regex"
+url = "https://db-ip.com/db/download/ip-to-city-lite"
+regex = "dbip-city-lite-([0-9]{4}-[0-9]{2})\\.mmdb\\.gz"
+from_pattern = "-"
+to_pattern = "."
+
+[dblatex]
+source = "regex"
+url = "https://sourceforge.net/projects/dblatex/rss?path=/"
+regex = "dblatex3\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.bz2"
+
+# dconf moved from 0.x to GNOME-style major releases; numeric versions are not even-minor-only.
+[dconf]
+source = "jq"
+url = "https://download.gnome.org/sources/dconf/cache.json"
+filter = ".[1][\"dconf\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$"
+
+[distribution-gpg-keys]
+source = "git"
+git = "https://github.com/rpm-software-management/distribution-gpg-keys"
+include_regex = "^distribution-gpg-keys-[0-9]+(?:\\.[0-9]+)+-[0-9]+$"
+prefix = "distribution-gpg-keys-"
+from_pattern = "-[0-9]+$"
+to_pattern = ""
+
+[dnsmasq]
+source = "regex"
+url = "https://thekelleys.org.uk/dnsmasq/"
+regex = "(?<![A-Za-z0-9_.+-])dnsmasq\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[dolphin]
+source = "git"
+git = "https://github.com/KDE/dolphin"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[dolphin-plugins]
+source = "git"
+git = "https://github.com/KDE/dolphin-plugins"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[dwarves]
+source = "regex"
+url = "https://fedorapeople.org/~acme/dwarves/"
+regex = "(?<![A-Za-z0-9_.+-])dwarves\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[ell]
+source = "regex"
+url = "https://mirrors.kernel.org/pub/linux/libs/ell/"
+regex = "(?<![A-Za-z0-9_.+-])ell\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[erofs-utils]
+source = "git"
+git = "https://github.com/erofs/erofs-utils"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[exempi]
+source = "git"
+git = "https://gitlab.freedesktop.org/libopenraw/exempi"
+include_regex = "^[0-9]+(?:\\.[0-9]+){1,2}$"
+
+[expect]
+source = "regex"
+url = "https://sourceforge.net/projects/expect/rss?path=/"
+regex = "expect([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+[f2fs-tools]
+source = "git"
+git = "https://git.kernel.org/pub/scm/linux/kernel/git/jaegeuk/f2fs-tools.git"
+include_regex = "^v[0-9]+(?:\\.[0-9]+)+$"
+prefix = "v"
+
+[falkon]
+source = "git"
+git = "https://github.com/KDE/falkon"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+# This repository also contains inherited Linux tags; only the fcoe-utils 1.0 line applies.
+[fcoe-utils]
+source = "git"
+git = "https://github.com/openSUSE/fcoe-utils"
+include_regex = "^v1\\.0\\.[0-9]+$"
+prefix = "v"
+
+[fftw]
+source = "regex"
+url = "https://www.fftw.org/download.html"
+regex = "fftw-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+[firefox]
+source = "jq"
+url = "https://product-details.mozilla.org/1.0/firefox_versions.json"
+filter = ".LATEST_FIREFOX_VERSION"
+
+[fonts-noto-color-emoji]
+source = "git"
+git = "https://github.com/googlefonts/noto-emoji"
+include_regex = "^v[0-9]+(?:\\.[0-9]+)+$"
+prefix = "v"
+
+[gcr]
+source = "git"
+git = "https://gitlab.gnome.org/GNOME/gcr"
+include_regex = "^4\\.[0-9]*[02468](?:\\.[0-9]+){1,2}$"
+
+[gexiv2]
+source = "jq"
+url = "https://download.gnome.org/sources/gexiv2/cache.json"
+filter = ".[1][\"gexiv2\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^0\\.14\\.[0-9]+$"
+
+[giflib]
+source = "regex"
+url = "https://sourceforge.net/projects/giflib/rss?path=/"
+regex = "giflib\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+["glibmm2.4"]
+source = "jq"
+url = "https://download.gnome.org/sources/glibmm/cache.json"
+filter = ".[1][\"glibmm\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^2\\.66\\.[0-9]+$"
+
+[glu]
+source = "git"
+git = "https://gitlab.freedesktop.org/mesa/glu"
+include_regex = "^glu\\-[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "glu-"
+
+[gmp]
+source = "regex"
+url = "https://gmplib.org/download/gmp/"
+regex = "(?<![A-Za-z0-9_.+-])gmp\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[gnupg]
+source = "regex"
+url = "https://www.gnupg.org/download/index.html"
+regex = "(?<![A-Za-z0-9_.+-])gnupg-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.(?:bz2|gz|xz)"
+
+[go-github-asaskevich-govalidator]
+source = "git"
+git = "https://github.com/asaskevich/govalidator"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[go-github-cihub-seelog]
+source = "git"
+git = "https://github.com/cihub/seelog"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[go-github-docopt-docopt-go]
+source = "git"
+git = "https://github.com/docopt/docopt-go"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[go-github-franela-goblin]
+source = "git"
+git = "https://github.com/franela/goblin"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[go-github-go-martini-martini]
+source = "git"
+git = "https://github.com/go-martini/martini"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[go-github-h2non-parth]
+source = "git"
+git = "https://github.com/h2non/parth"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[go-github-modern-go-concurrent]
+source = "git"
+git = "https://github.com/modern-go/concurrent"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[go-github-op-go-logging]
+source = "git"
+git = "https://github.com/op/go-logging"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[go-github-rakyll-embedmd]
+source = "git"
+git = "https://github.com/rakyll/embedmd"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[go-github-xiang90-probing]
+source = "git"
+git = "https://github.com/xiang90/probing"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[go-github-youmark-pkcs8]
+source = "git"
+git = "https://github.com/youmark/pkcs8"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[gpgme]
+source = "regex"
+url = "https://www.gnupg.org/download/index.html"
+regex = "(?<![A-Za-z0-9_.+-])gpgme-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.(?:bz2|gz|xz)"
+
+[gpgmepp]
+source = "regex"
+url = "https://www.gnupg.org/download/index.html"
+regex = "(?<![A-Za-z0-9_.+-])gpgmepp-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.(?:bz2|gz|xz)"
+
+[gpsd]
+source = "regex"
+url = "https://download-mirror.savannah.gnu.org/releases/gpsd/"
+regex = "(?<![A-Za-z0-9_.+-])gpsd\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[gstreamer]
+source = "regex"
+url = "https://gstreamer.freedesktop.org/src/gstreamer/"
+regex = "gstreamer\\-([0-9]+\\.[0-9]*[02468]\\.[0-9]+)\\.tar\\.(?:xz|bz2|gz)"
+
+[gstreamer-plugins-base]
+source = "regex"
+url = "https://gstreamer.freedesktop.org/src/gst-plugins-base/"
+regex = "gst\\-plugins\\-base\\-([0-9]+\\.[0-9]*[02468]\\.[0-9]+)\\.tar\\.(?:xz|bz2|gz)"
+
+[hicolor-icon-theme]
+source = "regex"
+url = "https://icon-theme.freedesktop.org/releases/"
+regex = "(?<![A-Za-z0-9_.+-])hicolor\\-icon\\-theme\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[hyphen]
+source = "regex"
+url = "https://sourceforge.net/projects/hunspell/rss?path=/"
+regex = "hyphen\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+[i3]
+source = "regex"
+url = "https://i3wm.org/downloads/"
+regex = "(?<![A-Za-z0-9_.+-])i3\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[iio-sensor-proxy]
+source = "git"
+git = "https://gitlab.freedesktop.org/hadess/iio-sensor-proxy"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[imagemagick]
+source = "git"
+git = "https://github.com/ImageMagick/ImageMagick"
+include_regex = "^[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+$"
+from_pattern = "-"
+to_pattern = "."
+
+[iprutils]
+source = "git"
+git = "https://github.com/bjking1/iprutils"
+include_regex = "^rel-[0-9]+(?:-[0-9]+)+$"
+prefix = "rel-"
+from_pattern = "-"
+to_pattern = "."
+
+[isl]
+source = "regex"
+url = "https://libisl.sourceforge.io/"
+regex = "isl-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.xz"
+
+[kaccounts-integration]
+source = "git"
+git = "https://github.com/KDE/kaccounts-integration"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[kaccounts-providers]
+source = "git"
+git = "https://github.com/KDE/kaccounts-providers"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[kate]
+source = "git"
+git = "https://github.com/KDE/kate"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[kio-extras]
+source = "git"
+git = "https://github.com/KDE/kio-extras"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[konqueror]
+source = "git"
+git = "https://github.com/KDE/konqueror"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[konsole]
+source = "git"
+git = "https://github.com/KDE/konsole"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[kpmcore]
+source = "git"
+git = "https://github.com/KDE/kpmcore"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[krb5]
+source = "regex"
+url = "https://kerberos.org/dist/"
+regex = "(?<![A-Za-z0-9_.+-])krb5\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[kwayland6]
+source = "git"
+git = "https://github.com/KDE/kwayland"
+prefix = "v"
+include_regex = "^v6\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[lame]
+source = "regex"
+url = "https://sourceforge.net/projects/lame/rss?path=/"
+regex = "/lame/[0-9.]+/lame-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+[libXmu]
+source = "git"
+git = "https://gitlab.freedesktop.org/xorg/lib/libxmu"
+include_regex = "^libXmu\\-[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "libXmu-"
+
+[libassuan]
+source = "regex"
+url = "https://www.gnupg.org/download/index.html"
+regex = "(?<![A-Za-z0-9_.+-])libassuan-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.(?:bz2|gz|xz)"
+
+[libbluray]
+source = "regex"
+url = "https://download.videolan.org/pub/videolan/libbluray/"
+regex = "href=\"([0-9]+\\.[0-9]+\\.[0-9]+)/\""
+
+[libburn]
+source = "regex"
+url = "https://files.libburnia-project.org/releases/"
+regex = "(?<![A-Za-z0-9_.+-])libburn\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[libcdio-paranoia]
+source = "git"
+git = "https://github.com/libcdio/libcdio-paranoia"
+include_regex = "^release-[0-9]+\\.[0-9]+\\+[0-9]+\\.[0-9]+\\.[0-9]+$"
+prefix = "release-"
+
+[libdatrie]
+source = "regex"
+url = "https://linux.thai.net/pub/thailinux/software/libthai/"
+regex = "(?<![A-Za-z0-9_.+-])libdatrie\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[libdvdnav]
+source = "regex"
+url = "https://download.videolan.org/pub/videolan/libdvdnav/"
+regex = "href=\"([0-9]+\\.[0-9]+\\.[0-9]+)/\""
+
+[libdvdread]
+source = "regex"
+url = "https://download.videolan.org/pub/videolan/libdvdread/"
+regex = "href=\"([0-9]+\\.[0-9]+\\.[0-9]+)/\""
+
+[libedit]
+source = "regex"
+url = "https://www.thrysoee.dk/editline/"
+regex = "libedit-([0-9]{8}-[0-9]+\\.[0-9]+)\\.tar\\.gz"
+from_pattern = "-"
+to_pattern = "."
+
+[libgcrypt]
+source = "regex"
+url = "https://www.gnupg.org/download/index.html"
+regex = "(?<![A-Za-z0-9_.+-])libgcrypt-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.(?:bz2|gz|xz)"
+
+[libglvnd]
+source = "git"
+git = "https://gitlab.freedesktop.org/glvnd/libglvnd"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[libgpg-error]
+source = "regex"
+url = "https://www.gnupg.org/download/index.html"
+regex = "(?<![A-Za-z0-9_.+-])libgpg-error-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.(?:bz2|gz|xz)"
+
+[libisoburn]
+source = "regex"
+url = "https://files.libburnia-project.org/releases/"
+regex = "libisoburn-([0-9]+(?:\\.[0-9]+)+(?:\\.pl[0-9]+)?)\\.tar\\.gz"
+
+[libisofs]
+source = "regex"
+url = "https://files.libburnia-project.org/releases/"
+regex = "libisofs-([0-9]+(?:\\.[0-9]+)+(?:\\.pl[0-9]+)?)\\.tar\\.gz"
+
+[libkexiv2]
+source = "git"
+git = "https://github.com/KDE/libkexiv2"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[libklvanc]
+source = "git"
+git = "https://github.com/stoth68000/libklvanc"
+include_regex = "^vid\\.obe\\.[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "vid.obe."
+
+[libksba]
+source = "regex"
+url = "https://www.gnupg.org/download/index.html"
+regex = "(?<![A-Za-z0-9_.+-])libksba-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.(?:bz2|gz|xz)"
+
+[libmng]
+source = "regex"
+url = "https://sourceforge.net/projects/libmng/rss?path=/"
+regex = "libmng\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.xz"
+
+[libpng]
+source = "git"
+git = "https://github.com/glennrp/libpng"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+["libsigc++"]
+source = "jq"
+url = "https://download.gnome.org/sources/libsigc++/cache.json"
+filter = ".[1][\"libsigc++\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^3\\.[0-9]*[02468]\\.[0-9]+$"
+
+[libsodium]
+source = "regex"
+url = "https://download.libsodium.org/libsodium/releases/"
+regex = "(?<![A-Za-z0-9_.+-])libsodium\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[libthai]
+source = "regex"
+url = "https://linux.thai.net/pub/thailinux/software/libthai/"
+regex = "(?<![A-Za-z0-9_.+-])libthai\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[libtiff]
+source = "regex"
+url = "https://download.osgeo.org/libtiff/"
+regex = "(?<![A-Za-z0-9_.+-])tiff\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[libyaml]
+source = "regex"
+url = "https://pyyaml.org/download/libyaml/"
+regex = "(?<![A-Za-z0-9_.+-])yaml\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[llama-cpp]
+source = "git"
+git = "https://github.com/ggml-org/llama.cpp"
+include_regex = "^b[0-9]+$"
+
+[lldpad]
+source = "git"
+git = "https://github.com/openSUSE/lldpad"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[lm_sensors]
+source = "git"
+git = "https://github.com/lm-sensors/lm-sensors"
+include_regex = "^V[0-9]+-[0-9]+-[0-9]+$"
+prefix = "V"
+from_pattern = "-"
+to_pattern = "."
+
+[lsb-release]
+source = "git"
+git = "https://codeberg.org/gioele/lsb-release-minimal"
+include_regex = "^v[0-9]+(?:\\.[0-9]+)*$"
+prefix = "v"
+
+[lshw]
+source = "regex"
+url = "https://www.ezix.org/software/files/"
+regex = "lshw-(B\\.[0-9]+\\.[0-9]+)\\.tar\\.gz"
+
+[lua-json]
+source = "git"
+git = "https://github.com/harningt/luajson"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[luajit]
+source = "git"
+git = "https://github.com/openresty/luajit2"
+include_regex = "^v2\\.1-[0-9]{8}$"
+prefix = "v"
+from_pattern = "-"
+to_pattern = "+openresty"
+
+# Numeric preview/RC versions coexist with stable versions; use the publisher's status.
+[mariadb]
+source = "jq"
+url = "https://downloads.mariadb.org/rest-api/mariadb/all-releases/"
+filter = ".releases[] | select(.status == \"stable\") | .release_number"
+
+[mariadb-connector-c]
+source = "regex"
+url = "https://archive.mariadb.org/"
+regex = "href=\"connector-c-([0-9]+\\.[0-9]+\\.[0-9]+)/\""
+
+[mdadm]
+source = "git"
+git = "https://git.kernel.org/pub/scm/utils/mdadm/mdadm.git"
+include_regex = "^mdadm\\-[0-9]+(?:\\.[0-9]+)+$"
+prefix = "mdadm-"
+
+[minio]
+source = "git"
+git = "https://github.com/minio/minio"
+include_regex = "^RELEASE\\.[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z$"
+prefix = "RELEASE."
+from_pattern = "-"
+to_pattern = "."
+
+[miopen]
+source = "git"
+git = "https://github.com/ROCm/MIOpen"
+include_regex = "^rocm\\-[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "rocm-"
+
+[moby]
+source = "git"
+git = "https://github.com/moby/moby"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[mpfr]
+source = "regex"
+url = "https://www.mpfr.org/mpfr-current/"
+regex = "mpfr-([0-9]+\\.[0-9]+\\.[0-9]+)\\.tar\\.(?:bz2|gz|xz)"
+
+[mstflint]
+source = "git"
+git = "https://github.com/Mellanox/mstflint"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+$"
+prefix = "v"
+from_pattern = "-"
+to_pattern = "."
+
+[nfs4-acl-tools]
+source = "regex"
+url = "https://linux-nfs.org/~steved/nfs4-acl-tools/"
+regex = "(?<![A-Za-z0-9_.+-])nfs4\\-acl\\-tools\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[nodejs]
+source = "jq"
+url = "https://nodejs.org/dist/index.json"
+filter = ".[].version"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+
+[npth]
+source = "regex"
+url = "https://www.gnupg.org/download/index.html"
+regex = "(?<![A-Za-z0-9_.+-])npth-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.(?:bz2|gz|xz)"
+
+[olm]
+source = "jq"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+url = "https://gitlab.matrix.org/api/v4/projects/matrix-org%2Folm/repository/tags?per_page=100"
+filter = ".[].name"
+
+[openal-soft]
+source = "regex"
+url = "https://openal-soft.org/openal-releases/"
+regex = "(?<![A-Za-z0-9_.+-])openal\\-soft\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.bz2"
+
+[openntpd]
+source = "regex"
+url = "https://ftp.openbsd.org/pub/OpenBSD/OpenNTPD/"
+regex = "openntpd-([0-9]+\\.[0-9]+p[0-9]+)\\.tar\\.gz"
+
+[openruyi-desktop-setup-labwc]
+source = "git"
+git = "https://git.openruyi.cn/openRuyi/openruyi-desktop-setup-labwc"
+include_regex = "^[0-9]+(?:\\.[0-9]+)*$"
+
+[opensp]
+source = "regex"
+url = "https://sourceforge.net/projects/openjade/rss?path=/"
+regex = "OpenSP\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+[os-prober]
+source = "git"
+git = "https://salsa.debian.org/installer-team/os-prober"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[pam_wrapper]
+source = "regex"
+url = "https://ftp.samba.org/pub/cwrap/"
+regex = "(?<![A-Za-z0-9_.+-])pam_wrapper\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[php]
+source = "jq"
+url = "https://www.php.net/releases/index.php?json"
+filter = ".[].version"
+
+[picocom]
+source = "git"
+git = "https://gitlab.com/wsakernel/picocom"
+include_regex = "^[0-9]{4}-[0-9]{2}$"
+from_pattern = "-"
+to_pattern = "."
+
+[pinentry]
+source = "regex"
+url = "https://www.gnupg.org/download/index.html"
+regex = "(?<![A-Za-z0-9_.+-])pinentry-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.(?:bz2|gz|xz)"
+
+[pngquant]
+source = "git"
+git = "https://github.com/kornelski/pngquant"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[popt]
+source = "regex"
+url = "https://rpm.org/releases/"
+regex = ">POPT ([0-9]+(?:\\.[0-9]+)+)<"
+
+[potrace]
+source = "regex"
+url = "https://sourceforge.net/projects/potrace/rss?path=/"
+regex = "potrace\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+[procps]
+source = "regex"
+url = "https://sourceforge.net/projects/procps-ng/rss?path=/"
+regex = "procps\\-ng\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.xz"
+
+[python-en-core-web-sm]
+source = "git"
+git = "https://github.com/explosion/spacy-models"
+include_regex = "^en_core_web_sm-[0-9]+\\.[0-9]+\\.[0-9]+$"
+prefix = "en_core_web_sm-"
+
+[python-meh]
+source = "git"
+git = "https://github.com/rhinstaller/python-meh"
+include_regex = "^python\\-meh\\-[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "python-meh-"
+
+[python-pip]
+source = "git"
+git = "https://github.com/pypa/pip"
+include_regex = "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$"
+
+[python-pyside6]
+source = "regex"
+url = "https://download.qt.io/official_releases/QtForPython/pyside6/"
+regex = "PySide6-(6\\.[0-9]+\\.[0-9]+)-src/"
+
+[python-templated-dictionary]
+source = "git"
+git = "https://github.com/xsuchy/templated-dictionary"
+include_regex = "^python-templated-dictionary-[0-9]+(?:\\.[0-9]+)+-[0-9]+$"
+prefix = "python-templated-dictionary-"
+from_pattern = "-[0-9]+$"
+to_pattern = ""
+
+[python-torch]
+source = "git"
+git = "https://github.com/pytorch/pytorch"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+prefix = "v"
+
+[qt6-qtcoap]
+source = "git"
+git = "https://github.com/qt/qtcoap"
+include_regex = "^v6\\.[0-9]+\\.[0-9]+$"
+prefix = "v"
+
+[qt6-qtmqtt]
+source = "git"
+git = "https://github.com/qt/qtmqtt"
+include_regex = "^v6\\.[0-9]+\\.[0-9]+$"
+prefix = "v"
+
+[qt6-qtopcua]
+source = "git"
+git = "https://github.com/qt/qtopcua"
+include_regex = "^v6\\.[0-9]+\\.[0-9]+$"
+prefix = "v"
+
+[re2]
+source = "git"
+git = "https://github.com/google/re2"
+include_regex = "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+from_pattern = "-"
+to_pattern = "."
+
+[rest]
+source = "jq"
+url = "https://download.gnome.org/sources/librest/cache.json"
+filter = ".[1][\"librest\"] | to_entries[] | select(.value | has(\"tar.xz\") or has(\"tar.gz\") or has(\"tar.bz2\")) | .key"
+include_regex = "^0\\.10\\.[0-9]+$"
+
+[rpcbind]
+source = "regex"
+url = "https://sourceforge.net/projects/rpcbind/rss?path=/"
+regex = "rpcbind\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.bz2"
+
+[rpm]
+source = "regex"
+url = "https://rpm.org/releases/"
+regex = ">RPM ([0-9]+\\.[0-9]+\\.[0-9]+)<"
+
+[ruby]
+source = "regex"
+url = "https://www.ruby-lang.org/en/downloads/releases/"
+regex = "(?<![A-Za-z0-9_.+-])ruby\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[rust-bin]
+source = "regex"
+url = "https://static.rust-lang.org/dist/channel-rust-stable.toml"
+regex = "(?s)\\[pkg\\.rust\\]\\s+version = \"([0-9]+\\.[0-9]+\\.[0-9]+) "
+
+[seastar]
+source = "git"
+git = "https://github.com/scylladb/seastar"
+include_regex = "^seastar\\-[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "seastar-"
+
+[sg3_utils]
+source = "regex"
+url = "https://sg.danny.cz/sg/p/"
+regex = "(?<![A-Za-z0-9_.+-])sg3_utils\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[signon-kwallet-extension]
+source = "git"
+git = "https://github.com/KDE/signon-kwallet-extension"
+prefix = "v"
+include_regex = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+exclude_regex = "^v[0-9]+\\.[0-9]+\\.[89][0-9]$"
+
+[slibtool]
+source = "regex"
+url = "https://midipix.org/dl/slibtool/"
+regex = "(?<![A-Za-z0-9_.+-])slibtool\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.xz"
+
+[soxr]
+source = "git"
+git = "https://github.com/chirlu/soxr"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[squashfs-tools-ng]
+source = "regex"
+url = "https://infraroot.at/pub/squashfs/"
+regex = "(?<![A-Za-z0-9_.+-])squashfs\\-tools\\-ng\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[tclap]
+source = "regex"
+url = "https://sourceforge.net/projects/tclap/rss?path=/"
+regex = "tclap\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+[tdb]
+source = "regex"
+url = "https://samba.org/ftp/tdb/"
+regex = "(?<![A-Za-z0-9_.+-])tdb\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[tftp]
+source = "git"
+git = "https://git.kernel.org/pub/scm/network/tftp/tftp-hpa.git"
+include_regex = "^tftp\\-hpa\\-[0-9]+(?:\\.[0-9]+)+$"
+prefix = "tftp-hpa-"
+
+[tunctl]
+source = "regex"
+url = "https://sourceforge.net/projects/tunctl/rss?path=/"
+regex = "tunctl\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+[u-boot-menu-ng]
+source = "git"
+git = "https://github.com/SalimTerryLi/u-boot-menu-ng"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[unbound]
+source = "regex"
+url = "https://nlnetlabs.nl/downloads/unbound/"
+regex = "(?<![A-Za-z0-9_.+-])unbound\\-([0-9]+(?:\\.[0-9]+){0,3})\\.tar\\.gz"
+
+[vlc]
+source = "regex"
+url = "https://download.videolan.org/pub/videolan/vlc/"
+regex = "href=\"([0-9]+\\.[0-9]+\\.[0-9]+)/\""
+
+[wayback]
+source = "git"
+git = "https://gitlab.freedesktop.org/wayback/wayback"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[wolfssl]
+source = "git"
+git = "https://github.com/wolfssl/wolfssl"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}\\-stable$"
+prefix = "v"
+from_pattern = "\\-stable$"
+to_pattern = ""
+
+[xerces-c]
+source = "git"
+git = "https://github.com/apache/xerces-c"
+include_regex = "^v[0-9]+(?:\\.[0-9]+){0,3}$"
+prefix = "v"
+
+[xmlrpc-c]
+source = "regex"
+url = "https://sourceforge.net/projects/xmlrpc-c/rss?path=/"
+regex = "xmlrpc\\-([0-9]+(?:\\.[0-9]+)+)\\.tgz"
+
+[xmlstarlet]
+source = "regex"
+url = "https://sourceforge.net/projects/xmlstar/rss?path=/"
+regex = "xmlstarlet\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.gz"
+
+[xmltoman]
+source = "git"
+git = "https://github.com/Distrotech/xmltoman"
+include_regex = "^[0-9]+(?:\\.[0-9]+){0,3}$"
+
+[zsh]
+source = "regex"
+url = "https://sourceforge.net/projects/zsh/rss?path=/"
+regex = "zsh\\-([0-9]+(?:\\.[0-9]+)+)\\.tar\\.xz"

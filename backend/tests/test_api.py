@@ -1,11 +1,11 @@
 import json
-from fastapi.testclient import TestClient
+from conftest import ProjectedClient
 from tracker import state
 from tracker.api import create_app
 
 def client(tmp_path,snapshot):
     db=tmp_path/'test.sqlite3';state.commit(db,snapshot)
-    return TestClient(create_app(db)),db
+    return ProjectedClient(create_app(db)),db
 
 def test_list_filters_counts_pagination(tmp_path,snapshot):
     c,_=client(tmp_path,snapshot)
@@ -50,7 +50,7 @@ def test_schema_export_and_no_secret_config(tmp_path,snapshot):
     assert c.get('/docs').status_code==404 # no external Swagger CDN
 
 def test_no_snapshot_is_not_empty_success(tmp_path):
-    c=TestClient(create_app(tmp_path/'absent.db'))
+    c=ProjectedClient(create_app(tmp_path/'absent.db'))
     assert c.get('/healthz').status_code==200
     assert c.get('/readyz').status_code==503
     assert c.get('/api/v1/packages').status_code==503

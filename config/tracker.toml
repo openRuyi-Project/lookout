@@ -47,11 +47,107 @@ spec_macro_files = ["_service:obs_scm:macros.buildsystem", "_service:obs_scm:mac
 ["packages"."openssl"]
 "monitors" = {"eol" = {"product" = "openssl", "cycle_parts" = 2}, "security" = {"vendor" = "openssl", "product" = "openssl"}}
 "track_label" = "3.x"
+
+["packages".glibc]
+compare = "glibc@commits"
+watch = ["glibc"]
+
+["packages".go-github-basgys-goxml2json]
+compare = "go-github-basgys-goxml2json@commits"
+watch = ["go-github-basgys-goxml2json"]
+
+["packages".go-github-basgys-goxml2json.monitors.security]
+ecosystem = "Go"
+name = "github.com/basgys/goxml2json"
+
+["packages".go-github-davecgh-go-spew]
+compare = "go-github-davecgh-go-spew@commits"
+watch = ["go-github-davecgh-go-spew"]
+
+["packages".go-github-davecgh-go-spew.monitors.security]
+ecosystem = "Go"
+name = "github.com/davecgh/go-spew"
+
+["packages".go-github-edsrzf-mmap-go]
+compare = "go-github-edsrzf-mmap-go@commits"
+watch = ["go-github-edsrzf-mmap-go"]
+
+["packages".go-github-edsrzf-mmap-go.monitors.security]
+ecosystem = "Go"
+name = "github.com/edsrzf/mmap-go"
+
+["packages".go-github-go-git-go-git-fixtures-v4]
+compare = "go-github-go-git-go-git-fixtures-v4@commits"
+watch = ["go-github-go-git-go-git-fixtures-v4"]
+
+["packages".go-github-go-git-go-git-fixtures-v4.monitors.security]
+ecosystem = "Go"
+name = "github.com/go-git/go-git-fixtures/v4"
+
+["packages".go-github-gorilla-websocket]
+compare = "go-github-gorilla-websocket@commits"
+watch = ["go-github-gorilla-websocket"]
+
+["packages".go-github-gorilla-websocket.monitors.security]
+ecosystem = "Go"
+name = "github.com/gorilla/websocket"
+
+["packages".go-github-modern-go-reflect2]
+compare = "go-github-modern-go-reflect2@commits"
+watch = ["go-github-modern-go-reflect2"]
+
+["packages".go-github-modern-go-reflect2.monitors.security]
+ecosystem = "Go"
+name = "github.com/modern-go/reflect2"
+
+["packages".go-github-planetscale-vtprotobuf]
+compare = "go-github-planetscale-vtprotobuf@commits"
+watch = ["go-github-planetscale-vtprotobuf"]
+
+["packages".go-github-planetscale-vtprotobuf.monitors.security]
+ecosystem = "Go"
+name = "github.com/planetscale/vtprotobuf"
+
+["packages".go-github-pmezard-go-difflib]
+compare = "go-github-pmezard-go-difflib@commits"
+watch = ["go-github-pmezard-go-difflib"]
+
+["packages".go-github-pmezard-go-difflib.monitors.security]
+ecosystem = "Go"
+name = "github.com/pmezard/go-difflib"
+
+["packages".go-github-prometheus-client-golang]
+compare = "go-github-prometheus-client-golang@commits"
+watch = ["go-github-prometheus-client-golang"]
+
+["packages".go-github-prometheus-client-golang.monitors.security]
+ecosystem = "Go"
+name = "github.com/prometheus/client_golang"
+
+["packages".go-github-richardartoul-molecule]
+compare = "go-github-richardartoul-molecule@commits"
+watch = ["go-github-richardartoul-molecule"]
+
+["packages".go-github-richardartoul-molecule.monitors.security]
+ecosystem = "Go"
+name = "github.com/richardartoul/molecule"
+
+["packages".go-rsc-pdf]
+compare = "go-rsc-pdf@commits"
+watch = ["go-rsc-pdf"]
+
+["packages".go-rsc-pdf.monitors.security]
+ecosystem = "Go"
+name = "rsc.io/pdf"
 [monitors]
-enabled = ["eol", "security", "license"]
+enabled = ["eol", "security", "license", "yanked", "requires"]
 stale_after_seconds = 86400
 batch_size = 256
 workers = 4
+
+[openruyi.dependencies]
+python = "python"
+rust = "rust"
 
 [packages.python]
 monitors = { eol = { product = "python", cycle_parts = 2 } }
@@ -61,6 +157,26 @@ monitors = { eol = { product = "nodejs", cycle_parts = 1 } }
 
 [packages.postgresql]
 monitors = { eol = { product = "postgresql", cycle_parts = 1 } }
+
+# Product identities and cycle granularity verified against SPEC URLs and the
+# provider's release-cycle catalog. A missing future cycle remains unsupported.
+[packages.go]
+monitors = { eol = { product = "go", cycle_parts = 2 } }
+
+[packages.ruby]
+monitors = { eol = { product = "ruby", cycle_parts = 2 } }
+
+[packages.php]
+monitors = { eol = { product = "php", cycle_parts = 2 } }
+
+[packages.mariadb]
+monitors = { eol = { product = "mariadb", cycle_parts = 2 } }
+
+[packages.nginx]
+monitors = { eol = { product = "nginx", cycle_parts = 2 } }
+
+[packages.httpd]
+monitors = { eol = { product = "apache-http-server", cycle_parts = 2 } }
 
 [packages.bash]
 monitors = { security = { vendor = "gnu", product = "bash" } }
@@ -103,64 +219,141 @@ foreground = "#ffffff"
 "comparable" = false
 
 ["packages"."cloud-hypervisor"]
-"comparable" = false
+compare = "cloud-hypervisor@commits"
+watch = ["cloud-hypervisor"]
 
 ["packages"."gcc16"]
 "track_label" = "16.x"
 
 ["packages"."go-github-campoy-embedmd-embedmd"]
-"comparable" = false
+compare = "go-github-campoy-embedmd-embedmd@commits"
+watch = ["go-github-campoy-embedmd-embedmd"]
+
+["packages"."go-github-campoy-embedmd-embedmd".monitors.security]
+ecosystem = "Go"
+name = "github.com/campoy/embedmd"
 
 ["packages"."go-github-charmbracelet-glamour"]
-"comparable" = false
+compare = "go-github-charmbracelet-glamour@commits"
+watch = ["go-github-charmbracelet-glamour"]
+
+["packages"."go-github-charmbracelet-glamour".monitors.security]
+ecosystem = "Go"
+name = "github.com/charmbracelet/glamour"
 
 ["packages"."go-github-charmbracelet-ssh"]
-"comparable" = false
+compare = "go-github-charmbracelet-ssh@commits"
+watch = ["go-github-charmbracelet-ssh"]
+
+["packages"."go-github-charmbracelet-ssh".monitors.security]
+ecosystem = "Go"
+name = "github.com/charmbracelet/ssh"
 
 ["packages"."go-github-charmbracelet-x"]
-"comparable" = false
+compare = "go-github-charmbracelet-x@commits"
+watch = ["go-github-charmbracelet-x"]
+
+["packages"."go-github-charmbracelet-x".monitors.security]
+ecosystem = "Go"
+name = "github.com/charmbracelet/x"
 
 ["packages"."go-github-docker-go-events"]
-"comparable" = false
+compare = "go-github-docker-go-events@commits"
+watch = ["go-github-docker-go-events"]
+
+["packages"."go-github-docker-go-events".monitors.security]
+ecosystem = "Go"
+name = "github.com/docker/go-events"
 
 ["packages"."go-github-go-task-slim-sprig-v3"]
-"comparable" = false
+compare = "go-github-go-task-slim-sprig-v3@commits"
+watch = ["go-github-go-task-slim-sprig-v3"]
+
+["packages"."go-github-go-task-slim-sprig-v3".monitors.security]
+ecosystem = "Go"
+name = "github.com/go-task/slim-sprig/v3"
 
 ["packages"."go-github-google-martian-v3"]
-"comparable" = false
+compare = "go-github-google-martian-v3@commits"
+watch = ["go-github-google-martian-v3"]
+
+["packages"."go-github-google-martian-v3".monitors.security]
+ecosystem = "Go"
+name = "github.com/google/martian/v3"
 
 ["packages"."go-github-googleapis-gax-go-v2"]
-"comparable" = false
+compare = "go-github-googleapis-gax-go-v2@commits"
+watch = ["go-github-googleapis-gax-go-v2"]
+
+["packages"."go-github-googleapis-gax-go-v2".monitors.security]
+ecosystem = "Go"
+name = "github.com/googleapis/gax-go/v2"
 
 ["packages"."go-github-jlaffaye-ftp"]
-"comparable" = false
+compare = "go-github-jlaffaye-ftp@commits"
+watch = ["go-github-jlaffaye-ftp"]
+
+["packages"."go-github-jlaffaye-ftp".monitors.security]
+ecosystem = "Go"
+name = "github.com/jlaffaye/ftp"
 
 ["packages"."go-github-minio-kms-go-kms"]
 "comparable" = false
 
 ["packages"."go-github-onsi-ginkgo-v2"]
-"comparable" = false
+compare = "go-github-onsi-ginkgo-v2@commits"
+watch = ["go-github-onsi-ginkgo-v2"]
+
+["packages"."go-github-onsi-ginkgo-v2".monitors.security]
+ecosystem = "Go"
+name = "github.com/onsi/ginkgo/v2"
 
 ["packages"."go-github-ryanuber-columnize"]
-"comparable" = false
+compare = "go-github-ryanuber-columnize@commits"
+watch = ["go-github-ryanuber-columnize"]
+
+["packages"."go-github-ryanuber-columnize".monitors.security]
+ecosystem = "Go"
+name = "github.com/ryanuber/columnize"
 
 ["packages"."go-github-segmentio-encoding-json"]
-"comparable" = false
+compare = "go-github-segmentio-encoding-json@commits"
+watch = ["go-github-segmentio-encoding-json"]
+
+["packages"."go-github-segmentio-encoding-json".monitors.security]
+ecosystem = "Go"
+name = "github.com/segmentio/encoding"
 
 ["packages"."go-github-stefanhaller-git-todo-parser"]
-"comparable" = false
+compare = "go-github-stefanhaller-git-todo-parser@commits"
+watch = ["go-github-stefanhaller-git-todo-parser"]
+
+["packages"."go-github-stefanhaller-git-todo-parser".monitors.security]
+ecosystem = "Go"
+name = "github.com/stefanhaller/git-todo-parser"
 
 ["packages"."go-github-syndtr-goleveldb"]
-"comparable" = false
+compare = "go-github-syndtr-goleveldb@commits"
+watch = ["go-github-syndtr-goleveldb"]
+
+["packages"."go-github-syndtr-goleveldb".monitors.security]
+ecosystem = "Go"
+name = "github.com/syndtr/goleveldb"
 
 ["packages"."go-github-xo-terminfo"]
-"comparable" = false
+compare = "go-github-xo-terminfo@commits"
+watch = ["go-github-xo-terminfo"]
+
+["packages"."go-github-xo-terminfo".monitors.security]
+ecosystem = "Go"
+name = "github.com/xo/terminfo"
 
 ["packages"."libiberty"]
 "track_label" = "16.x"
 
 ["packages"."mkosi"]
-"comparable" = false
+compare = "mkosi@commits"
+watch = ["mkosi"]
 
 ["packages"."python-opentelemetry-semantic-conventions"]
 "watch" = ["python-opentelemetry-semantic-conventions@prerelease"]
@@ -196,8 +389,15 @@ foreground = "#ffffff"
 "track_label" = "0.0.19"
 
 ["packages"."shim"]
-"comparable" = false
+compare = "shim@commits"
+watch = ["shim"]
 
 # TODO(drop): openRuyi SPECS/go-github-dmarkham-enumer has Name=enumer.
 # TODO(drop): openRuyi SPECS/python-annotated-types has Name=python-annotated_types.
 # TODO(drop): openRuyi SPECS/python-discord has Name=python-discord.py.
+
+[spec]
+extra_macro_packages = ["openruyi-linux-build"]
+
+[spec.local_sources]
+linux-lts-kmhv2 = ["series"]

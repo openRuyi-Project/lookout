@@ -22,6 +22,24 @@ def read(db):
     return read_cached(db)[0]
 
 
+def recover(db):
+    """Startup only: let SQLite roll back an interrupted transaction.
+
+    Readers remain mode=ro. A journal's existence does not prove it is hot;
+    SQLite owns that decision and its locking/recovery protocol. Never unlink
+    journals, create a missing database, or replace committed observations.
+    """
+    path = Path(db)
+    if not Path(str(path) + '-journal').exists():
+        return False
+    with writer_lock(path, timeout=10):
+        with closing(sqlite3.connect(path.resolve().as_uri() + '?mode=rw', uri=True, timeout=10)) as conn:
+            if conn.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+                raise ValueError('SQLite integrity check failed after journal recovery')
+        read(path)
+    return True
+
+
 def read_cached(db, previous=None):
     """Read one SQLite transaction, reusing payload only for its exact storage revision.
 
@@ -36,11 +54,15 @@ def read_cached(db, previous=None):
         exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshot_clock'").fetchone()
         clock = conn.execute('SELECT revision, build_checked_at FROM snapshot_clock WHERE id=1').fetchone() if exists else None
         revision, stamp = clock if clock else (None, None)
-        if previous and stamp is not None and revision is not None and previous[1] == revision:
-            snapshot = previous[0]
-        else:
+        reuse = bool(previous and stamp is not None and revision is not None and previous[1] == revision)
+        if not reuse:
             row = conn.execute('SELECT payload FROM snapshot WHERE id=1').fetchone()
-            snapshot = json.loads(row[0]) if row else empty()
+    # Payload and clock came from one transaction. Decode the captured text
+    # after closing it so CPU work cannot keep collectors waiting on a read lock.
+    if reuse:
+        snapshot = previous[0]
+    else:
+        snapshot = json.loads(row[0]) if row else empty()
     if stamp:
         snapshot = {**snapshot,
             'builds': {name: {tid: {**fact, 'fetched_at': stamp, 'attempted_at': stamp}
@@ -210,7 +232,7 @@ PHASE_FIELDS = {
                       'inventory', 'index', 'sources', 'builds', 'presentation')),
     'upstreams': frozenset(('tracks', 'native_ids', 'nv_digest', 'bindings')),
     'specs': frozenset(('specs', 'spec_interval_seconds')),
-    'monitors': frozenset(('monitors', 'monitor_catalog', 'monitor_stale_after_seconds')),
+    'monitors': frozenset(('monitors', 'monitor_catalog', 'monitor_stale_after_seconds', 'dependency_packages')),
     'builds': frozenset(('builds',)),
 }
 

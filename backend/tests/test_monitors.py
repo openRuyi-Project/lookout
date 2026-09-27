@@ -116,11 +116,11 @@ def test_new_monitor_uses_existing_runner_projection_and_api(config, snapshot, m
     assert fact["status"] == "ok"
     snapshot["monitors"] = {"binutils": {"newsignal": fact}}
     from tracker.api import create_app
-    from fastapi.testclient import TestClient
+    from conftest import ProjectedClient
 
     db = tmp_path / "state.db"
     state.commit(db, snapshot)
-    client = TestClient(create_app(db))
+    client = ProjectedClient(create_app(db))
     out = client.get("/api/v1/packages?maintenance=NewSignal").json()
     assert out["total"] == 1 and out["items"][0]["name"] == "binutils"
     assert out["maintenance_labels"] == {"NewSignal": 1}
@@ -159,10 +159,10 @@ def test_upgrade_monitor_never_runs_without_upgrade(config, snapshot, monkeypatc
     fact = monitor.check(config, snapshot, "binutils", "license", FixtureIO({}))
     snapshot["monitors"] = {"binutils": {"license": fact}}
     now = datetime.now(timezone.utc)
-    assert monitor_model.project(snapshot, "binutils", now)["summary"][0]["label"] == "LicenseChange"
+    assert monitor_model.project(snapshot, "binutils", now)["summary"][0]["label"] == "License"
     snapshot['tracks']['binutils']['error'] = 'timeout'
     assert monitor_model.project(snapshot, "binutils", now)["summary"] == [
-        {'label': 'LicenseChange', 'count': 1, 'stale': True}]
+        {'label': 'License', 'count': 1, 'stale': True}]
     snapshot['tracks']['binutils']['error'] = None
     snapshot['tracks']['binutils']['version'] = '3.11.0'
     assert monitor_model.project(snapshot, "binutils", now)["summary"] == []
@@ -191,12 +191,12 @@ def test_monitor_contract_rejects_unsafe_and_redundant_identifiers():
 
 
 def test_buildsystem_configuration_not_frontend_categories(snapshot, tmp_path):
-    from fastapi.testclient import TestClient
+    from conftest import ProjectedClient
     from tracker.api import create_app
     snapshot['specs']['binutils'] = {'metadata': {'name': 'binutils', 'buildsystem': 'new-buildsystem'}}
     snapshot['specs']['foo3'] = {'metadata': {'name': 'foo3', 'buildsystem': None}}
     snapshot['presentation'] = {'buildsystems': {'new-buildsystem': {'background': '#123456', 'foreground': '#ffffff'}}}
-    db = tmp_path/'state.db';state.commit(db, snapshot);client = TestClient(create_app(db))
+    db = tmp_path/'state.db';state.commit(db, snapshot);client = ProjectedClient(create_app(db))
     result = client.get('/api/v1/packages?buildsystem=new-buildsystem').json()
     assert result['total'] == 1 and result['items'][0]['buildsystem'] == 'new-buildsystem'
     assert result['presentation'] == snapshot['presentation']
@@ -219,7 +219,7 @@ def test_real_license_adapter_compares_same_pair_and_requires_spdx():
     io = FixtureIO({'/1.0/': {'info': {'license_expression': 'MIT'}},
                     '/2.0/': {'info': {'license_expression': 'Apache-2.0'}}})
     result = monitor_license.check(subject, {'pypi': 'fixture'}, io)
-    assert result['findings'][0]['label'] == 'LicenseChange'
+    assert result['findings'][0]['label'] == 'License'
     assert result['findings'][0]['target_version'] == '2.0'
     io.responses['/2.0/']['info']['license_expression'] = 'mit'
     assert monitor_license.check(subject, {'pypi': 'fixture'}, io)['findings'] == []
@@ -324,7 +324,7 @@ def test_security_snapshot_version_is_not_silently_coerced():
 
 def test_facets_follow_search_other_filter_and_view_not_pagination(snapshot, tmp_path):
     from tracker.api import create_app
-    from fastapi.testclient import TestClient
+    from conftest import ProjectedClient
 
     for name, buildsystem, labels in [
         ("binutils", "cmake", ["EOL"]),
@@ -345,7 +345,7 @@ def test_facets_follow_search_other_filter_and_view_not_pagination(snapshot, tmp
         }
     db = tmp_path / "state.db"
     state.commit(db, snapshot)
-    client = TestClient(create_app(db))
+    client = ProjectedClient(create_app(db))
     out = client.get("/api/v1/packages?buildsystem=cmake&maintenance=EOL&per_page=1&page=2").json()
     assert out["total"] == 1 and out["items"][0]["name"] == "binutils"
     assert out["maintenance_labels"] == {"EOL": 1, "Security": 1}

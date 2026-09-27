@@ -1,7 +1,7 @@
 from copy import deepcopy
 from urllib.parse import parse_qs, urlsplit
 
-from fastapi.testclient import TestClient
+from conftest import ProjectedClient
 import pytest
 from pydantic import ValidationError
 
@@ -23,7 +23,7 @@ def add_evidence(snapshot, name='binutils', mid='external_signature', *, status=
 def client_for(snapshot, tmp_path):
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
-    return TestClient(create_app(db)), db
+    return ProjectedClient(create_app(db)), db
 
 
 def test_new_monitor_uses_existing_document_primitives(snapshot, tmp_path):
@@ -46,33 +46,88 @@ def test_new_monitor_uses_existing_document_primitives(snapshot, tmp_path):
     assert db.read_bytes() == original
 
 
-def test_display_counts_and_links_use_same_intersection_as_data_api(snapshot, tmp_path):
+def test_security_list_shows_every_identifier_once_without_full_evidence(snapshot, tmp_path):
+    add_evidence(snapshot, mid='security')
+    snapshot['monitor_catalog']['security']['title'] = 'Security'
+    observed = snapshot['monitors']['binutils']['security']
+    observed['findings'] = [monitor_model.finding(f'advisory-{i}', 'Security', f'CVE-2026-{1000 + i}',
+        [monitor_model.evidence('Long provider explanation', 'detail only', 'OSV', 'https://example.org/')],
+        f'https://example.org/{i}', tags=['KEV'] if i == 0 else []) for i in range(8)]
+    client, _ = client_for(snapshot, tmp_path)
+    document = client.get('/api/ui/packages?monitor=security').json()
+    cell = document['table']['rows'][0]['cells'][1]
+    assert len(cell['lines']) == 1  # generic wrapping values, not eight tall rows
+    assert [v['text'] for v in cell['lines'][0]] == [
+        f'CVE-2026-{1000 + i}' + (' · KEV' if i == 0 else '') for i in range(8)]
+    assert [v['href'] for v in cell['lines'][0]] == [f'https://example.org/{i}' for i in range(8)]
+    assert 'detail only' not in str(document) and 'advisories' not in str(document)
+    overview = client.get('/api/ui/packages').json()
+    assert 'CVE-2026-' not in str(overview)
+    assert 'Security 8' in str(overview)
+
+
+def test_security_retained_identifiers_have_one_freshness_marker():
+    entries = [dict(id=str(i), title=f'CVE-2026-{i}', evidence_url='https://example.org/',
+                    stale=i == 1, tags=[]) for i in range(2)]
+    result = dict(id='security', data=dict(entries=entries, finding_count=2))
+    lines = presentation.evidence_cells({}, result, presentation.Links())[0].lines
+    assert [value.text for value in lines[0]] == ['CVE-2026-0']
+    assert [value.text for value in lines[1]] == ['Out of date', 'CVE-2026-1']
+    query = parse_qs(urlsplit(lines[1][0].href).query)
+    assert query['monitor'] == ['security']
+    assert query['freshness'] == ['retained']
+
+
+def test_focused_display_discards_filters_without_visible_controls(snapshot, tmp_path):
     add_evidence(snapshot, 'foo3')
     client, _ = client_for(snapshot, tmp_path)
     query = 'monitor=external_signature&build=rva20:issues&section=results'
-    facts = client.get('/api/v2/packages?' + query).json()
+    facts = client.get('/api/v2/packages?monitor=external_signature&section=results').json()
     page = client.get('/api/ui/packages?' + query).json()
     assert page['total'] == facts['total'] == 1
     assert [r['key'] for r in page['table']['rows']] == [p['name'] for p in facts['items']]
     controls = page['controls']
-    build = next(f for f in controls['facets'] if f['id'] == 'build-rva20')
-    assert {o['value'].split(':')[1]: o['count'] for o in build['options'][1:]} == {
-        o['value']: o['count'] for o in facts['build_statuses']['rva20']}
+    assert not any(facet['name'] in ('build', 'maintenance') for facet in controls['facets'])
     for choice in page['navigation']['choices']:
-        assert parse_qs(urlsplit(choice['href']).query)['build'] == ['rva20:issues']
-    removal = controls['active'][0]
-    assert 'build' not in parse_qs(urlsplit(removal['href']).query)
+        assert 'build' not in parse_qs(urlsplit(choice['href']).query)
+    assert not any('rva20' in choice['label'] for choice in controls['active'])
 
 
 def test_no_evidence_and_failed_check_are_not_reported_as_success(snapshot, tmp_path):
     snapshot['monitor_catalog'] = {'new': {'title': 'New check'}}
     client, _ = client_for(snapshot, tmp_path)
     results = client.get('/api/ui/packages?monitor=new').json()
-    coverage = client.get('/api/ui/packages?monitor=new&section=coverage').json()
+    assert client.get('/api/ui/packages?monitor=new&section=coverage').json() == results
+    coverage = client.get('/api/ui/packages?monitor=new&check=pending').json()
     assert results['total'] == 0
     assert coverage['total'] == 5
-    assert all(row['cells'][1]['lines'][0][0]['text'] == 'Not yet checked' for row in coverage['table']['rows'])
-    assert [c['title'] for c in coverage['table']['columns']] == ['Package', 'Check', 'Last checked']
+    assert [c['title'] for c in coverage['table']['columns']] == ['Package', 'Version']
+    versions = {row['key']: row['cells'][1]['lines'][0][0]['text'] for row in coverage['table']['rows']}
+    assert versions == {name: source['version'] or '—' for name, source in snapshot['sources'].items()}
+
+
+@pytest.mark.parametrize('monitor', ['version', 'external_signature'])
+def test_filtered_checks_show_source_version_and_specific_error(snapshot, tmp_path, monitor):
+    add_evidence(snapshot, mid='external_signature', status='error')
+    snapshot['monitors']['binutils']['external_signature']['error'] = 'provider HTTP 503'
+    snapshot['tracks']['binutils']['error'] = 'provider HTTP 503'
+    client, _ = client_for(snapshot, tmp_path)
+    document = client.get(f'/api/ui/packages?monitor={monitor}&check=failed').json()
+    assert [c['title'] for c in document['table']['columns']] == ['Package', 'Version', 'Reason']
+    row = next(row for row in document['table']['rows'] if row['key'] == 'binutils')
+    assert [value['text'] for cell in row['cells'][1:] for line in cell['lines'] for value in line] == [
+        snapshot['sources']['binutils']['version'], 'provider HTTP 503']
+    assert 'Failed' not in str(document['table'])
+    assert '3.10.0' not in str(row)  # a retained upstream target is not the current source
+
+
+def test_uncovered_rows_do_not_repeat_filter_or_empty_timestamps(snapshot, tmp_path):
+    client, _ = client_for(snapshot, tmp_path)
+    document = client.get('/api/ui/packages?monitor=version&check=uncovered').json()
+    assert [c['title'] for c in document['table']['columns']] == ['Package', 'Version']
+    versions = {r['key']: r['cells'][1]['lines'][0][0]['text'] for r in document['table']['rows']}
+    assert versions == {'untracked': '1.0', 'unknown': '—'}
+    assert 'Not configured' not in str(document['table'])
 
 
 def test_build_semantics_are_projected_not_reinterpreted_in_website(snapshot):
@@ -130,16 +185,22 @@ def test_document_contract_rejects_ragged_tables_and_unknown_markup():
         Cell.model_validate({'lines': [], 'html': '<script>alert(1)</script>'})
 
 
-@pytest.mark.parametrize('query', ['monitor=not-registered', 'check=ok', 'page=-2', 'build=absent:failed'])
+@pytest.mark.parametrize('query', ['monitor=not-registered', 'page=-2', 'build=absent:failed'])
 def test_display_and_data_routes_share_validation(snapshot, tmp_path, query):
     client, _ = client_for(snapshot, tmp_path)
     assert client.get('/api/ui/packages?' + query).status_code == 422
     assert client.get('/api/v2/packages?' + query).status_code == 422
 
 
+def test_overview_ignores_a_check_filter_without_a_monitor(snapshot, tmp_path):
+    client, _ = client_for(snapshot, tmp_path)
+    assert client.get('/api/ui/packages?check=ok').json() == client.get('/api/ui/packages').json()
+    assert client.get('/api/v2/packages?check=ok').status_code == 422
+
+
 def test_empty_build_choices_from_browser_are_noop(snapshot, tmp_path):
     client, _ = client_for(snapshot, tmp_path)
-    page = client.get('/api/ui/packages?build=rva23:&build=rva20:issues').json()
+    page = client.get('/api/ui/packages?build=rva23:&build=rva20:failed').json()
     assert page['total'] == 1
 
 
@@ -188,6 +249,30 @@ def test_query_fact_does_not_turn_an_unrelated_monitor_into_security(snapshot):
     assert section.fields[0].values[0].text == 'artifact'
 
 
+def test_build_reasons_keep_their_target_and_flavor_without_expanding_homepage(snapshot):
+    snapshot['builds']['binutils']['rva23'].update(raw_status='unresolvable', details='nothing provides ebtables')
+    snapshot['builds']['binutils']['rva20'].update(raw_status='building', details='worker://private-host')
+    snapshot['builds']['foo3:tools']['rva20'].update(raw_status='blocked', details='waiting for toolkit')
+    packages = {p['name']: p for p in view.project_monitors(snapshot)[0]}
+    build = packages['binutils']['monitors']['build']
+    section = presentation.build_sections(build, presentation.Links())[0]
+    assert section.table.rows[0].cells[1].lines[1][0].text == 'nothing provides ebtables'
+    assert len(section.table.rows[1].cells[1].lines) == 1
+    assert 'worker://' not in section.model_dump_json()
+    assert 'nothing provides' not in str(presentation.build_cells(packages['binutils'], build, presentation.Links()))
+    multiple = presentation.build_sections(packages['foo3']['monitors']['build'], presentation.Links())[0]
+    assert [r.key for r in multiple.table.rows if 'waiting for toolkit' in r.model_dump_json()] == ['rva20:foo3:tools']
+
+
+def test_references_share_one_field_but_keep_distinct_fix_links():
+    urls = ['https://example.org/commit/abcdef0123456789', 'https://example.org/commit/123456abcdef']
+    facts = [monitor_model.evidence('FIX', url, 'OSV', url, code='reference') for url in urls]
+    result = presentation.fact_fields([*facts, facts[0]])
+    assert len(result) == 1 and result[0].label == 'References'
+    assert [v.href for v in result[0].values] == urls
+    assert [v.text for v in result[0].values] == ['Fix · abcdef012345', 'Fix · 123456abcdef']
+
+
 def test_upgrade_context_does_not_require_a_named_frontend_monitor(snapshot):
     add_evidence(snapshot)
     pkg = view.project_monitors(snapshot)[0][0]
@@ -196,7 +281,8 @@ def test_upgrade_context_does_not_require_a_named_frontend_monitor(snapshot):
     rendered = presentation.evidence_cells(pkg, result, presentation.Links())[0]
     assert rendered.lines[0][0].text == pkg['monitors']['version']['data']['current']
     section = presentation.evidence_section(result, presentation.Links())[0]
-    assert section.entries[0].fields[0].values[0].text == '3.10.0'
+    assert next(f for f in section.fields if f.label == 'Target').values[0].text == '3.10.0'
+    assert all(f.label != 'Target' for entry in section.entries for f in entry.fields)
 
 
 def test_watch_failure_does_not_replace_primary_version(snapshot):
@@ -295,7 +381,8 @@ def test_compact_labels_do_not_hide_different_cve_subjects(snapshot):
     section = presentation.evidence_section(result, presentation.Links())[0]
     assert [f.label for f in section.entries[0].fields] == ['KEV', 'KEV · CVE-2026-1001']
     assert [v.text for v in section.entries[0].heading] == ['CVE-2026-1000']
-    assert section.fields[-1].values[0].text == 'Previous observation'
+    assert section.fields == []
+    assert section.title.endswith(' · Out of date')
 
 
 def test_meaningful_release_line_is_not_lost_with_redundant_track(snapshot):
@@ -339,7 +426,7 @@ def test_monitor_data_contract_is_discriminated_by_kind(snapshot):
             model.model_validate(broken)
         schema = model.model_json_schema()['properties']['data']
         assert schema['discriminator']['propertyName'] == 'kind'
-        assert set(schema['discriminator']['mapping']) == {'source', 'version', 'build', 'evidence'}
+        assert set(schema['discriminator']['mapping']) == {'source', 'version', 'build', 'evidence', 'requires'}
 
 
 def test_spec_link_uses_the_path_as_its_only_label(snapshot):

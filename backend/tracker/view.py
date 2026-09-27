@@ -1,7 +1,7 @@
 """Read-only package composition and the published v1 compatibility projection."""
 from datetime import datetime, timezone
 from urllib.parse import quote
-from . import state, monitor_model, monitor_views, version_status
+from . import state, monitor_model, monitor_views, requirements, version_status
 from .monitor_views import observed_at, component_ttl
 
 
@@ -36,6 +36,8 @@ def next_transition(snapshot, now):
     for providers in snapshot.get('monitors', {}).values():
         for fact in providers.values():
             observe(fact, snapshot.get('monitor_stale_after_seconds', 86400))
+            for scope in fact.get('scope_checks', {}).values():
+                observe(scope, snapshot.get('monitor_stale_after_seconds', 86400))
     changes = (state.next_stale_change({'fetched_at': stamp}, now, lifetime) for stamp, lifetime in checks)
     return min((change for change in changes if change is not None), default=None)
 
@@ -46,12 +48,15 @@ def project_monitors(snapshot, now=None):
         flavors.setdefault(owner, []).append(name)
     modules = monitor_views.registry(snapshot)
     versions = version_status.evaluate_all(snapshot, now)
+    resolver = requirements.Resolver(snapshot, now)
     rows = []
     for name in sorted(snapshot['sources'], key=lambda n: (n.casefold(), n)):
         version = versions[name]
         context = monitor_views.Context(snapshot, name, now, version, flavors.get(name, [name]),
-                                        monitor_model.project(snapshot, name, now, version=version))
+                                        monitor_model.project(snapshot, name, now, version=version), resolver)
         results = {module.id: module.read(context) for module in modules}
+        monitor_views.compose_version(results, version)
+        monitor_views.retained_dimensions(results)
         rows.append(dict(name=name, detail_url=f'/packages/{quote(name, safe="")}', monitors=results))
     return rows, collection(snapshot, rows, now)
 
@@ -97,7 +102,7 @@ def legacy_package(row):
     """Published v1 clients retain their field names; all semantics come from monitors."""
     modules = row['monitors']
     source, version, build = (modules[k]['data'] for k in ('source', 'version', 'build'))
-    evidence = [r for r in modules.values() if r['data']['kind'] == 'evidence']
+    evidence = [r for r in modules.values() if r['data']['kind'] in ('evidence', 'requires')]
     findings = [f for r in evidence for f in r['data']['findings']]
     return dict(name=row['name'], detail_url=row['detail_url'], current=source['version'],
                 obs_version=source['obs'].get('version'), latest=version['latest'], relation=version['relation'],
@@ -109,7 +114,7 @@ def legacy_package(row):
                 last_known_relation=version['last_known_relation'], watch=version['watch'],
                 spec={k: source[k] for k in ('metadata', 'source_path', 'source_url', 'changelog', 'head', 'error')},
                 buildsystem=source['buildsystem'], buildsystem_status=source['buildsystem_status'],
-                maintenance=monitor_model.summarize(findings), maintenance_findings=findings,
+                maintenance=[label for r in evidence for label in r['data']['labels']], maintenance_findings=findings,
                 monitor_checks=[dict(monitor=r['id'], **{k: v for k, v in r['check'].items() if k != 'stale'})
                                 for r in evidence if 'checked_at' in r['check']])
 

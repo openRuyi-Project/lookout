@@ -25,29 +25,68 @@ collector/adapter → owned snapshot fields → Monitor.read(Context)
 | Responsibility | Location | Contract |
 |---|---|---|
 | Read stored facts | `monitor_views.Monitor` | Pure `project(Context)` returns `check`, typed `data`, and filter `dimensions`. |
+| Prepare for reads | `read_model.ProjectionCache` | One background producer builds rows and the filter index, then publishes them together. HTTP reads never project the full snapshot. |
 | Version decision | `version_status` | One RPM-based decision, also consumed by upgrade monitors. |
 | Filter/count | `package_list.PackageList` | Intersect monitor dimensions once; each facet excludes only its own selection. |
-| HTTP schema | `api` | OpenAPI generates `api.generated.ts`; summary omits histories and full findings. Focused evidence lists include a bounded preview and total finding count. |
+| HTTP schema | `api` | OpenAPI generates `api.generated.ts`; summary omits histories and full findings. Focused lists contain all compact identifiers and requirements for the requested package page, not provider fact bodies. |
 | Reading adapters | `presentation.PRESENTERS` | Source/version/build/evidence -> fields, tables, entries and links. No IO, HTML or CSS. |
 | Display contract | `presentation_model` | Bounded, typed, non-recursive documents; OpenAPI generates TypeScript. No stored copy. |
 | Website | `frontend/src/components/document/` | Values, fields, tables, navigation and facets. No monitor IDs or provider payload types. |
 | Page composition | `frontend/src/pages/` | Responsive layout of documents; monitor selection is navigation separate from filters. |
 
-The payload kinds are `source`, `version`, `build`, and `evidence`. They retain
+The payload kinds are `source`, `version`, `build`, `requires`, and `evidence`. They retain
 domain-specific structure rather than stringify build matrices or source history
 into generic prose. Every monitor contributes to check-status filtering; existing
 build, version and maintenance facets consume the same package rows.
 
-The website opens a monitor's **Results** view. Evidence monitors list only
-packages with recorded findings; source, version and build retain their own table
-shape. **Coverage** lists collection status and last check time, including packages
-without a result. An empty Results view is not a successful coverage claim.
-Both views use the same query dimensions and global filter context; check-status
-counts describe coverage, not just packages with findings. Direct v2 API requests
+The website opens **Results** for monitors with a standalone result presenter.
+Evidence monitors list only packages with recorded findings; Version and Build
+answer different reading questions with their own table shapes. Coverage rows
+list collection status and last check time, including packages without a result.
+An empty Results view is not a successful coverage claim. The shared check index
+provides two clickable groups for every monitor: `uncovered` (`not_configured`,
+`unsupported`) and `failed` (`error`). They count packages in the active search
+and page-supported facet intersection, never findings or OBS build failures.
+Pending, stale, partial, changed-input and inapplicable checks keep their precise
+status in the detail's **Checks** section and exact-status links; these two groups
+are not a complete coverage-rate denominator. There is no all-Checks homepage tab.
+Direct v2 API requests
 default to coverage for compatibility; use `section=results` explicitly.
 
-Monitor navigation and linked facet choices are derived on the read side from the
-same package index. The UI API defaults to Results; the fact API retains Coverage.
+Monitor navigation is a reading policy, not a copy of the backend registry. A
+`Presenter` always supplies detail sections; optional `columns` and `cells` give
+it `has_results` and a main navigation entry. Source supplies package context, not
+a second version table, so it has neither a Results table nor a default tab.
+Existing UI `monitor=source` links remain valid and normalize to Source coverage,
+including source check filters. The v2 catalog and Source data are unchanged.
+Do not add a generic filler table merely to give every backend module a tab: a
+standalone result view needs its own reading question.
+
+A page's topic can combine related observations without combining collectors.
+Version annotations reuse the validated current Security/Yanked evidence and
+matching upgrade evidence; Requires contributes actual dependency changes, not
+unchanged requirements or current unmet status alone. The owning monitor keeps
+full facts and independent scheduling. Security still checks the current release
+when it is already latest; provider matches do not establish local patch status.
+Stable monitor IDs drive related filters, not display labels. The Version page
+uses compact labels; Security exposes advisory IDs, Requires dependency rows.
+Yanked is a Version annotation rather than a separate primary navigation item.
+Detail labels point to the existing evidence sections rather than copy them.
+Use the same category name in summaries, controls and findings. Read projections
+normalize historical `LicenseChange`/`SecurityReview` to `License`/`Security`,
+including saved filter URLs, without rewriting stored evidence. Distinct signals
+such as KEV remain separate.
+
+Build system is one global sidebar selector, preserved across monitor changes and
+search. Its counts use the current topic/search intersection, excluding only the
+selected Build system. The always-visible rail and package badges share one
+`buildsystem:<value>` appearance from operator configuration. Selected rail links
+use that same color for their stroke and a pale background, not a second palette.
+Topic-specific filters never leak to other pages. EOL is
+last in the monitor navigation; collection Checks remain last on package details.
+
+Linked facet choices come from the same package index. The UI API defaults to
+Results when available; the fact API retains its existing Coverage default.
 The website forwards the query to the API and submits one GET form immediately
 on selection. It does not reproduce filter validation, matching or counting.
 
@@ -92,7 +131,7 @@ plugin loader or separate service is needed.
 | `TITLE` | Optional display title; defaults to the registry ID. Published with observations, never inferred from a finding label. |
 | `VERSION` | Positive interpretation version. Change it when the same inputs would mean different facts; not for every code edit. |
 | `HOSTS` | Set of exact provider HTTPS hostnames. Scoped IO rejects other hosts, credentials, redirects and nonstandard ports. |
-| `SCOPE` | Optional `current` (default) or `upgrade`. Upgrade jobs only run when the same saved version decision used by the UI is `outdated`. |
+| `SCOPE` | Optional `current` (default), `upgrade`, or `current_and_upgrade` (Requires). Upgrade-only jobs require the saved version decision used by the UI to be `outdated`; Requires always checks the current release and optionally its confirmed upgrade. |
 | `inputs(package, configured)` | Pure function; return a JSON-compatible dict, or `None` when no reliable identity exists. No network, filesystem or subprocess work. |
 | `query_subject(subject, inputs)` | Optional pure dependency projection for `check()`. Defaults to the entire subject; omit only fields that cannot affect the result. |
 | `refresh(subject, inputs, previous)` | Optional pure function returning `schedule.Schedule`; default is a six-hour recheck. It may use prior facts and current inputs, but performs no IO. |
@@ -111,6 +150,12 @@ request deduplication and the operator proxy. A monitor does not create its own
 HTTP client, load global configuration, read the snapshot or write state. The
 optional fixed cve-bin-tool adapter is a separately constrained subprocess, not
 a general executable path available in configuration.
+
+A provider may pass `min_interval=1.0` to space network requests to its host across
+workers and monitors. Cache hits do not consume that budget. HTTP 429/503 pauses
+further requests to that host for the current batch (at least 60 seconds, or the
+longer `Retry-After`); other hosts continue. The normal retry schedule remains in
+charge of later batches. This is not a cross-process quota: run one collector.
 
 ## Facts and failure
 
@@ -215,11 +260,14 @@ A normal collector invocation without `--due` remains an explicit full check. No
 
 ## Executable example and acceptance
 
-[The Yanked example](../backend/tests/fixtures/monitor_yanked.py) reads the current
-release's file observations from the [PyPI JSON API](https://docs.pypi.org/api/json/).
-It emits a fact only if all observed release files are yanked. Missing fields fail;
-an empty file list is unsupported. This is an offline porting fixture, **not an
-enabled production monitor or a claim of live coverage**.
+[The Yanked adapter](../backend/tracker/monitor_yanked.py) reads the current
+release's `info.yanked` assertion from the [PyPI JSON API](https://docs.pypi.org/api/json/).
+It does not infer release withdrawal from a subset of files. A missing assertion
+is unsupported, not false. `release_metadata` adapts PyPI and crates.io release
+facts for License and Yanked. Requires backends reuse the same provider transport.
+One crates.io project response serves current/target versions, multiple packaged
+release lines, and all three monitors; no extra HTTP client is needed. Crate
+identity comes from reviewed nvchecker entries, never the RPM name.
 
 [test_monitor_porting.py](../backend/tests/test_monitor_porting.py) registers it
 through the existing registry and runs the actual heartbeat, scoped IO, SQLite
@@ -263,22 +311,153 @@ binary ABI, repository-only health or human dispositions need their own explicit
 inputs before they can be truthfully attached. Do not fetch hidden prerequisites
 inside the renderer or bypass the source gate to make a port appear covered.
 
+## Add a dependency-constraint backend
+
+**Requires is a domain, not a Python monitor.** Its page presents upstream runtime
+requirements, including non-Python libraries. Providers own declarations for exact
+upstream releases; comparators interpret version syntax; Source supplies only the
+current local dependency version used for assessment. A SPEC dependency list is
+not substituted for upstream declarations. Build-toolchain facts retain their
+`build` kind and are not presented as runtime requirements.
+
+1. Implement `inputs(package, configured)` and `read(version, settings, io)` in
+   a trusted backend module. Return `Requirement` values: stable dependency ID,
+   display name, build/runtime kind, comparison scheme, original declaration,
+   normalized comparison value, source and URL, plus reviewed ecosystem identity,
+   conditions and extras when present. Register it in
+   `monitor_requires.BACKENDS`; do not add a new top-level monitor for each language.
+2. Reuse a comparator in `requirement_versions.COMPARATORS`. If the syntax is new,
+   add and test its isolated comparator. `pep440` uses packaging;
+   `rpm_version` uses native RPM VERSION ordering and rejects Epoch/Release and
+   capability expressions it cannot establish. Unsupported syntax stays unknown.
+3. The read projection builds an identity index from reviewed native rules and
+   resolves a dependency only when one source package matches. Missing or ambiguous
+   matches remain unknown. Use `[openruyi.dependencies]` for reviewed exceptions,
+   not a mandatory per-package allowlist. Do not infer identities from RPM names
+   or put package-name mappings in Python or Astro.
+4. Test current-only, upgrade-only, changed/unchanged declarations, missing metadata,
+   real comparison semantics, stale dependency observations, ambiguous identities,
+   conditions/extras, and a non-Python runtime through the same API and presenter.
+   Shared comparison code must not branch on dependency names.
+
+`requires_pypi` reads exact-release `Requires-Python` and `Requires-Dist` declarations.
+Environment markers and extras stay attached to their clauses; they are not
+evaluated on the collector host, and conditional assessments remain unknown.
+Unsupported declarations and absent metadata are not an empty dependency set.
+`requires_cratesio` reads Cargo's
+`rust-version`, a minimum build-toolchain version. `numeric_minimum` compares bare
+numeric releases; RPM suffixes and prereleases remain unknown rather than being
+silently stripped. The API preserves the original bare declaration and comparison
+scheme; numeric runtime minimums can be formatted as ≥ without claiming Cargo's
+compiler is a runtime dependency. These backends do not claim full dependency
+coverage, installed artifact compatibility, RPM capability resolution or a solver graph.
+
+Requires uses `SCOPE = 'current_and_upgrade'`: the current release is independently
+observable without an available upgrade. An optional confirmed target is checked
+separately. Each release keeps its own check status and successful-check timestamp;
+a failed target check must not make a successful current observation disappear.
+Unchanged observations refresh check time while retaining `changed_at` and a stable
+`evidence_revision`. A dependency version change re-assesses the saved declaration
+without polling its provider or rewriting its evidence.
+
+The `requires` fact API exposes optional current/target constraints, their sources,
+the resolved package, comparison scheme and dated local source observation.
+`satisfaction` assesses the current declaration; `target_satisfaction` assesses the
+target independently. A missing side is unknown, not proof of an added or removed
+dependency. Only two observed, fresh, unequal declarations establish `changed`.
+
+The website shows **Requires**, dependency, current requirement with ✓/✗/?, and
+current local source version. A changed pair appends → target requirement with its
+own mark. Current-only rows do not invent a version pair; upgrade-only rows say
+**Upgrade:** explicitly. These marks establish only a version-constraint result,
+not build compatibility or installed artifacts. Generic document primitives render
+the result; no provider- or Requires-specific Astro/JavaScript logic is needed.
+
+Adapters classify optional feature dependencies through `optional`; this is not
+an evaluation of platform applicability. Unclassified legacy observations retain
+`None`. The list separates Runtime and Optional, while complete condition
+expressions remain in the detail's closed Dependency conditions section and raw
+API. Equal assessments under different conditions share one summary; identity,
+constraints, source URLs, extras and observations must still match.
+
+`mapping` is independent of satisfaction. Missing or ambiguous identity mappings
+are not proof of an unpackaged dependency. **Not packaged** requires an explicit
+mapping whose target is absent from a fresh, successful inventory; unavailable
+inventory or source versions remain unknown. No missing mapping creates an Unmet
+result by itself.
+
+The linked **All / Unmet / Changes / Uncovered / Failed** navigation uses
+`PackageList` intersections and stays the same in result and coverage views.
+`requires=unmet` means at least one explicitly unsatisfied **current runtime**
+requirement; target-only failures and unknown current assessments do not qualify.
+`requires=changes` selects observed changed runtime pairs. Packages count once,
+even with several matching requirements. Website choices share the search and
+Build system context; choosing coverage clears the requirement filter so an
+unobserved package is not required to already have an unmet observation. The v2
+API publishes `requires_counts` and retains unrestricted filter combinations;
+these optional query fields do not change v1.
+
+## Measure coverage
+
+Keep four counts separate: packages with reviewed identity, currently eligible
+checks, successful checks (including zero findings), and findings. Upgrade-only
+License does not run without a confirmed upgrade; Requires still checks the
+current release and keeps current/upgrade coverage separate. Unknown input,
+missing provider fields and network failures are separate from no finding. A new
+backend must improve these counts on the same snapshot without changing version
+rules or treating a missing assertion as false. EOL uses explicit product/cycle
+data in `tracker.toml`; its applicable population is not the whole registry.
+
 ## Change a layout or introduce a new payload kind
 
 For a different homepage arrangement, change the document components/page layout.
 For a different selection of facts, change the pure presenter. Keep filtering and
 counting in `PackageList`; the website does not normalize or interpret dimensions.
 The default overview keeps Version and per-target Build columns, BuildSystem beside
-the name and evidence labels below it. A monitor's Results view shows its relevant
-columns; Coverage shows observed check states. Every filter remains visible and
-updates the shared context immediately. Changing focus resets only its check
-condition, not unrelated facets.
+the name and evidence labels below it. A monitor with result columns shows them
+in Results; a context-only monitor has Coverage instead. Controls belong to the
+reading form: Overview offers Build and Maintenance filters, Build results offer
+three single-choice target rows (combined across targets), Version offers
+All/Updates and inline Related choices, and Requires offers All/Unmet/Changes.
+Overview keeps target dropdowns. Only OBS statuses appear in these controls;
+the legacy `issues` fact-API alias is not a UI state.
+Coverage offers only search, Build system, and exact check-status deep links.
+All focused monitors expose Uncovered and Failed without a redundant all-Checks
+tab. These count missing identity/metadata and check errors, respectively, not
+zero findings or build failures.
+
+Out of date links select `freshness=retained`: packages with visible old evidence,
+not every failed check or hidden watch observation. Membership is projected after
+Version composition and indexed alongside other dimensions. Counts and row links
+use that same membership; a failed check without prior evidence is not retained.
+
+Switching monitor or mode preserves only filters the destination can display;
+the UI API applies the same rule to directly entered URLs before selection.
+Search, Build system and page size remain shared. The v2 fact API still supports
+cross-monitor filter combinations for external consumers. Do not implement a
+second query policy in Astro or hide active filters in opaque links.
+Visible selectors expose their selected value and an All choice; do not duplicate
+these as removable chips. Exact check-status deep links retain an indicator when
+there is no matching selector. Search submits the full GET form even without
+JavaScript; JavaScript only adds immediate select submission.
+
+The renderer uses column roles, not monitor IDs, to keep build matrices scrollable
+while simple tables reflow on narrow screens. A single pagination component uses
+the server-provided links at both ends of multipage results; one-page results
+need only the final count. No frontend filter arithmetic or router state is added.
 
 Detail documents contain primary sections and supporting context. Both remain
 visible: build results and evidence in the main column, package information in the
-side column, with checks and changelog below. Normal version/track identifiers
+side column, with checks and changelog below. Source still supplies package
+metadata, the SPEC link, build-system identity and changelog, and keeps its own
+dated Checks row even though it is absent from the default rail. Normal version/track identifiers
 already expressed by the heading do not create another section. Do not turn an
 absence of duplication into extra disclosure clicks.
+
+Build's focused list places brief OBS reasons under their target status, with
+links to complete details. Flavor-specific reasons keep their flavor identity;
+the overview remains compact. Status matrices use the same generic table
+renderer, which allocates readable columns from column roles, not monitor IDs.
 
 Use the existing `evidence` payload for sourced assertions. A genuinely different
 shape (like Build's target/flavor matrix) requires a typed payload in `api`, its

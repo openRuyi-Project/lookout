@@ -7,6 +7,13 @@ import re
 from urllib.parse import unquote, urlsplit
 
 
+def from_package(package):
+    release = package.get('source_release')
+    if release:
+        return {key: release[key] for key in ('ecosystem', 'name')}
+    return from_native(package.get('identity') or {})
+
+
 def from_native(entry):
     if entry.get('source') == 'pypi' and entry.get('pypi'):
         return {'ecosystem': 'PyPI', 'name': entry['pypi']}

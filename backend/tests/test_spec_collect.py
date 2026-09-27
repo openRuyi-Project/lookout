@@ -90,6 +90,31 @@ def test_disabled_source_returns_unchanged():
     assert collector.refresh_specs(cfg, old, ['bash'], {}, 'now') is old
 
 
+def test_configured_inputs_are_loaded_without_package_specific_code(config, monkeypatch):
+    config['spec'].update(macro_package='base', extra_macro_packages=['extra'], local_sources={'bash': ['series']})
+    macro = ({'path': 'extra/macros', 'sha256': 'fixture'}, b'macro')
+    source = ({'path': 'bash/series', 'name': 'series', 'sha256': 'fixture'}, b'include')
+    seen = []
+    monkeypatch.setattr(spec_git, 'read_macros', lambda repo, package, git: [macro] if package == 'extra' else [])
+    monkeypatch.setattr(spec_git, 'read_local_sources', lambda *args: [source])
+    def describe(data, macros=(), local_sources=()):
+        seen.append((data, macros, local_sources))
+        return {'metadata': {'version': '1'}, 'metadata_error': None}
+    collector.refresh_specs(config, {}, ['bash', 'gcc'], {}, 'now', describe)
+    assert seen == [(b'spec-bash', [macro], [source]), (b'spec-gcc', [macro], ())]
+
+
+def test_missing_configured_source_fails_only_its_package(config, monkeypatch):
+    config['spec']['local_sources'] = {'bash': ['series']}
+    def missing(*args):
+        raise ValueError('missing')
+    monkeypatch.setattr(spec_git, 'read_local_sources', missing)
+    result = collector.refresh_specs(config, {}, ['bash', 'gcc'], {}, 'now',
+        lambda data, macros: {'metadata': {'version': '1'}, 'metadata_error': None})
+    assert result['bash']['metadata'] is None and result['bash']['error']
+    assert result['gcc']['metadata']['version'] == '1' and result['gcc']['error'] is None
+
+
 @pytest.mark.parametrize('context', [None, {}, {'resolver': -1, 'additional_macros': []},
     {'resolver': native_spec.RESOLVER, 'additional_macros': [{'sha256': 'old'}]}])
 def test_parser_or_macro_change_invalidates_same_head(config, context):

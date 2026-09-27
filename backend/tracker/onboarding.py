@@ -1,7 +1,5 @@
 """Offline proposals from confined RPM facts; never a runtime version authority."""
-import re
 from pathlib import Path
-from urllib.parse import urlsplit
 from . import config as cfg, discover_sources
 
 
@@ -23,13 +21,7 @@ def propose(config_path, name, snapshot, *, config=None):
               'rule_file': str(Path(config['nvpath']).resolve()), 'rule_table': name,
               'entry': None, 'review_required': True, 'state_writes': False,
               'reason': 'no safe automatic proposal; supply a reviewed native rule'}
-    # Registry Source0 encodes an exact component, unlike a shared homepage.
-    crate = re.fullmatch(r'https://(?:static\.crates\.io/crates/|crates\.io/api/v1/crates/)([A-Za-z0-9_-]+)/(.+)', source)
-    if crate and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', current or ''):
-        tail = crate[2]
-        if tail in (current + '/download', crate[1] + '-' + current + '.crate'):
-            major, minor, _ = current.split('.')
-            line = re.escape(major + '.' + minor) + r'\.[0-9]+' if major == '0' else re.escape(major) + r'\.[0-9]+\.[0-9]+'
-            result.update(entry={'source': 'cratesio', 'cratesio': crate[1], 'include_regex': '^'+line+'$'},
-                          reason='exact crates.io source identity; compatibility line requires review')
+    entry = discover_sources.registry_entry({**row, **hint})
+    if entry:
+        result.update(entry=entry, reason='exact crates.io source identity; compatibility line requires review')
     return result

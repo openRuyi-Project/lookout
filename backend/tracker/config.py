@@ -35,6 +35,12 @@ def load(path):
     # Distribution presentation data has one owner; the frontend knows no
     # BuildSystem categories. CSS values are deliberately limited to hex colors.
     config.setdefault('openruyi', {}).setdefault('buildsystems', {})
+    dependencies = config['openruyi'].setdefault('dependencies', {})
+    if (not isinstance(dependencies, dict) or any(
+            not isinstance(key, str) or not re.fullmatch(r'[a-z][a-z0-9_.-]{0,99}', key)
+            or not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_+.-]{1,200}', value)
+            for key, value in dependencies.items())):
+        raise ValueError('openruyi.dependencies maps dependency identities to source package names')
     for name, appearance in config['openruyi']['buildsystems'].items():
         if (not isinstance(name, str) or not name or len(name) > 100
                 or not isinstance(appearance, dict) or set(appearance) != {'background', 'foreground'}
@@ -63,9 +69,24 @@ def load(path):
         'branch': spec.get('branch', 'main'),
         'source_url_template': spec.get('source_url_template'),
         'macro_package': spec.get('macro_package', config['collector'].get('spec_macro_package')),
+        'extra_macro_packages': spec.get('extra_macro_packages', []),
+        'local_sources': spec.get('local_sources', {}),
         'changelog_limit': spec.get('changelog_limit', 20),
         'fetch_timeout_seconds': spec.get('fetch_timeout_seconds', 300),
     }
+    def safe_name(value):
+        return isinstance(value, str) and bool(re.fullmatch(r'[A-Za-z0-9_+.-]{1,200}', value)) and value not in ('.', '..')
+
+    extra = config['spec']['extra_macro_packages']
+    if (not isinstance(extra, list) or len(extra) > 16 or not all(safe_name(p) for p in extra)
+            or len(set(extra)) != len(extra) or config['spec']['macro_package'] in extra):
+        raise ValueError('spec.extra_macro_packages requires distinct package names')
+    sources = config['spec']['local_sources']
+    if (not isinstance(sources, dict) or any(
+            not safe_name(package) or not isinstance(names, list) or len(names) > 16
+            or not all(safe_name(name) for name in names) or len(set(names)) != len(names)
+            for package, names in sources.items())):
+        raise ValueError('spec.local_sources maps packages to distinct local source filenames')
     if type(config['spec']['changelog_limit']) is not int or not 1 <= config['spec']['changelog_limit'] <= 200:
         raise ValueError('spec.changelog_limit must be an integer in 1..200')
     timeout = config['spec']['fetch_timeout_seconds']
@@ -110,7 +131,7 @@ def track_fingerprint(entry):
 def public_source(entry):
     """Keep secrets, executable commands, arbitrary config out of the public API."""
     result = {}
-    for key in ('source', 'pypi', 'cratesio', 'cpan', 'anitya', 'github', 'git', 'url'):
+    for key in ('source', 'pypi', 'cratesio', 'cpan', 'anitya', 'github', 'gitlab', 'gitea', 'git', 'url'):
         value = entry.get(key)
         if not isinstance(value, str):
             continue
@@ -120,6 +141,14 @@ def public_source(entry):
                 continue
             value = urlunsplit((u.scheme, u.hostname + (f':{u.port}' if u.port else ''), u.path, '', ''))
         result[key] = value
+    if entry.get('source') in ('git', 'github', 'gitlab', 'gitea'):
+        for key in ('branch', 'path', 'host'):
+            value = entry.get(key)
+            if isinstance(value, str) and 0 < len(value) <= 256 and not re.search(r'[\r\n]', value):
+                result[key] = value
+        for key in ('use_commit', 'use_latest_tag', 'use_latest_release', 'use_max_tag', 'use_max_release'):
+            if isinstance(entry.get(key), bool):
+                result[key] = entry[key]
     # Expose a known public identity, not arbitrary query strings/credentials.
     if entry.get('source') == 'jq':
         try:

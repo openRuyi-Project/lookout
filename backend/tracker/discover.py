@@ -117,6 +117,8 @@ def shared_release_entries(config, snapshot, rows):
         if key in wanted:
             anchors.setdefault(key, []).append(track)
     for row in rows:
+        if row.get('reason') not in (None, 'shared_homepage_requires_mapping_review'):
+            continue
         tracks = sorted(set(anchors.get(sources.release_directory(row),[])))
         policies = {cfg.track_fingerprint(config['native'][t]) for t in tracks}
         if row.get('shared_homepage') and len(policies)==1:
@@ -233,10 +235,18 @@ def main(argv=None):
     for row in rows:
         if row['reason'] in (None, 'shared_homepage_requires_mapping_review', 'homepage_identity_unsupported'):
             row.update(sources.hints(row, snapshot.get('specs', {}).get(row['name'], {})))
-            if row.get('go_module'):
-                row.update(reason=None, entry=sources.go_entry(row['go_module'], args.go_proxy_url),
-                           expected_version=None, identity_evidence='native_go_module',
-                           comparable=not bool(re.search(r'git|~|\^', str(row['current']))))
+            source = snapshot['sources'][row['name']]
+            registry = sources.registry_entry(row)
+            if registry and not source.get('error') and source.get('version') == row['current']:
+                row.update(reason=None, entry=registry, expected_version=None,
+                           identity_evidence='exact_registry_source')
+            elif row.get('go_module'):
+                source_check = sources.go_source_check(row)
+                row.update(source_check)
+                if not source_check.get('reason'):
+                    row.update(reason=None, entry=sources.go_entry(row['go_module'], args.go_proxy_url),
+                               expected_version=None, identity_evidence='native_go_module',
+                               comparable=not bool(re.search(r'git|~|\^', str(row['current']))))
             elif row['reason'] == 'shared_homepage_requires_mapping_review' and row.get('archive_component'):
                 row['reason'] = None
             elif row['reason'] == 'homepage_identity_unsupported' and row.get('source_repository'):

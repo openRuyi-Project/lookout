@@ -57,7 +57,7 @@ def test_evidence_keeps_original_provider_expression():
 
 
 @pytest.mark.parametrize("expression", [
-    None, "", "this is not SPDX", "MIT OR", ["MIT"], 42,
+    None, "", "this is not SPDX", "MIT OR", "MIT/Apache-2.0", ["MIT"], 42,
     "(" * 17 + "MIT" + ")" * 17,
     " OR ".join(["MIT"] * 65), "LicenseRef-" + "x" * 2048,
 ])

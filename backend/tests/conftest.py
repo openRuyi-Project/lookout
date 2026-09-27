@@ -5,8 +5,20 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import pytest
 import tomlkit
+from fastapi.testclient import TestClient
 from tracker import state
 from tracker.config import track_fingerprint
+
+
+class ProjectedClient(TestClient):
+    """Deterministic HTTP fixtures: explicitly prepare data before each request.
+
+    Lifespan/concurrency tests use the unmodified TestClient and actual worker.
+    Production requests only read; they never call this refresh hook.
+    """
+    def send(self, *args, **kwargs):
+        self.app.state.projection.refresh()
+        return super().send(*args, **kwargs)
 
 @pytest.fixture
 def config():

@@ -178,3 +178,87 @@ def test_reviewed_release_policy_uses_upstream_contract_not_pinned_version():
     assert native['safeint'] == {'source': 'github', 'github': 'dcleblanc/SafeInt',
                                  'use_latest_release': True, 'prefix': 'v'}
     assert native['keybinder']['url'].endswith('project_id=13401')  # Source archive identifies keybinder-3.0, not the ambiguous sibling1506
+
+
+@pytest.mark.parametrize('verify_success', [True, False])
+def test_batch_reuses_registry_proposal_without_homepage_lookup(tmp_path, monkeypatch, verify_success):
+    import hashlib
+    from tracker import onboarding
+
+    native = tmp_path / 'native.toml'
+    native.write_text('[existing]\nsource="pypi"\npypi="existing"\n')
+    cfg = {'native': {'existing': {'source': 'pypi', 'pypi': 'existing'}}, 'packages': {},
+           'nvpath': str(native), 'nv_digest': hashlib.sha256(native.read_bytes()).hexdigest()}
+    data = {'generation': 42, 'sources': {'unrelated-rpm-name': {'version': '2.3.4'}},
+            'specs': {'unrelated-rpm-name': {
+                'metadata': {'version': '2.3.4', 'url': None, 'sources': [
+                    {'number': 0, 'url': 'https://static.crates.io/crates/upstream_name/2.3.4/download'}]},
+                'native_query': {'spec_sha256': 'a' * 64, 'context': {'resolver': 7}},
+            }}}
+    monkeypatch.setattr(config, 'load', lambda path: cfg)
+    monkeypatch.setattr(discover.state, 'read', lambda path: data)
+    expected = onboarding.propose('unused', 'unrelated-rpm-name', data)['entry']
+
+    def no_search(*args):
+        pytest.fail('exact registry identity must not use a homepage/name search')
+
+    def verify(actual, proposals):
+        assert proposals[0]['entry'] == expected
+        return {'unrelated-rpm-name': {
+            'version': '2.4.0', 'error': None if verify_success else 'request timeout',
+            'fetched_at': '2026-01-01T00:00:00Z',
+            'configuration_fingerprint': config.track_fingerprint(expected),
+        }}, None
+
+    monkeypatch.setattr(discover, 'fetch_project', no_search)
+    monkeypatch.setattr(discover, 'verify', verify)
+    before = native.read_bytes()
+    output = tmp_path / 'proposal'
+    assert discover.main(['--config', 'unused', '--db', 'unused', '--output', str(output), '--verify']) == 0
+    report = json.loads((output / 'report.json').read_text())
+    assert report['verified'] == int(verify_success)
+    assert report['packages'][0]['identity_evidence'] == 'exact_registry_source'
+    generated = tomllib.loads((output / 'candidate.nvchecker.toml').read_text())
+    assert ('unrelated-rpm-name' in generated) is verify_success
+    if verify_success:
+        assert generated['unrelated-rpm-name'] == expected
+    assert native.read_bytes() == before
+
+
+def test_component_module_mismatch_cannot_fall_back_to_root_repository(tmp_path, monkeypatch):
+    import hashlib
+
+    native = tmp_path / 'native.toml'
+    native.write_text('')
+    cfg = {'native': {}, 'packages': {}, 'nvpath': str(native),
+           'nv_digest': hashlib.sha256(native.read_bytes()).hexdigest()}
+    data = snapshot()
+    data['generation'] = 42
+    data['specs']['widget']['native_query']['context'] = {'resolver': 7}
+    data['specs']['widget']['metadata'].update(
+        go_module='github.com/team/widget',
+        sources=[{'number': 0, 'url': 'https://github.com/team/widget/archive/component/v1.9.17.tar.gz'}],
+    )
+    monkeypatch.setattr(config, 'load', lambda path: cfg)
+    monkeypatch.setattr(discover.state, 'read', lambda path: data)
+
+    def no_search(*args):
+        pytest.fail('a contradictory module identity must not fall back to a repository search')
+
+    def verify(actual, proposals):
+        assert proposals == []
+        return {}, None
+
+    monkeypatch.setattr(discover, 'fetch_project', no_search)
+    monkeypatch.setattr(discover, 'verify', verify)
+    output = tmp_path / 'proposal'
+    assert discover.main(['--config', 'unused', '--db', 'unused', '--output', str(output), '--verify']) == 0
+    report = json.loads((output / 'report.json').read_text())
+    assert report['verified'] == 0
+    row = report['packages'][0]
+    assert row['reason'] == 'go_module_source_component_mismatch'
+    assert row['source_component'] == 'component'
+    assert row['go_module'] == 'github.com/team/widget'
+    assert row['source_url'].endswith('/component/v1.9.17.tar.gz')
+    assert not row.get('entry')
+    assert tomllib.loads((output / 'candidate.nvchecker.toml').read_text()) == {}

@@ -34,55 +34,59 @@ def test_generated_api_contract_is_exact():
     assert result.returncode==0,result.stdout+result.stderr
 
 
-def test_explain_real_package_locations_offline_without_state_write(tmp_path):
+def test_explain_explicit_package_locations_offline_without_state_write(tmp_path):
+    path = setup_config(tmp_path / 'config')
+    native = path.parent / 'native.toml'
+    native.write_text(config_change.edit_tables(native.read_text(), {
+        'history': {'source': 'jq', 'url': 'https://release-monitoring.org/api/v2/versions/?project_id=7306',
+                    'filter': 'first(.stable_versions[])'},
+        'revision': {'source': 'git', 'git': 'https://example.org/fixture.git'},
+    }))
+    path.write_text(config_change.edit_tables(path.read_text(), {'revision': {'comparable': False}}, ('packages',)))
     db=tmp_path/'absent.db'
-    for name in ['ModemManager','agg','go-github-campoy-embedmd-embedmd']:
-        value=package.explain(ROOT/'config/tracker.toml',name,db,ROOT/'config/tracker.toml')
+    for name in ['history', 'widget', 'revision']:
+        value=package.explain(path,name,db,path)
         assert value['read_only'] and value['rules'][0]['line']>0 and value['rules'][0]['runtime_matches']
         assert value['runtime_binding_matches']
-    assert package.explain(ROOT/'config/tracker.toml','ModemManager')['rules'][0]['source']['project_id']==7306
-    assert package.explain(ROOT/'config/tracker.toml','go-github-campoy-embedmd-embedmd')['binding']['comparable'] is False
+    assert package.explain(path,'history')['rules'][0]['source']['project_id']==7306
+    assert package.explain(path,'revision')['binding']['comparable'] is False
     assert not db.exists()
 
 
 def test_check_calls_native_only_never_collector(tmp_path,monkeypatch):
     from tracker import nv
-    import shutil
-    config_dir = tmp_path / 'config'
-    shutil.copytree(ROOT / 'config', config_dir)
+    path = setup_config(tmp_path / 'config')
+    config_dir = path.parent
     def contents():
         return {str(p.relative_to(config_dir)): p.read_bytes()
                 for p in config_dir.rglob('*') if p.is_file()}
     before = contents()
     def run(config, previous, now, tracks):
-        assert previous == {} and tracks == ['ModemManager']
-        return {'ModemManager': {'version': '1.24.2', 'error': None}}, None
+        assert previous == {} and tracks == ['widget']
+        return {'widget': {'version': '2.0', 'error': None}}, None
     monkeypatch.setattr(nv, 'run', run)
     database = tmp_path / 'missing.db'
-    value = package.check(config_dir / 'tracker.toml', 'ModemManager', database)
+    value = package.check(path, 'widget', database)
     assert value['passed'] and value['state_writes'] is False
     assert not database.exists()
     assert contents() == before
 
 
-@pytest.mark.parametrize('mutation', ['edit'])
+@pytest.mark.parametrize('mutation', ['edit', 'delete'])
 def test_check_rejects_rule_directory_mutation(tmp_path, monkeypatch, mutation):
-    import shutil
     from tracker import nv
-    root = tmp_path / 'config'
-    shutil.copytree(ROOT / 'config', root)
+    tracker = setup_config(tmp_path / 'config')
+    root = tracker.parent
     def run(*args, **kwargs):
-        path = root / 'versions/nvchecker.toml'
+        path = root / 'native.toml'
         if mutation == 'edit':
             path.write_text(path.read_text() + '\n# unexpected write\n')
-        elif mutation == 'create':
-            (root / 'versions/unexpected-native.toml').write_text('source="pypi"\npypi="unexpected"\n')
         else:
             path.unlink()
-        return {'ModemManager': {'version': '1.24.2', 'error': None}}, None
+        return {'widget': {'version': '2.0', 'error': None}}, None
     monkeypatch.setattr(nv, 'run', run)
     with pytest.raises(ValueError, match='native configuration changed'):
-        package.check(root / 'tracker.toml', 'ModemManager', tmp_path / 'missing.db')
+        package.check(tracker, 'widget', tmp_path / 'missing.db')
     assert not (tmp_path / 'missing.db').exists()
 
 

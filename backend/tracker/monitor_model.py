@@ -7,15 +7,28 @@ from typing import Annotated, Literal, Self
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, TypeAdapter, ValidationInfo, field_validator, model_validator
 from . import state, version_status
+from .requirements import RequirementChange, RequirementDeclaration
 
 
 CORE_IDS = frozenset(('source', 'version', 'build'))
 
+# Old snapshots and saved filter URLs use these names for the same categories.
+LABEL_ALIASES = {'LicenseChange': 'License', 'SecurityReview': 'Security'}
+
+
+def canonical_label(label):
+    return LABEL_ALIASES.get(label, label)
+
+# Coverage gaps and failed checks are not a partition of all check states:
+# pending, stale, partial and inapplicable observations retain their own meaning.
+CHECK_GROUPS = {
+    'uncovered': ('not_configured', 'unsupported'),
+    'failed': ('error',),
+}
+
 
 def subject(snapshot, name):
-    source = state.current_source(snapshot, name)
-    return {'name': name, 'version': source.get('version'),
-            'revision': source.get('revision')}
+    return version_status.evaluate(snapshot, name).subject
 
 
 def version_query(subject, inputs):
@@ -34,7 +47,8 @@ def evidence(key, value, source, url, *, status="observed", code=None):
     return result
 
 
-def finding(identity, label, title, facts, evidence_url, *, scope="current", tags=(), target_version=None):
+def finding(identity, label, title, facts, evidence_url, *, scope="current", tags=(), target_version=None,
+            requirement=None):
     result = dict(
         id=identity,
         label=label,
@@ -45,6 +59,8 @@ def finding(identity, label, title, facts, evidence_url, *, scope="current", tag
         tags=list(tags),
         target_version=target_version,
     )
+    if requirement is not None:
+        result['requirement'] = requirement
     validate_findings([result])
     return result
 
@@ -107,11 +123,21 @@ class RawFinding(BaseModel):
     scope: Literal["current", "upgrade"]
     tags: Annotated[list[Identifier], Field(max_length=8)]
     target_version: str | None
+    requirement: RequirementDeclaration | RequirementChange | None = None
 
     @model_validator(mode="after")
     def upgrade_target(self) -> Self:
         if self.scope == "upgrade" and not state.usable_version(self.target_version):
             raise ValueError("upgrade finding requires its target version")
+        if self.requirement is not None:
+            if isinstance(self.requirement, RequirementDeclaration):
+                validate_url(self.requirement.constraint.url)
+            else:
+                if self.scope != 'upgrade':
+                    raise ValueError('requirement changes belong to an upgrade')
+                for constraint in (self.requirement.current, self.requirement.target):
+                    if constraint:
+                        validate_url(constraint.url)
         return self
 
 
@@ -137,8 +163,11 @@ def project(snapshot, name, now, *, version=None):
     findings, checks = [], []
     ttl = snapshot.get("monitor_stale_after_seconds", 86400)
     for provider, observation in sorted(observations.items()):
+        combined = observation.get('scope') == 'current_and_upgrade'
         expected = {**current, "target_version": latest} if observation.get("scope") == "upgrade" else current
-        same = observation.get("subject") == expected
+        observed_subject = observation.get('subject') or {}
+        same = ({k: v for k, v in observed_subject.items() if k != 'target_version'} == current
+                if combined else observed_subject == expected)
         old = source_unavailable or state.stale(observation, now, ttl)
         status = observation.get("status", "pending") if same else "input_changed"
         gated = same and observation.get('input_status') == 'unsupported'
@@ -169,12 +198,17 @@ def project(snapshot, name, now, *, version=None):
                 if f["scope"] == "upgrade" and (version.last_known_relation != 'outdated'
                                                 or f.get("target_version") != latest):
                     continue
+                scope_check = observation.get('scope_checks', {}).get(f['scope']) if combined else None
+                unavailable = (source_unavailable or gated or state.stale(scope_check, now, ttl)
+                               or scope_check['status'] != 'ok') if scope_check else old or status not in ('ok', 'partial')
                 findings.append(
                     {
                         **f,
+                        "label": canonical_label(f["label"]),
+                        "tags": list(dict.fromkeys(canonical_label(tag) for tag in f["tags"])),
                         "id": provider + ":" + f["id"],
                         "monitor": provider,
-                        "stale": old or status not in ("ok", "partial")
+                        "stale": unavailable
                         or f['scope'] == 'upgrade' and not version.upgrading,
                     }
                 )
@@ -183,13 +217,10 @@ def project(snapshot, name, now, *, version=None):
 
 def summarize(findings):
     groups = {}
-    for f in findings:
-        label = f["label"]
-        group = groups.setdefault(label, {"label": label, "count": 0, "stale": False})
-        group["count"] += 1
-        group["stale"] |= f["stale"]
-        for tag in f["tags"]:
-            extra = groups.setdefault(tag, {"label": tag, "count": 0, "stale": False})
-            extra["count"] += 1
-            extra["stale"] |= f["stale"]
+    for finding in findings:
+        labels = dict.fromkeys(canonical_label(label) for label in [finding['label'], *finding['tags']])
+        for label in labels:
+            group = groups.setdefault(label, {'label': label, 'count': 0, 'stale': False})
+            group['count'] += 1
+            group['stale'] |= finding['stale']
     return list(groups.values())

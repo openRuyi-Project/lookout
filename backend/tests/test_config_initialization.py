@@ -11,12 +11,16 @@ def test_documented_initializer_loads_and_refuses_overwrite(tmp_path):
     command = [sys.executable, str(ROOT / "deploy/init-config.py"), str(destination)]
     result = subprocess.run(command, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
+    source = config.load(ROOT / 'config/tracker.toml')
     loaded = config.load(destination / "tracker.toml")
-    assert loaded["native"]["python-zmq"]["pypi"] == "pyzmq"
-    assert {p.name for p in (destination / "versions").glob("*.toml")} == {"nvchecker.toml"}
-    assert loaded["packages"]["openssl"]["track_label"] == "3.x"
-    assert loaded["packages"]["openssl"]["monitors"]["eol"]["product"] == "openssl"
+    assert {k: v for k, v in loaded.items() if k != 'nvpath'} == {
+        k: v for k, v in source.items() if k != 'nvpath'}
+    assert Path(loaded['nvpath']).relative_to(destination) == Path(source['nvpath']).relative_to(ROOT / 'config')
     before = {str(p.relative_to(destination)): p.read_bytes() for p in destination.rglob("*") if p.is_file()}
+    assert before == {str(p.relative_to(ROOT / 'config')): p.read_bytes()
+                      for p in (ROOT / 'config').rglob('*') if p.is_file()}
+    assert destination.stat().st_mode & 0o777 == 0o700
+    assert all(p.stat().st_mode & 0o777 == 0o600 for p in destination.rglob('*') if p.is_file())
     result = subprocess.run(command, capture_output=True, text=True)
     assert result.returncode == 2
     assert before == {str(p.relative_to(destination)): p.read_bytes() for p in destination.rglob("*") if p.is_file()}

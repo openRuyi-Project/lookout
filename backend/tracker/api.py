@@ -1,17 +1,18 @@
 """Read-only REST. HTTP processes never import or invoke the collector."""
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import os
 from pathlib import Path
-import sqlite3
 import threading
-import time
 from typing import Annotated, Literal
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from . import state, view, package_list, monitor_views, presentation as documents
 from .presentation_model import ListingDocument, DetailDocument, DocumentTheme
+from .read_model import ProjectionCache
 from .monitor_model import RawFinding
+from .requirements import RequirementAssessment
 
 # Fixed-shape payloads are typed so the response contract cannot silently drift.
 # Raw provenance (source, upstream, per-flavor facts) stays open on purpose.
@@ -66,6 +67,7 @@ class Collection(BaseModel):
     generation: int
     packages: int
     tracked_packages: int
+    projection_notice: str | None = None
 
 class SpecMetadata(BaseModel):
     name: str | None
@@ -124,7 +126,7 @@ class PackageSummary(BaseModel):
     last_successful_version: str | None
     upstream_updated_at: str | None
     latest: str | None
-    relation: Literal['current', 'outdated', 'ahead', 'unknown', 'untracked', 'not_applicable']
+    relation: Literal['current', 'outdated', 'changed', 'ahead', 'unknown', 'untracked', 'not_applicable']
     track: str | None
     track_label: str
     stale: bool
@@ -200,17 +202,47 @@ class SourceObservation(SourceSummary, Spec):
     obs: dict
 
 
+class VersionAnnotation(BaseModel):
+    monitor: str = Field(description='Stable owning monitor ID; also the version signal filter value.')
+    label: str
+    count: int = Field(ge=1, description='Distinct related findings, or changed dependency declarations.')
+    scope: Literal['current', 'upgrade']
+    target_version: str | None
+    stale: bool
+    finding_ids: list[str] = Field(description='IDs in the owning monitor observation; evidence is not duplicated.')
+
+
+class SourceRelease(BaseModel):
+    ecosystem: str
+    name: str
+    version: str
+    url: str
+
+
+class RevisionComparison(BaseModel):
+    repository: str
+    branch: str
+    current: str
+    packaged_date: str | None
+    latest: str | None
+    latest_committed_at: str | None
+    links: dict[str, str | None]
+
+
 class VersionSummary(BaseModel):
     kind: Literal['version']
     current: str | None
+    source_release: SourceRelease | None = None
+    revision: RevisionComparison | None = None
     latest: str | None
-    relation: Literal['current', 'outdated', 'ahead', 'unknown', 'untracked', 'not_applicable']
+    relation: Literal['current', 'outdated', 'changed', 'ahead', 'unknown', 'untracked', 'not_applicable']
     track: str | None
     track_label: str
     stale: bool
     error: str | None
     last_known_relation: str
     updated_at: str | None
+    annotations: list[VersionAnnotation] = []
 
 
 class VersionObservation(VersionSummary):
@@ -235,6 +267,9 @@ class EvidenceEntry(BaseModel):
     title: str
     evidence_url: str
     stale: bool
+    scope: Literal['current', 'upgrade']
+    target_version: str | None = None
+    tags: list[str] = []
 
 
 class EvidenceSummary(BaseModel):
@@ -248,24 +283,37 @@ class EvidenceObservation(EvidenceSummary):
     findings: list[Finding]
 
 
+class RequiresSummary(BaseModel):
+    kind: Literal['requires']
+    labels: list[MaintenanceLabel]
+    finding_count: int
+    current_version: str | None
+    target_version: str | None
+    requirements: list[RequirementAssessment]
+
+
+class RequiresObservation(RequiresSummary):
+    findings: list[Finding]
+
+
 class MonitorDescription(BaseModel):
     id: str
     title: str
-    kind: Literal['source', 'version', 'build', 'evidence']
+    kind: Literal['source', 'version', 'build', 'evidence', 'requires']
 
 
 class MonitorSummary(BaseModel):
     id: str
     title: str
     check: ObservationCheck
-    data: Annotated[SourceSummary | VersionSummary | BuildSummary | EvidenceSummary, Field(discriminator='kind')]
+    data: Annotated[SourceSummary | VersionSummary | BuildSummary | EvidenceSummary | RequiresSummary, Field(discriminator='kind')]
 
 
 class MonitorObservation(BaseModel):
     id: str
     title: str
     check: ObservationCheck
-    data: Annotated[SourceObservation | VersionObservation | BuildObservation | EvidenceObservation, Field(discriminator='kind')]
+    data: Annotated[SourceObservation | VersionObservation | BuildObservation | EvidenceObservation | RequiresObservation, Field(discriminator='kind')]
 
 
 class MonitoredPackage(BaseModel):
@@ -292,11 +340,14 @@ class MonitoredList(BaseModel):
     presentation: Presentation
     buildsystems: dict[str, int]
     maintenance_labels: dict[str, int]
+    requires_counts: dict[str, int]
+    version_signals: dict[str, int]
     build_statuses: dict[str, list[BuildStatusOption]]
     check_statuses: dict[str, int]
     section: Literal['results', 'coverage']
     result_count: int
     coverage_count: int
+    retained_count: int
 
 
 class ListingQuery(BaseModel):
@@ -306,6 +357,9 @@ class ListingQuery(BaseModel):
     per_page: int = Field(100, ge=1, le=200)
     buildsystem: str = Field('', max_length=100)
     maintenance: str = Field('', max_length=40)
+    requires: Literal['', 'unmet', 'changes'] = ''
+    signal: str = Field('', max_length=64, description='Owning monitor ID of a Version annotation.')
+    freshness: Literal['', 'retained'] = ''
     build: list[str] = Field(default_factory=list, max_length=16)
     monitor: str = Field('', max_length=64)
     check: str = Field('', max_length=40)
@@ -314,56 +368,28 @@ class ListingQuery(BaseModel):
 
 def create_app(db=None):
     db = Path(db or os.environ.get('TRACKER_DB', 'state/tracker.sqlite3'))
+    cache = ProjectionCache(db)
+
+    @asynccontextmanager
+    async def lifespan(app):
+        worker = threading.Thread(target=cache.run, name='snapshot-projection', daemon=True)
+        worker.start()
+        try:
+            yield
+        finally:
+            cache.stop()
+            worker.join(timeout=15)
+
     app = FastAPI(title='openRuyi Package Monitor', version='0.1.0', docs_url=None, redoc_url=None,
+                  lifespan=lifespan,
                   description='Read-only collected facts. succeeded is not a release or revision verification claim.')
-    cache, lock = {}, threading.Lock()
+    app.state.projection = cache
+
     def data():
         try:
-            # One critical section binds a snapshot and its projection. A request
-            # must never pair rows from a newer snapshot with older scope/targets,
-            # even when a rewritten database retains the same generation number.
-            with lock:
-                st = db.stat() if db.exists() else None
-                signature = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_ctime_ns, st.st_size) if st else None
-                clock_changed = False
-                if 'snapshot' not in cache or cache.get('signature') != signature:
-                    same_file = signature is not None and cache.get('signature') is not None and signature[:2] == cache['signature'][:2]
-                    previous = (cache['snapshot'], cache.get('revision')) if same_file else None
-                    snap, revision = state.read_cached(db, previous)
-                    clock_changed = bool(previous and revision is not None and revision == cache.get('revision'))
-                    if clock_changed:
-                        before = cache['snapshot']['components'].get('builds', {}).get('fetched_at')
-                        after = snap['components'].get('builds', {}).get('fetched_at')
-                        # Restoring an older backup can rewind the clock without
-                        # changing its payload revision. Re-evaluate freshness.
-                        clock_changed = bool(before and after and
-                            datetime.fromisoformat(after) >= datetime.fromisoformat(before))
-                    if not clock_changed:
-                        cache.clear()
-                    cache.update(snapshot=snap, revision=revision, signature=signature)
-                snap = cache['snapshot']
-                if not snap['generation']:
-                    raise HTTPException(503, 'No collected snapshot yet')
-                now = datetime.fromtimestamp(time.time(), timezone.utc)
-                deadline = cache.get('deadline')
-                if ('projected' not in cache or now < cache['last_seen']
-                        or (deadline is not None and now >= deadline)):
-                    cache['projected'] = view.project_monitors(snap, now)
-                    cache['deadline'] = view.next_transition(snap, now)
-                    cache.pop('index', None)
-                elif clock_changed:
-                    cache['projected'] = view.refresh_build_clock(snap, cache['projected'][0], now)
-                    cache['deadline'] = view.next_transition(snap, now)
-                    cache.pop('index', None)
-                # Check against the latest request, not just the projection time:
-                # a clock reversal can make an expired/future observation valid.
-                cache['last_seen'] = now
-                rows, collection = cache['projected']
-                if 'index' not in cache:
-                    cache['index'] = package_list.PackageList(rows, snap['targets'])
-                return snap, cache['index'], collection
-        except (OSError, sqlite3.Error, ValueError):
-            raise HTTPException(503, 'Snapshot unavailable') from None
+            return cache.read()
+        except ValueError:
+            raise HTTPException(503, 'No prepared snapshot yet') from None
     @app.get('/healthz')
     def health():
         return {'status': 'ok'}
@@ -371,7 +397,8 @@ def create_app(db=None):
     def ready():
         snap, index, collection = data()
         return {'status': 'degraded' if collection['errors'] else 'ready', 'packages': len(index.rows),
-                'generation': snap['generation'], 'last_attempt': snap['last_attempt']}
+                'generation': snap['generation'], 'last_attempt': snap['last_attempt'],
+                'projection_notice': collection.get('projection_notice')}
     @app.get('/api/v1/packages', response_model=PackageList)
     def packages(q: str = Query('', max_length=100), view_name: Literal['all', 'updates', 'problems', 'attention', 'untracked'] = Query('all', alias='view'),
                  page: int = Query(1, ge=1, le=1000000), per_page: int = Query(100, ge=1, le=200),
@@ -398,18 +425,22 @@ def create_app(db=None):
     def package(name: str):
         snap, index, _ = data()
         return {**view.legacy_package(find_package(name, index)), 'presentation': snap.get('presentation', {})}
-    def select_monitored(filters, default_section):
+    def select_monitored(filters, default_section, *, document=False):
         snap, index, collection = data()
+        catalog = [module.describe() for module in monitor_views.registry(snap)]
+        if filters.monitor and filters.monitor not in {m['id'] for m in catalog}:
+            raise HTTPException(422, 'Unknown monitor')
+        if document:
+            filters = ListingQuery(**documents.listing_query(filters.model_dump(), catalog))
         q, view_name = filters.q, filters.view
         page, per_page = filters.page, filters.per_page
         buildsystem, maintenance, build = filters.buildsystem, filters.maintenance, filters.build
         monitor, check = filters.monitor, filters.check
         section = filters.section or default_section
-        catalog = [module.describe() for module in monitor_views.registry(snap)]
-        if monitor and monitor not in {m['id'] for m in catalog}:
-            raise HTTPException(422, 'Unknown monitor')
         if check and not monitor:
             raise HTTPException(422, 'Check status requires a monitor')
+        if filters.freshness and not monitor:
+            raise HTTPException(422, 'Freshness requires a monitor')
         # Existing API clients retain the all-package default. The website asks
         # explicitly for results; old check links always enter the coverage view.
         section = 'coverage' if check else section
@@ -420,8 +451,20 @@ def create_app(db=None):
             raise HTTPException(422, str(error)) from None
         result = index.select(query=q, monitor=monitor,
             view=view_name, buildsystem=buildsystem, maintenance=maintenance,
-            builds=builds, page=page, per_page=per_page, check=check,
-            findings_only=bool(focused and focused['kind'] == 'evidence' and section == 'results'))
+            builds=builds, page=page, per_page=per_page, check=check, requires=filters.requires, signal=filters.signal,
+            freshness=filters.freshness,
+            findings_only=bool(focused and focused['kind'] in ('evidence', 'requires') and section == 'results'))
+        if document:
+            result['query'] = {**filters.model_dump(), 'section': section, 'page': result['page']}
+            if focused:
+                # Peer tabs are alternatives. Count their destinations in the
+                # shared search/identity scope, not inside the selected tab.
+                navigation = index.select(query=q, monitor=monitor,
+                    view='all', buildsystem=buildsystem, maintenance='', builds={},
+                    page=1, per_page=1,
+                    findings_only=focused['kind'] in ('evidence', 'requires'))
+                result['navigation_counts'] = {key: navigation[key] for key in
+                    ('counts', 'requires_counts', 'version_signals', 'check_statuses', 'result_count', 'retained_count')}
         return {**result,
                 'section': section,
                 'monitors': catalog, 'targets': snap['targets'], 'collection': collection,
@@ -434,10 +477,8 @@ def create_app(db=None):
 
     @app.get('/api/ui/packages', response_model=ListingDocument)
     def listing_document(filters: Annotated[ListingQuery, Query()]):
-        result = select_monitored(filters, 'results')
-        query = filters.model_dump()
-        query.update(section=result['section'], page=result['page'])
-        return documents.listing(result, query)
+        result = select_monitored(filters, 'results', document=True)
+        return documents.listing(result, result['query'])
 
     @app.get('/api/v2/packages/{name}', response_model=MonitoredDetail)
     def monitor_package(name: str):
@@ -446,8 +487,11 @@ def create_app(db=None):
 
     @app.get('/api/ui/packages/{name}', response_model=DetailDocument)
     def package_document(name: str):
-        snap, index, _ = data()
-        return documents.detail(find_package(name, index))
+        snap, index, collection = data()
+        document = documents.detail(find_package(name, index))
+        if notice := collection.get('projection_notice'):
+            document.notices.append(notice)
+        return document
 
     @app.get('/api/ui/theme', response_model=DocumentTheme)
     def document_theme():

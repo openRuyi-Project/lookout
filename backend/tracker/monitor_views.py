@@ -9,7 +9,7 @@ from functools import partial
 from typing import Callable
 from urllib.parse import quote
 
-from . import build_status, config as cfg, monitor_model, state, version_status
+from . import build_status, config as cfg, monitor_model, requirements, source_release, state, version_status
 
 
 def observed_at(observations):
@@ -111,6 +111,7 @@ class Context:
     version: version_status.VersionStatus
     flavors: list[str]
     evidence: dict
+    dependency_resolver: requirements.Resolver | None = None
 
     @property
     def obs_source(self):
@@ -170,13 +171,16 @@ def version(context):
     elif not value.track:
         check.update(status='not_configured', stale=False)
     views = []
-    if value.upgrading:
+    if value.upgrading or value.relation == 'changed':
         views.append('updates')
     if not value.track and value.relation != 'not_applicable':
         views.append('untracked')
     if value.relation in ('unknown', 'untracked') or value.stale:
         views.append('attention')
     data = dict(kind='version', current=value.source.get('version'), latest=upstream.get('version'),
+                source_release=value.release.public() if value.release else None,
+                revision=value.revision.public(source_release.observed_commit(upstream),
+                    upstream.get('revision_creation_time')) if value.revision else None,
                 relation=value.relation, track=value.track,
                 track_label=value.binding.get('track_label') or cfg.derive_track_label(context.name),
                 stale=value.stale, error=value.error, last_known_relation=value.last_known_relation,
@@ -246,6 +250,99 @@ def evidence(context, monitor_id):
                 data=dict(kind='evidence', findings=facts, finding_count=len(facts), labels=labels))
 
 
+def requires(context):
+    result = evidence(context, 'requires')
+    assessments = requirements.project(result['data']['findings'], context.snapshot, context.now,
+                                       context.dependency_resolver)
+    unmet = sum(r['satisfaction'] == 'unsatisfied' for r in assessments)
+    changed = sum(r['changed'] for r in assessments)
+    labels = [{'label': 'Requires', 'count': sum(r['satisfaction'] == 'unsatisfied' or r['changed']
+                                               for r in assessments), 'stale': False}] if unmet or changed else []
+    result['data'].update(
+        kind='requires', current_version=context.version.source.get('version'),
+        target_version=context.version.upstream.get('version') if context.version.upgrading else None,
+        labels=labels, finding_count=len(assessments), requirements=assessments)
+    result['dimensions'].update(maintenance=['Requires'] if labels else [],
+                               **{'findings:requires': ['yes'] if assessments else []},
+                               requires=(['unmet'] if unmet else []) + (['changes'] if changed else [])
+                               + (['unknown'] if any(r['satisfaction'] == 'unknown' for r in assessments) else []))
+    return result
+
+
+def compose_version(results, value):
+    """Join related observations without changing collectors or their ownership.
+
+    Current release withdrawal and security evidence matter even without an
+    upgrade. Other evidence belongs here only when it describes this exact
+    upgrade. Requires contributes actual declaration changes, not unmet current
+    requirements. Findings have already passed subject/schema validation.
+    """
+    annotations = []
+    target = value.upstream.get('version')
+    for monitor, result in results.items():
+        data = result['data']
+        if data['kind'] == 'requires':
+            changes = [item for item in data['requirements'] if item['changed']]
+            if not value.upgrading or not changes:
+                continue
+            keys = {requirements.key(item) for item in changes}
+            findings = [finding for finding in data['findings']
+                        if finding.get('requirement')
+                        and requirements.key(finding['requirement']) in keys]
+            annotations.append(dict(
+                monitor=monitor, label=result['title'], scope='upgrade',
+                target_version=target, stale=False, count=len(changes),
+                finding_ids=sorted({finding['id'] for finding in findings})))
+            continue
+        if data['kind'] != 'evidence':
+            continue
+        groups = {}
+        for finding in data['findings']:
+            scope = finding['scope']
+            if scope == 'current':
+                if monitor not in ('security', 'yanked'):
+                    continue
+            elif (value.last_known_relation != 'outdated'
+                  or finding.get('target_version') != target):
+                continue
+            group = groups.setdefault(scope, {})
+            group[finding['id']] = finding
+        for scope, findings in sorted(groups.items()):
+            annotations.append(dict(
+                monitor=monitor, label=result['title'], scope=scope,
+                target_version=target if scope == 'upgrade' else None,
+                stale=any(finding['stale'] for finding in findings.values())
+                      or scope == 'upgrade' and not value.upgrading,
+                count=len(findings), finding_ids=sorted(findings)))
+    annotations.sort(key=lambda item: (item['monitor'], item['scope']))
+    version = results['version']
+    version['data']['annotations'] = annotations
+    version['dimensions']['version_signal'] = sorted({item['monitor'] for item in annotations})
+
+
+def retained_dimensions(results):
+    """Index visible old observations, independently of the collection status.
+
+    Run after Version composition: a stale upstream/watch alone has no rendered
+    retained annotation. Requires must have assessments, not only hidden facts.
+    """
+    for monitor, result in results.items():
+        data = result['data']
+        if data['kind'] == 'version':
+            observations = data.get('annotations', [])
+        elif data['kind'] == 'evidence':
+            observations = data['findings']
+        elif data['kind'] == 'requires' and data['requirements']:
+            observations = data['findings']
+        else:
+            observations = []
+        dimension = 'retained:' + monitor
+        if any(item['stale'] for item in observations):
+            result['dimensions'][dimension] = ['yes']
+        else:
+            result['dimensions'].pop(dimension, None)
+
+
 CORE = (
     Monitor('source', 'Source', 'source', source),
     Monitor('version', 'Version', 'version', version),
@@ -260,8 +357,10 @@ def registry(snapshot):
         ids.update(results)
     # Old snapshots remain readable before the next collector publishes metadata.
     ids.difference_update(monitor_model.CORE_IDS)
-    return (*CORE, *(Monitor(mid, saved.get(mid, {}).get('title') or mid, 'evidence',
-                            partial(evidence, monitor_id=mid)) for mid in sorted(ids)))
+    return (*CORE, *(Monitor(mid, saved.get(mid, {}).get('title') or mid,
+                            'requires' if mid == 'requires' else 'evidence',
+                            requires if mid == 'requires' else partial(evidence, monitor_id=mid))
+                    for mid in sorted(ids)))
 
 
 def summary(result, *, focused=False):
@@ -272,10 +371,13 @@ def summary(result, *, focused=False):
         data = {k: v for k, v in data.items() if k not in ('watch', 'upstream')}
     elif data['kind'] == 'build':
         data = {**data, 'targets': [{k: v for k, v in b.items() if k != 'flavors'} for b in data['targets']]}
+    elif data['kind'] == 'requires':
+        data = {**{k: v for k, v in data.items() if k != 'findings'},
+                'requirements': data['requirements'] if focused else []}
     else:
-        # A bounded preview makes focused lists useful without N+1 detail requests.
-        # Complete evidence remains on the package endpoint.
-        entries = [{k: finding[k] for k in ('id', 'title', 'evidence_url', 'stale')}
-                   for finding in data['findings'][:3]] if focused else []
+        # Compact identifiers are complete within the paginated package list.
+        # Provider facts and histories still belong to the detail endpoint.
+        entries = [{k: finding[k] for k in ('id', 'title', 'evidence_url', 'stale', 'scope', 'target_version', 'tags')}
+                   for finding in data['findings']] if focused else []
         data = {**{k: v for k, v in data.items() if k != 'findings'}, 'entries': entries}
     return {k: (data if k == 'data' else v) for k, v in result.items() if k != 'dimensions'}

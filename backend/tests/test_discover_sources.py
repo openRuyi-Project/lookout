@@ -82,12 +82,85 @@ def test_null_github_version_url_does_not_abort_batch():
     assert discover.match(row,response)['project_id']==1
 
 
-def test_shared_release_reuse_requires_unanimous_rule(monkeypatch):
+@pytest.mark.parametrize('reason', [None, 'shared_homepage_requires_mapping_review'])
+def test_shared_release_reuse_requires_unanimous_rule(monkeypatch, reason):
     native={'base':{'source':'jq','url':'https://provider.example/base'}}
     config={'native':native,'packages':{},'spec':{}}
     snapshot={'sources':{'base':{'version':'1.2.3'}},'specs':{'base':{'metadata':{'version':'1.2.3','url':'https://suite.example'},'native_query':{'spec_sha256':'x'}}}}
     monkeypatch.setattr(sources,'hints',lambda row,spec:{'source_url':'https://download.example/releases/1.2.3/modules/base-1.2.3.tar.xz','archive_component':'base'})
-    row={'name':'component','current':'1.2.3','homepage':'https://suite.example','shared_homepage':True,'source_url':'https://download.example/releases/1.2.3/modules/component-1.2.3.tar.xz','archive_component':'component','reason':'shared'}
+    row={'name':'component','current':'1.2.3','homepage':'https://suite.example','shared_homepage':True,'source_url':'https://download.example/releases/1.2.3/modules/component-1.2.3.tar.xz','archive_component':'component','reason':reason}
     discover.shared_release_entries(config,snapshot,[row]);assert row['reuse_track']=='base'
     native['second']={'source':'jq','url':'https://provider.example/other'};snapshot['sources']['second']=deepcopy(snapshot['sources']['base']);snapshot['specs']['second']=deepcopy(snapshot['specs']['base'])
     row.pop('reuse_track');row.pop('entry');discover.shared_release_entries(config,snapshot,[row]);assert 'reuse_track' not in row
+
+
+def go_candidate(module, source):
+    row = dict(C)
+    row.update(sources.hints(row, spec(go_module=module, sources=[{'number': 0, 'url': source}])))
+    return row
+
+
+@pytest.mark.parametrize(('module', 'reason'), [
+    ('github.com/team/widget/component', None),
+    ('github.com/team/widget/component/v2', None),
+    ('github.com/team/widget/component/v10', None),
+    ('github.com/team/widget', 'go_module_source_component_mismatch'),
+    ('github.com/team/widget/other', 'go_module_source_component_mismatch'),
+    ('vanity.example/widget/other', 'go_module_source_component_mismatch'),
+    ('vanity.example/widget/component', 'go_module_source_identity_unverified'),
+])
+@pytest.mark.parametrize('source', [
+    'https://github.com/team/widget/archive/refs/tags/component/v2.3.4.tar.gz',
+    'https://github.com/team/widget/archive/component/v2.3.4.tar.gz',
+    'https://github.com/team/widget/archive/component/v2.3.4/widget-v2.3.4.tar.gz',
+    'https://codeload.github.com/team/widget/tar.gz/refs/tags/component/v2.3.4',
+])
+def test_go_submodule_tag_requires_corresponding_module(module, reason, source):
+    result = sources.go_source_check(go_candidate(module, source))
+    assert result == {'source_component': 'component', 'reason': reason}
+
+
+def test_go_gitlab_component_identity_is_case_sensitive():
+    source = 'https://gitlab.example/Team/widget/-/archive/component/v2.3.4/widget-component-v2.3.4.tar.gz'
+    assert sources.go_source_check(go_candidate('gitlab.example/Team/widget/component', source))['reason'] is None
+    assert sources.go_source_check(go_candidate('gitlab.example/team/widget/component', source))['reason'] == 'go_module_source_identity_unverified'
+
+
+def test_go_encoded_tag_is_retained_but_never_assumed_root_release():
+    source = 'https://github.com/team/widget/archive/component%2Fv1.2.3.tar.gz'
+    row = go_candidate('github.com/team/widget', source)
+    assert row['source_url'] == source
+    assert sources.go_source_check(row) == {'reason': 'go_module_source_identity_unverified'}
+
+
+@pytest.mark.parametrize('tag', ['v1.2.3', '1.2.3', 'v1.2.3-rc.1', 'a' * 40])
+def test_go_plain_repository_ref_retains_existing_candidate_behavior(tag):
+    row = go_candidate('vanity.example/widget', 'https://github.com/team/widget/archive/' + tag + '.tar.gz')
+    assert sources.go_source_check(row) == {}
+
+
+@pytest.mark.parametrize('reason', [
+    'go_module_source_component_mismatch',
+    'go_module_source_identity_unverified',
+    'spec_metadata_unverified',
+    'future_identity_rejection',
+])
+def test_release_reuse_preserves_existing_rejections(monkeypatch, reason):
+    config = {'native': {'base': {'source': 'jq', 'url': 'https://provider.example/base'}},
+              'packages': {}, 'spec': {}}
+    snapshot = {'sources': {'base': {'version': '1.2.3'}}, 'specs': {'base': {
+        'metadata': {'version': '1.2.3', 'url': 'https://suite.example'},
+        'native_query': {'spec_sha256': 'a' * 64},
+    }}}
+    monkeypatch.setattr(sources, 'hints', lambda row, spec: {
+        'source_url': 'https://download.example/releases/1.2.3/base-1.2.3.tar.xz',
+        'archive_component': 'base',
+    })
+    row = {'name': 'component', 'current': '1.2.3', 'homepage': 'https://suite.example',
+           'shared_homepage': True, 'archive_component': 'component', 'reason': reason,
+           'source_url': 'https://download.example/releases/1.2.3/component-1.2.3.tar.xz'}
+    before = deepcopy(row)
+    control = {**row, 'reason': None}
+    discover.shared_release_entries(config, snapshot, [row, control])
+    assert control['reuse_track'] == 'base'
+    assert row == before

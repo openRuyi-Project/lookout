@@ -6,10 +6,9 @@ import tomlkit
 import subprocess
 import sys
 import threading
-import tomllib
 
 import pytest
-from tracker import config, nv, state
+from tracker import config, nv
 
 NOW = '2026-09-20T00:00:00+00:00'
 
@@ -71,7 +70,7 @@ def test_native_pypi_release_and_explicit_watch_policy(tmp_path):
         'withdrawn': {'source':'pypi','pypi':'withdrawn'},
     }
     path = tmp_path / 'native.toml'
-    path.write_text(tomlkit.dumps(entries))
+    path.write_text(tomlkit.dumps({'__config__': {'httplib': 'tornado'}, **entries}))
     # No plugin replacement or ordering imitation: actual CLI/plugins/HTTP client
     # process the fixture. Reject every unexpected origin rather than going online.
     script = '''import sys
@@ -107,13 +106,37 @@ main()
         server.shutdown(); server.server_close(); thread.join()
 
 
-def test_production_prerelease_is_an_explicit_watch_not_main_comparison():
+@pytest.mark.parametrize('watches', [['preview'], ['preview', 'candidate']])
+def test_explicit_prerelease_watches_do_not_replace_release_comparison(watches):
+    fixture = {
+        'native': {
+            'release': {'source': 'pypi', 'pypi': 'fixture'},
+            **{name: {'source': 'pypi', 'pypi': 'fixture', 'use_pre_release': True} for name in watches},
+        },
+        'packages': {'release': {'watch': watches}},
+    }
+    binding = config.binding(fixture, 'release')
+    assert binding['compare'] == 'release'
+    assert binding['watch'] == watches
+    assert not fixture['native'][binding['compare']].get('use_pre_release', False)
+    assert all(fixture['native'][name]['use_pre_release'] is True for name in binding['watch'])
+
+
+def test_production_prerelease_tracks_are_explicit_watches_not_main_comparisons():
+    """Check policy roles without freezing today's package inventory or count."""
+    from tracker.version_rules import load
+
     root = Path(__file__).resolve().parents[2]
-    native = __import__('tracker.version_rules',fromlist=['load']).load(root/'config/versions/nvchecker.toml').entries
-    operator = config.load(root/'config/tracker.toml')
-    name = 'python-opentelemetry-semantic-conventions'
-    assert not native[name].get('use_pre_release', False)
-    assert native[name+'@prerelease']['use_pre_release'] is True
-    assert config.binding({**operator,'native':native},name)['compare'] == name
-    assert config.binding({**operator,'native':native},name)['watch'] == [name+'@prerelease']
-    assert [n for n,e in native.items() if e.get('use_pre_release')] == [name+'@prerelease']
+    native = load(root / 'config/versions/nvchecker.toml').entries
+    operator = config.load(root / 'config/tracker.toml')
+    prereleases = {name for name, entry in native.items() if entry.get('use_pre_release')}
+    bindings = [config.binding({**operator, 'native': native}, name)
+                for name in operator.get('packages', {})]
+    watched = {track for binding in bindings for track in binding['watch']}
+    compared = {binding['compare'] for binding in bindings}
+    assert prereleases <= watched
+    assert prereleases.isdisjoint(compared)
+    for binding in bindings:
+        if prereleases.intersection(binding['watch']):
+            assert binding['compare'] in native
+            assert not native[binding['compare']].get('use_pre_release', False)

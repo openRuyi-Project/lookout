@@ -11,6 +11,7 @@ if (!data) Astro.response.status = status === 404 ? 404 : 503;
 <Base title={`${name} · openRuyi Packages`}>
   <div class="package-detail"><a class="back" href="/">← Packages</a>
   {data ? <>
+    {data.notices.map(notice => <p class="notice">{notice}</p>)}
     <header class="package-heading"><h1>{data.title}</h1><div class="identity"><Values values={data.identity}/></div></header>
     {data.subtitle && <p class="package-subtitle">{data.subtitle}</p>}
     <nav class="package-links" aria-label="Package sources"><Values values={data.links}/></nav>

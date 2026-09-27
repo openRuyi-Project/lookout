@@ -1,7 +1,7 @@
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
-from fastapi.testclient import TestClient
+from conftest import ProjectedClient
 import pytest
 
 from tracker import monitor, monitor_model, monitor_views, state, view
@@ -11,7 +11,7 @@ from tracker.api import create_app
 def test_uniform_results_preserve_v1_values_and_raw_evidence(snapshot, tmp_path):
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
-    client = TestClient(create_app(db))
+    client = ProjectedClient(create_app(db))
     old = client.get('/api/v1/packages/foo3').json()
     new = client.get('/api/v2/packages/foo3').json()
     modules = new['monitors']
@@ -64,7 +64,7 @@ def test_pending_monitor_is_not_a_negative_finding(snapshot, tmp_path):
     snapshot['monitor_catalog'] = {'future': {'title': 'New observation'}}
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
-    result = TestClient(create_app(db)).get('/api/v2/packages?monitor=future').json()
+    result = ProjectedClient(create_app(db)).get('/api/v2/packages?monitor=future').json()
     assert result['check_statuses'] == {'pending': 5}
     assert result['total'] == 5
     assert all(row['monitors']['future']['check']['status'] == 'pending' for row in result['items'])
@@ -99,7 +99,7 @@ def test_monitor_focus_does_not_change_other_filter_dimensions(snapshot, tmp_pat
     }}}
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
-    api = TestClient(create_app(db))
+    api = ProjectedClient(create_app(db))
     original = api.get('/api/v2/packages?maintenance=Signal').json()
     for mid in ('source', 'version', 'build', 'external'):
         focused = api.get('/api/v2/packages?maintenance=Signal&monitor=' + mid).json()

@@ -26,7 +26,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 from tracker.version_rules import load
-WRITE_PATH = {'collector', 'obs', 'nv', 'native_spec', 'discover', 'discover_sources', 'package', 'config_change', 'spec_git', 'spec_worker', 'spec_sandbox', 'monitor', 'monitor_io', 'monitor_eol', 'monitor_security', 'monitor_cve', 'monitor_license', 'http_io'}
+WRITE_PATH = {'collector', 'obs', 'nv', 'native_spec', 'discover', 'discover_sources', 'package', 'config_change', 'spec_git', 'spec_worker', 'spec_sandbox', 'monitor', 'monitor_io', 'monitor_eol', 'monitor_security', 'monitor_cve', 'monitor_license', 'http_io', 'pypi_metadata', 'requires_pypi'}
 READ_PATH = ['api.py', 'view.py']
 
 

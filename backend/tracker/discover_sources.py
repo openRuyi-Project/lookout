@@ -3,6 +3,7 @@
 """Identity projection from saved confined-RPM facts, never a SPEC interpreter."""
 import re
 from urllib.parse import quote, urlsplit
+from . import source_release
 
 
 def hints(candidate, spec):
@@ -27,10 +28,12 @@ def hints(candidate, spec):
         result['go_module'] = module
     # Source0 only: patches/auxiliary downloads cannot select the release repo.
     urls = [v['url'] for v in metadata.get('sources', []) if v.get('number') == 0]
-    if len(urls) != 1 or '%' in urls[0]:
+    if len(urls) != 1:
         return result
     source = urls[0].split('#', 1)[0]
     result['source_url'] = source
+    if '%' in source:
+        return result
     repo = repository(source)
     if repo:
         result['source_repository'] = repo
@@ -61,6 +64,78 @@ def repository(url):
         if re.fullmatch(r'(?:/[A-Za-z0-9_.-]+){2,}',path) and not any(p in ('.','..') for p in path.split('/')[1:]):
             return 'https://' + u.hostname + path.removesuffix('.git')
     return None
+
+
+def registry_entry(candidate):
+    """Propose a native rule for an exact, version-matched registry Source0.
+
+    Both onboarding entry points consume saved ``hints``; package names and
+    homepages are not registry identities. The result still requires review and
+    native verification before becoming a configured rule.
+    """
+    if candidate.get('hint_error'):
+        return None
+    current = candidate.get('current') or ''
+    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', current):
+        return None
+    source = candidate.get('source_url') or ''
+    release = source_release.from_url(source)
+    if not release or not source_release.matches_rpm(release, current):
+        return None
+    major, minor, _ = current.split('.')
+    line = (re.escape(major + '.' + minor) + r'\.[0-9]+' if major == '0'
+            else re.escape(major) + r'\.[0-9]+\.[0-9]+')
+    return {'source': 'cratesio', 'cratesio': release.name, 'include_regex': '^' + line + '$'}
+
+
+def go_source_check(candidate):
+    """Hold contradictory submodule evidence; never repair a module by guessing.
+
+    A successful query for a repository's root module cannot validate a Source0
+    taken from an independently tagged component. Vanity paths need explicit
+    review here because matching their last segment does not prove the mapping.
+    """
+    source = candidate.get('source_url') or ''
+    if '%' in source:
+        return {'reason': 'go_module_source_identity_unverified'}
+    try:
+        url = urlsplit(source)
+    except ValueError:
+        return {'reason': 'go_module_source_identity_unverified'}
+    parts = url.path.split('/')
+    tag = ''
+    if url.hostname == 'github.com' and len(parts) > 4 and parts[3] == 'archive':
+        tag = '/'.join(parts[4:])
+    elif url.hostname == 'codeload.github.com' and len(parts) > 4 and parts[3] in ('tar.gz', 'zip'):
+        tag = '/'.join(parts[4:])
+    elif '/-/archive/' in url.path:
+        tag = url.path.split('/-/archive/', 1)[1].rsplit('/', 1)[0]
+    tag = tag.removeprefix('refs/tags/')
+    tag = re.sub(r'\.(?:tar\.(?:gz|xz|bz2|zst)|tgz|zip)$', '', tag)
+    component_tag = r'(.+)/v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?'
+    found = re.fullmatch(component_tag, tag)
+    if not found and '/' in tag:
+        found = re.fullmatch(component_tag, tag.rsplit('/', 1)[0])
+    if not found:
+        return {}
+    component = found[1]
+    module = candidate['go_module']
+    parent, _, last = module.rpartition('/')
+    if re.fullmatch(r'v[0-9]+', last) and int(last[1:]) >= 2:
+        module = parent
+    repo = candidate.get('source_repository') or ''
+    repo_path = repo.removeprefix('https://').removeprefix('http://')
+    prefix = repo_path + '/'
+    same_repository = module.startswith(prefix) or (
+        repo_path.startswith('github.com/') and module[:len(prefix)].casefold() == prefix.casefold()
+    )
+    if repo_path and same_repository:
+        relative = module[len(repo_path) + 1:]
+        reason = None if relative == component else 'go_module_source_component_mismatch'
+    else:
+        reason = ('go_module_source_identity_unverified' if module.endswith('/' + component)
+                  else 'go_module_source_component_mismatch')
+    return {'source_component': component, 'reason': reason}
 
 
 def go_entry(module, base_url="https://proxy.golang.org"):

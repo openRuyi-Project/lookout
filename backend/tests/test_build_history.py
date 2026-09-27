@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from tracker import collector, obs, state, view
 from tracker.api import create_app
-from fastapi.testclient import TestClient
+from conftest import ProjectedClient
 from test_core import FakeOBS
 
 
@@ -126,7 +126,7 @@ def test_untracked_filter_is_not_attention(tmp_path, snapshot):
     set_success(snapshot, 'binutils', '3.9.0', 'h-binutils')
     db = tmp_path / 'snapshot.db'
     state.commit(db, snapshot)
-    client = TestClient(create_app(db))
+    client = ProjectedClient(create_app(db))
     payload = client.get('/api/v1/packages?view=untracked').json()
     assert payload['counts']['attention'] == 3
     assert payload['counts']['untracked'] == 2

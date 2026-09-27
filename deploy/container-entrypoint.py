@@ -147,7 +147,7 @@ def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
     try:
-        config = load_runtime(CONFIG, DB)
+        config = load_runtime(CONFIG, DB, recover=True)
         policies = {**obs.polling(config), "upstreams": nv.polling(config)}
         monitors = monitor.settings(config)
         if monitors["enabled"]:

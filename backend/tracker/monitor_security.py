@@ -1,14 +1,17 @@
 """Security candidates, not a claim that distribution backports are absent."""
 
+from datetime import date
+from ipaddress import ip_address
+import json
 import re
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from .monitor_model import finding, evidence
 from .schedule import Schedule
 from .monitor_model import version_query as query_subject
 
 
 TITLE = 'Security'
-VERSION = 5
+VERSION = 6
 HOSTS = {"api.osv.dev", "www.cisa.gov", "api.first.org"}
 CVE = re.compile(r"CVE-\d{4}-\d{4,}")
 
@@ -21,8 +24,8 @@ def refresh(subject, inputs, previous):
 def inputs(package, configured):
     if configured is not None:
         return configured
-    from .package_identity import from_native
-    return from_native(package['identity'])
+    from .package_identity import from_package
+    return from_package(package)
 
 
 def osv(subject, settings, io):
@@ -68,6 +71,104 @@ def group_aliases(entries):
     return groups
 
 
+def public_reference(value):
+    """Validate a display link without resolving or fetching its destination."""
+    if not isinstance(value, str) or len(value) > 8192 or re.search(r'[\s\\<>"`]', value):
+        return None
+    try:
+        url = urlsplit(value)
+        host = (url.hostname or '').rstrip('.').lower()
+        if url.scheme != 'https' or not host or url.username or url.password:
+            return None
+        if url.port is not None and not 1 <= url.port <= 65535:
+            return None
+        try:
+            if not ip_address(host).is_global:
+                return None
+        except ValueError:
+            # Reject single-label/intranet names and noncanonical numeric hosts.
+            labels = host.encode('idna').decode('ascii').split('.')
+            if (len(labels) < 2 or not re.fullmatch(r'[a-z][a-z0-9-]*', labels[-1])
+                    or labels[-1] in {'localhost', 'local', 'internal', 'invalid', 'test'}
+                    or any(not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?', part)
+                           for part in labels)):
+                return None
+    except (ValueError, UnicodeError):
+        return None
+    return value
+
+
+def attributed_context(member, settings, member_url):
+    """Normalize optional OSV context; provider prose remains untrusted plain text."""
+    facts = []
+    summary = member.get('summary')
+    if isinstance(summary, str) and summary.strip():
+        summary = ' '.join(summary.split())
+        facts.append(evidence('Summary', summary[:600] + ('…' if len(summary) > 600 else ''),
+                              'OSV', member_url, code='summary'))
+        if len(summary) > 600:
+            facts.append(evidence('Summary characters omitted', len(summary) - 600,
+                                  'OSV', member_url, code='truncated'))
+    severities = list(member.get('severity') or []) if isinstance(member.get('severity'), list) else []
+    for affected in member.get('affected', []):
+        package = affected.get('package', {})
+        if (package.get('name'), package.get('ecosystem')) == (settings.get('name'), settings.get('ecosystem')):
+            if isinstance(affected.get('severity'), list):
+                severities.extend(affected['severity'])
+    prefixes = {'CVSS_V2': r'(?:CVSS:2\.0/)?', 'CVSS_V3': r'CVSS:3\.[01]/',
+                'CVSS_V4': r'CVSS:4\.0/'}
+    for severity in severities:
+        if not isinstance(severity, dict):
+            continue
+        kind, vector = severity.get('type'), severity.get('score')
+        if not isinstance(kind, str) or not isinstance(vector, str):
+            continue
+        kind, vector = kind.strip().upper(), vector.strip()
+        if (kind not in prefixes or len(vector) > 512
+                or not re.fullmatch(prefixes[kind] + r'AV:[A-Za-z]+(?:/[A-Za-z][A-Za-z0-9]*:[A-Za-z0-9.]+)+', vector)):
+            continue
+        origin = severity.get('source')
+        key = kind + (' · ' + origin if origin in ('NVD', 'CNA', 'SELF') else '')
+        facts.append(evidence(key, vector, 'OSV', member_url, code='cvss_vector'))
+    return facts
+
+
+def reference_facts(members, advisory_url):
+    priorities = {'FIX': 0, 'ADVISORY': 1, 'WEB': 2}
+    references = {}
+    for member in members:
+        items = member.get('references')
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if (not isinstance(item, dict) or not isinstance(item.get('type'), str)
+                    or item['type'] not in priorities):
+                continue
+            url = public_reference(item.get('url'))
+            if url and (url not in references or priorities[item['type']] < priorities[references[url]]):
+                references[url] = item['type']
+    ordered = sorted(references, key=lambda url: (priorities[references[url]], url))
+    facts = [evidence(references[url], url, 'OSV', url, code='reference') for url in ordered[:12]]
+    if len(ordered) > 12:
+        facts.append(evidence('Additional references', len(ordered) - 12, 'OSV', advisory_url, code='truncated'))
+    return facts
+
+
+def bounded_facts(facts, provider, advisory_url):
+    # Alias responses can repeat the same facts. Keep their source links while
+    # avoiding false evidence revisions from provider ordering or duplication.
+    unique = {json.dumps(fact, sort_keys=True): fact for fact in facts}
+    priority = {'query': 0, 'epss_probability': 1, 'fixed_events': 2, 'kev_added': 2,
+                'kev_ransomware': 2, 'summary': 3, 'reference': 4, 'cvss_vector': 5, 'truncated': 6}
+    ordered = [unique[key] for key in sorted(
+        unique, key=lambda key: (priority.get(unique[key].get('code'), 1), key))]
+    if len(ordered) > 256:
+        omitted = len(ordered) - 255
+        ordered = ordered[:255] + [evidence('Additional evidence fields', omitted, provider,
+                                           advisory_url, code='truncated')]
+    return ordered
+
+
 def check(subject, settings, io):
     if "vendor" in settings:
         # The scanner adapter is isolated from page rendering and OSV transport.
@@ -80,12 +181,12 @@ def check(subject, settings, io):
         return {"status": "unsupported", "findings": [], "note": "Upstream version identity is not established."}
     groups = group_aliases(entries)
     cves = sorted({a for aliases, _ in groups for a in aliases if CVE.fullmatch(a)})
-    kev, epss, errors = set(), {}, []
+    kev, epss, errors = {}, {}, []
     kev_ok = False
     if cves:
         try:
             data = io.json("GET", "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json")
-            kev = {v["cveID"] for v in data["vulnerabilities"]}
+            kev = {v["cveID"]: v for v in data["vulnerabilities"]}
             kev_ok = True
         except Exception as error:
             errors.append("KEV: " + type(error).__name__)
@@ -100,10 +201,11 @@ def check(subject, settings, io):
         except Exception as error:
             errors.append("EPSS: " + type(error).__name__)
     findings = []
-    for aliases, members in groups:
+    for aliases, members in sorted(groups, key=lambda group: min(group[0])):
+        members = sorted(members, key=lambda item: (item["id"], json.dumps(item, sort_keys=True)))
         ids = sorted(a for a in aliases if CVE.fullmatch(a))
         identity = ids[0] if ids else min(aliases)
-        active = bool(set(ids) & kev)
+        active = bool(set(ids) & set(kev))
         provider = "cve-bin-tool" if "vendor" in settings else "OSV"
         link = (
             "https://nvd.nist.gov/vuln/detail/" + identity
@@ -139,6 +241,9 @@ def check(subject, settings, io):
                             fixed.add(str(event["fixed"]))
             if provider == "OSV":
                 facts.append(evidence("Fixed events", sorted(fixed), provider, member_url, code="fixed_events"))
+                facts.extend(attributed_context(member, settings, member_url))
+        if provider == "OSV":
+            facts.extend(reference_facts(members, aliases_url))
         kev_url = "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"
         if not ids:
             facts.append(evidence("KEV (no CVE alias)", None, "CISA", kev_url, status="not_applicable"))
@@ -155,6 +260,18 @@ def check(subject, settings, io):
                     status="observed" if kev_ok else "unavailable",
                 )
             )
+            if cve in kev:
+                record = kev[cve]
+                day = record.get('dateAdded')
+                try:
+                    if isinstance(day, str) and date.fromisoformat(day).isoformat() == day:
+                        facts.append(evidence('KEV added · ' + cve, day, 'CISA', kev_url, code='kev_added'))
+                except ValueError:
+                    pass
+                ransomware = record.get('knownRansomwareCampaignUse')
+                if ransomware in ('Known', 'Unknown'):
+                    facts.append(evidence('Ransomware campaign use · ' + cve, ransomware,
+                                          'CISA', kev_url, code='kev_ransomware'))
             epss_url = "https://api.first.org/data/v1/epss?cve=" + cve
             if cve in epss:
                 probability, day = epss[cve]
@@ -162,7 +279,8 @@ def check(subject, settings, io):
                 facts.append(evidence("EPSS model date · " + cve, day, "FIRST", epss_url))
             else:
                 facts.append(evidence("EPSS · " + cve, None, "FIRST", epss_url, status="unavailable"))
-        findings.append(finding(identity, "Security", identity, facts, link, tags=["KEV"] if active else []))
+        findings.append(finding(identity, "Security", identity, bounded_facts(facts, provider, aliases_url),
+                                link, tags=["KEV"] if active else []))
     return {
         "status": "partial" if errors else "ok",
         "findings": findings,

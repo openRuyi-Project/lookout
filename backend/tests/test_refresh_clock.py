@@ -7,10 +7,10 @@ import sqlite3
 import subprocess
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
+from conftest import ProjectedClient
 import pytest
 
-from tracker import api, collector, config as cfg, monitor, nv, spec_git, native_spec, state, view
+from tracker import api, collector, config as cfg, monitor, nv, spec_git, native_spec, state, view, read_model
 from tracker.monitor_model import version_query
 from test_core import FakeOBS
 
@@ -19,7 +19,7 @@ def test_identical_build_poll_keeps_payload_revision_and_projection(config, snap
     at = datetime.now(timezone.utc).replace(microsecond=0)
     clock = [at]
     monkeypatch.setattr(state, 'utcnow', lambda: clock[0].isoformat())
-    monkeypatch.setattr(api, 'time', SimpleNamespace(time=lambda: clock[0].timestamp()))
+    monkeypatch.setattr(read_model, 'time', SimpleNamespace(time=lambda: clock[0].timestamp()))
     requests = []
     class Client(FakeOBS):
         def __init__(self, c, **kwargs):
@@ -40,7 +40,7 @@ def test_identical_build_poll_keeps_payload_revision_and_projection(config, snap
     calls = []
     project = view.project_monitors
     monkeypatch.setattr(view, 'project_monitors', lambda *a, **kw: calls.append(1) or project(*a, **kw))
-    client = TestClient(api.create_app(db))
+    client = ProjectedClient(api.create_app(db))
     before = client.get('/api/v2/packages/binutils').json()
     clock[0] += timedelta(seconds=15)
     second = collector.collect_builds(config, db)
@@ -79,11 +79,11 @@ def test_clock_only_freshness_change_reprojects_rows_and_facets(
     db = tmp_path / 'snapshot.db'
     state.commit(db, snapshot)
     revision = state.read_cached(db)[1]
-    monkeypatch.setattr(api, 'time', SimpleNamespace(time=lambda: now.timestamp()))
+    monkeypatch.setattr(read_model, 'time', SimpleNamespace(time=lambda: now.timestamp()))
     calls = []
     project = view.project_monitors
     monkeypatch.setattr(view, 'project_monitors', lambda *a, **kw: calls.append(1) or project(*a, **kw))
-    client = TestClient(api.create_app(db))
+    client = ProjectedClient(api.create_app(db))
     before = client.get('/api/v2/packages/binutils').json()['monitors']['build']
     assert before['check']['status'] == before_status and len(calls) == 1
 
@@ -103,7 +103,7 @@ def test_clock_only_freshness_change_reprojects_rows_and_facets(
     listing = client.get('/api/v2/packages', params={'monitor': 'build', 'check': after_status}).json()
     assert listing['total'] == len(snapshot['sources'])
     assert listing['check_statuses'] == {after_status: len(snapshot['sources'])}
-    assert listing['collection'] == expected_collection
+    assert listing['collection'] == {**expected_collection, 'projection_notice': None}
     assert listing['counts']['attention'] == sum(
         any('attention' in module['dimensions'].get('view', []) for module in row['monitors'].values())
         for row in expected_rows
@@ -173,13 +173,13 @@ def test_restore_with_same_revision_does_not_reuse_a_newer_clock(snapshot, tmp_p
     with sqlite3.connect(db) as src, sqlite3.connect(backup) as dst:
         src.backup(dst)
     now = at + timedelta(seconds=20)
-    monkeypatch.setattr(api, 'time', SimpleNamespace(time=lambda: now.timestamp()))
+    monkeypatch.setattr(read_model, 'time', SimpleNamespace(time=lambda: now.timestamp()))
     patches = collector.build_patch(snapshot, 'builds')
     for targets in patches.values():
         for fact in targets.values():
             fact.update(fetched_at=now.isoformat(), attempted_at=now.isoformat())
     assert state.commit_build_heartbeat(db, snapshot, patches, state.success(snapshot['components']['builds'], {}, now.isoformat()))
-    client = TestClient(api.create_app(db))
+    client = ProjectedClient(api.create_app(db))
     url = '/api/v2/packages/binutils'
     assert client.get(url).json()['monitors']['build']['check']['status'] == 'ok'
     # An in-place SQLite restore keeps both the inode and original content revision.

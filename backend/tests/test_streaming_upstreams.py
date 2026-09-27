@@ -11,30 +11,58 @@ import threading
 import time
 import tomllib
 import tomlkit
+from types import SimpleNamespace
 import pytest
 from tracker import collector, config as cfg, nv, state
 
 
 def native_file(tmp_path, config):
     p = tmp_path / 'native.toml'
-    p.write_text(tomlkit.dumps({'__config__': {'max_concurrency': 2, 'http_timeout': 5},
+    p.write_text(tomlkit.dumps({'__config__': {'max_concurrency': 2, 'http_timeout': 30},
                                **config['native']}))
     config.update(nvpath=str(p),nv_digest=hashlib.sha256(p.read_bytes()).hexdigest())
     return p
+
+
+@pytest.fixture
+def expire_after_output(monkeypatch):
+    """Read a real child event, then advance only the tested deadline clock.
+
+    The watchdog bounds a missing event; CPU contention before the child runs
+    cannot erase the output whose timeout import/cleanup we are testing.
+    """
+    started = time.monotonic()
+    consumed = False
+
+    def read(fd, size):
+        nonlocal consumed
+        chunk = os.read(fd, size)
+        consumed = consumed or b'\n' in chunk
+        return chunk
+
+    def clock():
+        return 100 if consumed or time.monotonic() - started > 30 else 0
+
+    monkeypatch.setattr(nv, 'time', SimpleNamespace(monotonic=clock))
+    monkeypatch.setattr(nv, 'os', SimpleNamespace(read=read, killpg=os.killpg))
 
 
 def test_actual_native_fast_result_is_visible_before_slow_request_finishes(config,tmp_path):
     release=threading.Event();slow_started=threading.Event();events=[]
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            if self.path=='/slow':slow_started.set();release.wait(4)
+            if self.path == '/slow':
+                slow_started.set()
+                if not release.wait(30):
+                    self.send_error(504)
+                    return
             body=b'{"stable_versions":["2.0"]}'
             self.send_response(200);self.end_headers();self.wfile.write(body)
         def log_message(self,*_):pass
     server=ThreadingHTTPServer(('127.0.0.1',0),Handler);thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     try:
         config['native']={n:{'source':'jq','url':f'http://127.0.0.1:{server.server_port}/{n}','filter':'first(.stable_versions[])'} for n in ['slow','fast']}
-        config['collector']['nvchecker_timeout_seconds']=10;native_file(tmp_path,config)
+        config['collector']['nvchecker_timeout_seconds']=60;native_file(tmp_path,config)
         start=time.monotonic()
         def completed(facts):
             events.append((round(time.monotonic()-start,3),list(facts)))
@@ -44,12 +72,12 @@ def test_actual_native_fast_result_is_visible_before_slow_request_finishes(confi
         result,error=nv.run(config,{},state.utcnow(),on_results=completed)
         print('STREAM_NATIVE',json.dumps({'events':events,'error':error,'versions':{n:f.get('version') for n,f in result.items()}}))
         assert not error and release.is_set() and all(v['version']=='2.0' for v in result.values())
-        assert events[0][0]<3 and events[0][1]==['fast']
+        assert events[0][1] == ['fast']
     finally:
         release.set();server.shutdown();server.server_close();thread.join()
 
 
-def test_real_process_timeout_retains_published_success_and_old_other_value():
+def test_real_process_timeout_retains_published_success_and_old_other_value(expire_after_output):
     now='2026-09-20T00:00:00Z';native={'fast':{'source':'manual'},'slow':{'source':'manual'}}
     old={'slow':{'version':'1.0','fetched_at':'2026-09-19T00:00:00Z','configuration_fingerprint':cfg.track_fingerprint(native['slow'])}}
     code='import time;print(\'{"name":"fast","event":"updated","version":"2.0"}\',flush=True);time.sleep(10)'
@@ -57,6 +85,15 @@ def test_real_process_timeout_retains_published_success_and_old_other_value():
     assert error=='nvchecker timeout' and published[0]['fast']['version']=='2.0'
     assert result['slow']['version']=='1.0' and result['slow']['fetched_at']==old['slow']['fetched_at']
     assert result['slow']['reported_at'] is None and result['fast']['reported_at']==now
+
+
+def test_silent_process_has_a_real_finite_deadline():
+    result, error = nv.stream_command(
+        [sys.executable, '-c', 'import time; time.sleep(30)'],
+        0.1, {'silent': {'source': 'manual'}}, {}, state.utcnow(),
+    )
+    assert error == 'nvchecker timeout'
+    assert result['silent']['error'] == error
 
 
 def process_terminated(pid):
@@ -74,7 +111,7 @@ def process_terminated(pid):
 
 
 @pytest.mark.parametrize('streaming', [False, True])
-def test_timeout_kills_native_descendants(tmp_path, streaming):
+def test_timeout_kills_native_descendants(tmp_path, streaming, expire_after_output):
     pid_path = tmp_path / 'child.pid'
     code = (
         'import pathlib, subprocess, sys, time\n'
@@ -85,7 +122,6 @@ def test_timeout_kills_native_descendants(tmp_path, streaming):
     )
     published = []
     native = {'fast': {'source': 'manual'}}
-    started = time.monotonic()
     result, error = nv.stream_command(
         [sys.executable, '-u', '-c', code], 1, native, {}, state.utcnow(),
         published.append if streaming else None,
@@ -98,7 +134,6 @@ def test_timeout_kills_native_descendants(tmp_path, streaming):
         while not process_terminated(pid) and time.monotonic() < deadline:
             time.sleep(0.01)
         assert process_terminated(pid), 'native helper survived the command timeout'
-        assert time.monotonic() - started < 4
     finally:
         if not process_terminated(pid):
             os.kill(pid, signal.SIGKILL)
@@ -120,9 +155,8 @@ def test_real_process_output_limits_preserve_complete_results(streaming, output)
         + payload + '\ntime.sleep(30)\n'
     )
     published = []
-    started = time.monotonic()
     result, error = nv.stream_command(
-        [sys.executable, '-u', '-c', code], 5, native, old, now,
+        [sys.executable, '-u', '-c', code], 30, native, old, now,
         published.append if streaming else None,
     )
     assert error == 'nvchecker output limit exceeded'
@@ -130,14 +164,14 @@ def test_real_process_output_limits_preserve_complete_results(streaming, output)
     assert result['slow']['version'] == '1.0' and result['slow']['fetched_at'] == old['slow']['fetched_at']
     assert result['slow']['error'] == error
     assert bool(published) is streaming
-    assert time.monotonic() - started < 5
 
 
-def test_full_run_prioritizes_tracks_not_reported_before_deadline(config,tmp_path,monkeypatch):
+def test_full_streaming_uses_an_ephemeral_native_config(config,tmp_path,monkeypatch):
     config['native']={n:{'source':'manual'} for n in ['reported','unreported']};native_file(tmp_path,config)
     old={'reported':{'reported_at':'2026-09-20T00:00:00Z'},'unreported':{'reported_at':None,'attempted_at':'2026-09-20T00:00:00Z'}}
     def execute(command,*args):
-        assert list(tomllib.loads(Path(command[-1]).read_text()))==['__config__','unreported','reported']
+        assert command[-1] != config['nvpath']
+        assert set(tomllib.loads(Path(command[-1]).read_text()))=={'__config__','unreported','reported'}
         return {},None
     monkeypatch.setattr(nv,'stream_command',execute);nv.run(config,old,state.utcnow(),on_results=lambda _:None)
 
@@ -170,3 +204,67 @@ def test_config_drift_stops_publication_without_relabelling_completed_facts(conf
         collector.check_upstreams(config,configured_path,db,run_nv=execute)
     assert state.read(db)['tracks']['binutils']['version']=='9.0'
     assert state.read(db)['components']['nvchecker']==snapshot['components']['nvchecker']
+
+
+@pytest.mark.parametrize('new_fails', [False, True])
+def test_automatic_native_batch_finishes_new_rules_before_periodic_requests(config, snapshot, tmp_path, monkeypatch, new_fails):
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    expired = (now - timedelta(days=2)).isoformat()
+    requested = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            requested.append(self.path)
+            if new_fails and self.path == '/new':
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'release=2.0')
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        config['native'] = {
+            name: {'source': 'regex', 'url': f'http://127.0.0.1:{server.server_port}/{name}',
+                   'regex': r'release=([0-9.]+)'}
+            for name in ['periodic', 'new', 'edited']
+        }
+        config['collector']['nvchecker_timeout_seconds'] = 60
+        native_file(tmp_path, config)
+        snapshot['tracks'] = {
+            name: {'version': '1.0', 'fetched_at': expired, 'attempted_at': expired,
+                   'configuration_fingerprint': cfg.track_fingerprint(config['native'][name]), 'error': None}
+            for name in ['periodic', 'edited']
+        }
+        snapshot['tracks']['edited']['configuration_fingerprint'] = 'prior-rule'
+        snapshot['components']['nvchecker'].update(
+            fetched_at=expired, options_fingerprint=cfg.track_fingerprint(config.get('native_options', {})))
+        db = tmp_path / 'state.sqlite3'
+        state.commit(db, snapshot)
+        monkeypatch.setattr(cfg, 'require_unchanged', lambda *_: None)
+        monkeypatch.setattr(state, 'utcnow', lambda: now.isoformat())
+
+        first = collector.check_upstreams(config, 'unused', db, due=True)
+        assert set(requested) == {'/new', '/edited'}
+        assert first['tracks']['periodic'] == snapshot['tracks']['periodic']
+        assert first['tracks']['edited']['version'] == '2.0'
+        assert bool(first['tracks']['new']['error']) == new_fails
+        assert first['components']['nvchecker']['fetched_at'] == expired
+
+        requested.clear()
+        second = collector.check_upstreams(config, 'unused', db, due=True)
+        assert requested == ['/periodic']
+        assert second['tracks']['periodic']['version'] == '2.0'
+        assert second['tracks']['new'] == first['tracks']['new']
+        assert nv.due_names(config, second, now) == []
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()

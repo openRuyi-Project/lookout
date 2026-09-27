@@ -33,14 +33,14 @@ def _check_identity():
         raise RuntimeError('runtime must run as a non-root UID')
 
 
-def load_runtime(path, db):
+def load_runtime(path, db, *, recover=False):
     _check_identity()
     config = load(Path(path))
-    check_runtime(config, db)
+    check_runtime(config, db, recover=recover)
     return config
 
 
-def check_runtime(config, db):
+def check_runtime(config, db, *, recover=False):
     _check_identity()
     data = Path(db)
     _writable(data.parent)
@@ -52,6 +52,8 @@ def check_runtime(config, db):
         if not data.is_file():
             raise RuntimeError('tracker database is not a regular file')
         try:
+            if recover and state.recover(data):
+                print('runtime: SQLite journal recovery verified', file=sys.stderr)
             state.read(data)
         except (sqlite3.Error, OSError, ValueError) as error:
             raise RuntimeError(f'tracker database is unreadable: {error}') from error

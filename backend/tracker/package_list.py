@@ -6,7 +6,7 @@ not build flavors or findings. Pagination happens only after this calculation.
 from collections import defaultdict
 from types import MappingProxyType
 
-from . import build_status
+from . import build_status, monitor_model
 
 
 VIEWS = ('all', 'updates', 'problems', 'attention', 'untracked')
@@ -21,7 +21,7 @@ class PackageList:
         self.query = query
         self.monitor = monitor
         index = defaultdict(lambda: defaultdict(set))
-        for key in ('view', 'buildsystem', 'maintenance', *(f'build:{t["id"]}' for t in targets)):
+        for key in ('view', 'buildsystem', 'maintenance', 'requires', 'version_signal', *(f'build:{t["id"]}' for t in targets)):
             index[key]
         for number, row in enumerate(self.rows):
             index['view']['all'].add(number)
@@ -29,6 +29,10 @@ class PackageList:
                 for dimension, values in module['dimensions'].items():
                     for value in values:
                         index[dimension][value].add(number)
+        for dimension, options in index.items():
+            if dimension.startswith('check:'):
+                for group, statuses in monitor_model.CHECK_GROUPS.items():
+                    options[group] = set().union(*(options.get(status, ()) for status in statuses))
         self.index = MappingProxyType({dimension: MappingProxyType({
             value: frozenset(members) for value, members in options.items()
         }) for dimension, options in index.items()})
@@ -51,19 +55,25 @@ class PackageList:
                 if count or value in required or value == selections.get(dimension)}
 
     def select(self, *, view, buildsystem, maintenance, builds, page, per_page, check='', findings_only=False,
-               query=None, monitor=None):
+               query=None, monitor=None, requires='', signal='', freshness=''):
         query = (self.query if query is None else query).strip().casefold()
         monitor = self.monitor if monitor is None else monitor
+        maintenance = monitor_model.canonical_label(maintenance)
         scope = {number for number, name in enumerate(self.names) if query in name} if query else self.all
-        selections = {'view': view, 'buildsystem': buildsystem, 'maintenance': maintenance,
+        selections = {'view': view, 'buildsystem': buildsystem, 'maintenance': maintenance, 'requires': requires, 'version_signal': signal,
                       **{f'build:{target}': status for target, status in builds.items()}}
         if monitor:
             selections['check:' + monitor] = check
+            selections['retained:' + monitor] = 'yes' if freshness == 'retained' else ''
         coverage = self.matching(selections, without='check:' + monitor, scope=scope)
         results = coverage & self.index.get('findings:' + monitor, {}).get('yes', frozenset())
         check_statuses = self.counts('check:' + monitor, selections, scope=scope) if monitor else {}
+        check_statuses = {status: count for status, count in check_statuses.items()
+                          if status not in monitor_model.CHECK_GROUPS}
         if findings_only:
             selections['findings:' + monitor] = 'yes'
+        retained = self.matching(selections, without='retained:' + monitor, scope=scope)
+        retained.intersection_update(self.index.get('retained:' + monitor, {}).get('yes', ()))
         selected = sorted(self.matching(selections, scope=scope))
         total = len(selected)
         pages = max(1, (total + per_page - 1) // per_page)
@@ -82,9 +92,15 @@ class PackageList:
             'counts': self.counts('view', selections, required=VIEWS, scope=scope),
             'buildsystems': self.counts('buildsystem', selections, scope=scope),
             'maintenance_labels': self.counts('maintenance', selections, scope=scope),
+            'version_signals': self.counts('version_signal', selections, scope=scope),
+            'requires_counts': {
+                'all': len(self.matching(selections, without='requires', scope=scope)),
+                **self.counts('requires', selections, required=('unmet', 'changes'), scope=scope),
+            },
             'build_statuses': statuses,
             'check_statuses': check_statuses,
             'result_count': len(results), 'coverage_count': len(coverage),
+            'retained_count': len(retained),
         }
 
 

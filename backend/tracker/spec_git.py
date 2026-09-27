@@ -155,3 +155,22 @@ def read_macros(repo, macro_package, git='git'):
         macros.append(({'path': f'SPECS/{macro_package}/{filename}',
                         'sha256': hashlib.sha256(data).hexdigest()}, data))
     return macros
+
+
+def macro_packages(spec):
+    return ([spec['macro_package']] if spec.get('macro_package') else []) + spec.get('extra_macro_packages', [])
+
+
+def read_local_sources(repo, package, names, git='git'):
+    """Explicit auxiliary inputs from the same Git tree; no downloads or symlinks."""
+    result = []
+    for name in names:
+        path = f'SPECS/{package}/{name}'
+        listing, error = _git_text(['-C', repo, 'ls-tree', 'HEAD', '--', path], git)
+        if error or not listing or not listing.startswith('100644 blob '):
+            raise ValueError('configured local SPEC source is not a regular Git file')
+        data = _git_bytes(['-C', repo, 'cat-file', '-p', 'HEAD:' + path], git)
+        if data is None or len(data) > _SIZE_LIMIT:
+            raise ValueError('configured local SPEC source unavailable or exceeds size limit')
+        result.append(({'path': path, 'name': name, 'sha256': hashlib.sha256(data).hexdigest()}, data))
+    return result

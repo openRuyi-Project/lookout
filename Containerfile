@@ -42,7 +42,7 @@ FROM registry.fedoraproject.org/fedora:43
 RUN dnf install -y \
         python3 python3-rpm rpm-build \
         python-rpm-macros python3-rpm-macros pyproject-rpm-macros python3-rpm-generators \
-        git nodejs libcurl openssl-libs libseccomp \
+        git nodejs libcurl openssl-libs libseccomp catatonit \
     && dnf clean all
 RUN install -d -m 0755 -o 10001 -g 10001 /home/tracker /data
 ENV HOME=/home/tracker
@@ -72,4 +72,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
     CMD python3 -c "import os,urllib.request; host=os.environ.get('HOST') or '127.0.0.1'; host='127.0.0.1' if host in ('0.0.0.0','::') else host; host='['+host+']' if ':' in host and not host.startswith('[') else host; urllib.request.urlopen('http://%s:%s/livez' % (host,os.environ['PORT']), timeout=3).read()" || exit 1
 
-ENTRYPOINT ["/opt/venv/bin/python", "/app/deploy/container-entrypoint.py"]
+# Reap orphaned Git/RPM helpers without stealing the supervisor's child statuses.
+ENTRYPOINT ["/usr/libexec/catatonit/catatonit", "--", "/opt/venv/bin/python", "/app/deploy/container-entrypoint.py"]

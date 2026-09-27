@@ -14,10 +14,12 @@ const {controls} = Astro.props;
       <button type="submit">Search</button>
     </div>
   </div>
-  <span class="sr-only" id="filter-behavior">Selecting a filter reloads matching rows and counts.</span>
+  <span class="sr-only" id="filter-behavior">Changing a filter updates this page automatically. Without JavaScript, use Search.</span>
+  {controls.choice_rows.length > 0 && <div class="choice-rows">{controls.choice_rows.map(navigation =>
+    <div class="choice-row"><span class="choice-row-label">{navigation.label}</span><Navigation navigation={navigation}/></div>
+  )}</div>}
   {controls.facets.length > 0 && <div class="facet-row">{controls.facets.map(facet => <Facet facet={facet}/>)}</div>}
   {controls.active.length > 0 && <div class="active-filters">{controls.active.map(choice =>
     <a href={safeHref(choice.href)} aria-label={`Remove ${choice.label}`}>{choice.label} <span aria-hidden="true">×</span></a>
   )}</div>}
-  <button type="submit" data-filter-submit>Apply filters</button>
 </form>

@@ -7,6 +7,10 @@ SPEC and maintenance tasks. Web/API startup does not wait for a full Git clone;
 collection updates do not require rebuilding the frontend. There are no host
 collection timers or additional application replicas.
 
+The image uses catatonit as PID 1 to reap orphaned Git/RPM helpers. The Python
+supervisor still owns service scheduling and exit statuses. This prevents zombie
+processes from exhausting the native worker's unchanged process limit.
+
 OBS status uses one project-wide request every `build_interval_seconds` (default
 15, minimum 10). Failed polls back off to at most five minutes, without immediate
 HTTP retries; recovery restores the configured delay. Source/history work runs
@@ -28,6 +32,21 @@ rewrite the mounted configuration.
 For diagnostics, `--only builds` refreshes current status, `--only obs-metadata`
 refreshes source/history, and the existing `--only obs` command runs both. Page
 requests only read saved observations; opening more tabs does not poll OBS.
+
+The API prepares its snapshot projection and filter index in one background task.
+It checks for local changes once per second, rebuilding only when the database or
+a freshness boundary changes. Requests continue reading the previous complete
+model during preparation; a completed model is published in one swap. Before the
+first model is ready, `/livez` remains available and `/readyz` returns 503. Failed
+refreshes or overdue freshness calculations retain data with a notice and degraded
+readiness, not a claim that old evidence is newly checked.
+
+Before starting any children, the supervisor permits SQLite to recover a rollback
+journal left by an interrupted writer, under the existing writer lock. SQLite
+owns recovery; the application never deletes a journal or replaces the database.
+Integrity and read checks must pass before startup continues. The standalone
+`tracker.runtime_checks` command remains read-only against the database; a corrupt
+database still fails closed and must not be replaced by an empty snapshot.
 
 Use a dedicated non-root Linux account, cgroup v2, rootless Podman with Quadlet,
 Python 3.14+ for host tools, and local persistent storage. Native SPEC parsing

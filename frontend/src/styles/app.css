@@ -74,13 +74,54 @@
 }
 .workspace {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-columns: 180px minmax(0, 1fr);
   gap: 30px;
   padding-top: 24px;
 }
 .monitor-rail {
   border-right: 1px solid var(--line);
   padding-right: 16px;
+  min-width: 0;
+}
+.rail-workspace {
+  position: sticky;
+  top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  min-height: min(640px, calc(100dvh - 32px));
+  max-height: calc(100dvh - 32px);
+}
+.rail-workspace > div:first-child {
+  flex-shrink: 0;
+}
+.global-navigation {
+  margin-top: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.global-navigation-group {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+.global-navigation-group h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 9px 8px;
+}
+.global-navigation .document-nav a {
+  justify-content: space-between;
+  gap: 6px;
+}
+.global-navigation .document-nav span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.global-navigation .document-nav b {
+  flex-shrink: 0;
 }
 .rail-label {
   display: block;
@@ -116,6 +157,10 @@
   color: var(--fg);
   font-weight: 600;
   box-shadow: inset 2px 0 var(--fg);
+}
+.document-nav a[aria-current][data-appearance] {
+  background: color-mix(in srgb, var(--appearance-background, var(--head)) 12%, var(--bg));
+  box-shadow: inset 2px 0 var(--appearance-background, var(--fg));
 }
 .document-nav b {
   font: 11px var(--mono);
@@ -154,6 +199,28 @@
 .search-form button {
   font-size: 12px;
 }
+.choice-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 12px 0 16px;
+}
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  min-width: 0;
+}
+.choice-row-label {
+  flex: 0 0 82px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.choice-row .document-nav {
+  flex: 1 1 280px;
+  min-width: 0;
+}
 .facet-row {
   display: flex;
   flex-wrap: wrap;
@@ -161,7 +228,8 @@
   margin: 12px 0 16px;
 }
 .filter-field {
-  flex: 1 1 130px;
+  flex: 1 1 160px;
+  max-width: 240px;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -225,6 +293,19 @@
 .data-table .column-status .value-line {
   justify-content: center;
 }
+.data-table.wide {
+  min-width: 600px;
+}
+.data-table.status-matrix .column-identity {
+  width: 28%;
+}
+.data-table.status-matrix .column-status {
+  width: auto;
+  text-align: left;
+}
+.data-table.status-matrix .column-status .value-line {
+  justify-content: flex-start;
+}
 .value-line {
   display: flex;
   flex-wrap: wrap;
@@ -252,10 +333,17 @@
   padding: 1px 5px;
   font: 10px/1.5 var(--mono);
   border-radius: 2px;
-  background: var(--head);
+  background: var(--appearance-background, var(--head));
+  color: var(--appearance-foreground, var(--fg));
   border: 1px solid var(--line);
   vertical-align: baseline;
   text-decoration: none;
+}
+a.value-tag {
+  display: inline-flex;
+  align-items: center;
+  min-width: 24px;
+  min-height: 24px;
 }
 .value-time {
   color: var(--muted);
@@ -287,9 +375,16 @@
 }
 .pagination {
   display: flex;
-  gap: 20px;
-  padding: 18px 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  padding: 10px 0;
   font-size: 12px;
+}
+.pagination a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
 }
 .pagination > span {
   margin-right: auto;
@@ -462,6 +557,20 @@
     border: 0;
     padding: 0;
   }
+  .rail-workspace {
+    position: static;
+    min-height: 0;
+    max-height: none;
+    gap: 12px;
+  }
+  .global-navigation {
+    margin-top: 0;
+    overflow: visible;
+  }
+  .global-navigation .document-nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  }
   .rail-label {
     display: none;
   }
@@ -505,8 +614,25 @@
     flex: 1;
     width: 100px;
   }
-  .data-table {
-    min-width: 580px;
+  .table-wrap.wide {
+    --identity-width: 160px;
+    scroll-padding-inline-start: calc(var(--identity-width) + 10px);
+  }
+  .data-table.wide .column-identity {
+    width: var(--identity-width);
+  }
+  .data-table.wide th.column-identity {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+    background: var(--bg);
+    border-inline-end: 1px solid var(--line);
+  }
+  .data-table.wide thead th.column-identity {
+    background: var(--head);
+  }
+  .data-table.wide tbody tr:hover th.column-identity {
+    background: var(--hover);
   }
   .data-table th, .data-table td {
     padding-left: 10px;

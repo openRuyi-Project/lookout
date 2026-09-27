@@ -69,6 +69,7 @@ class Section(DocumentModel):
 
 
 class Choice(DocumentModel):
+    appearance: str | None = None
     label: str
     href: str
     selected: bool = False
@@ -106,12 +107,14 @@ class Controls(DocumentModel):
     facets: list[Facet] = []
     active: list[Choice] = []
     navigation: list[Navigation] = []
+    choice_rows: list[Navigation] = []
 
 
 class ListingDocument(DocumentModel):
     schema_version: Literal[1] = 1
     title: str
     navigation: Navigation
+    global_navigation: list[Navigation] = []
     controls: Controls
     table: Table
     total: int
@@ -130,6 +133,7 @@ class DetailDocument(DocumentModel):
     links: list[Text] = []
     context: list[Section] = []
     sections: list[Section]
+    notices: list[str] = []
 
 
 class Palette(DocumentModel):

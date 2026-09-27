@@ -4,6 +4,7 @@ export type {Text, Cell, Table, Field, Entry, Section, Navigation, Facet,
 
 export function safeHref(value?: string | null): string | undefined {
   if (!value || /[\u0000-\u0020\\]/.test(value)) return undefined;
+  if (/^#[A-Za-z][A-Za-z0-9_-]*$/.test(value)) return value;
   if (value.startsWith('/') && !value.startsWith('//')) return value;
   try {
     const url = new URL(value);

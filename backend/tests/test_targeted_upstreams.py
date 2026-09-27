@@ -107,14 +107,16 @@ def test_digest_change_before_selected_command_aborts(config, tmp_path, monkeypa
 
 def test_subset_timeout_keeps_completed_selected_results_only(config, snapshot, tmp_path, monkeypatch):
     write_native(tmp_path, config)
-    config['collector']['nvchecker_timeout_seconds'] = 0.5
     paths = []
-    popen = subprocess.Popen
-    def execute(command, **kwargs):
-        paths.append(Path(command[-1]))
-        code = 'import time; print(\'{"name":"binutils","event":"updated","version":"4.0"}\', flush=True); time.sleep(10)'
-        return popen([sys.executable, '-u', '-c', code], **kwargs)
-    monkeypatch.setattr(nv.subprocess, 'Popen', execute)
+    def execute(command, timeout, native, previous, now, on_results):
+        path = Path(command[-1])
+        paths.append(path)
+        assert set(tomllib.loads(path.read_text())) == {'__config__', 'binutils', 'widget@3'}
+        # Routing/import semantics are independent of interpreter startup speed.
+        # Real process deadlines and descendant cleanup are exercised separately.
+        return nv.import_events('{"name":"binutils","event":"updated","version":"4.0"}',
+                                native, previous, now, 'nvchecker timeout')
+    monkeypatch.setattr(nv, 'stream_command', execute)
     result, error = nv.run(config, snapshot['tracks'], state.utcnow(), tracks=['binutils', 'widget@3'])
     assert error == 'nvchecker timeout' and set(result) == {'binutils', 'widget@3'}
     assert result['binutils']['version'] == '4.0' and result['binutils']['error'] is None

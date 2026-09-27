@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi.testclient import TestClient
+from conftest import ProjectedClient
 
 from tracker import monitor, monitor_model, state
 from tracker.api import create_app
@@ -21,7 +21,7 @@ def test_results_and_coverage_share_linked_filter_context(snapshot, tmp_path):
     }
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
-    client = TestClient(create_app(db))
+    client = ProjectedClient(create_app(db))
     # Existing API clients retain their explicit all-package coverage view.
     assert client.get('/api/v2/packages?monitor=license').json()['total'] == 5
     results = client.get('/api/v2/packages?monitor=license&section=results').json()
@@ -45,17 +45,18 @@ def test_results_and_coverage_share_linked_filter_context(snapshot, tmp_path):
     assert core['total'] == 5
 
 
-def test_focused_preview_is_bounded_and_not_a_second_evidence_store(snapshot, tmp_path):
+def test_focused_identifiers_are_complete_without_copying_provider_facts(snapshot, tmp_path):
     findings = [monitor_model.finding(str(i), 'Signal', f'Fact {i}', [], 'https://example.org/') for i in range(5)]
     snapshot['monitors'] = {'binutils': {'custom': observed(snapshot, 'binutils', findings)}}
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
-    client = TestClient(create_app(db))
+    client = ProjectedClient(create_app(db))
     overview = client.get('/api/v2/packages').json()['items'][0]['monitors']['custom']['data']
     assert overview['entries'] == [] and overview['labels'][0]['count'] == 5
     focused = client.get('/api/v2/packages?monitor=custom&section=results').json()
     data = focused['items'][0]['monitors']['custom']['data']
-    assert len(data['entries']) == 3 and data['finding_count'] == 5 and 'findings' not in data
+    assert len(data['entries']) == 5 and data['finding_count'] == 5 and 'findings' not in data
+    assert all('facts' not in entry for entry in data['entries'])
     detail = client.get('/api/v2/packages/binutils').json()
     assert len(detail['monitors']['custom']['data']['findings']) == 5
 

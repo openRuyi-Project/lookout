@@ -6,6 +6,7 @@ import tomlkit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tracker import config, state
+from journal_fixture import leave_hot_journal
 
 PACKAGE = 'smoke-fixture'
 VERSION = '1.2.3'
@@ -27,7 +28,7 @@ def prepare(mode, config_dir=Path('/config'), data_dir=Path('/data')):
     config.load(path)
     if mode == 'invalid':
         path.write_text('broken = [')
-    if mode == 'seeded':
+    if mode in ('seeded', 'hot-journal'):
         now = state.utcnow()
         snap = state.empty()
         snap.update(generation=1, targets=targets, obs=cfg['obs'], last_attempt=now,
@@ -36,6 +37,8 @@ def prepare(mode, config_dir=Path('/config'), data_dir=Path('/data')):
         snap['sources'][PACKAGE] = state.success({}, {'version': VERSION, 'srcmd5': 'fixture'}, now)
         snap['builds'][PACKAGE] = {t['id']: state.success({}, {'raw_status': 'succeeded'}, now) for t in targets}
         state.commit(data_dir / 'state/tracker.sqlite3', snap)
+        if mode == 'hot-journal':
+            leave_hot_journal(data_dir / 'state/tracker.sqlite3')
     for root in (config_dir, data_dir):
         for path in [root, *root.rglob('*')]:
             os.chown(path, 10001, 10001)

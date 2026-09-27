@@ -4,10 +4,9 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
+from conftest import ProjectedClient
 
-from fixtures import monitor_yanked
-from tracker import monitor, monitor_model, state
+from tracker import monitor, monitor_model, monitor_yanked, state
 from tracker.api import create_app
 from tracker.monitor_io import IO
 
@@ -19,7 +18,7 @@ def test_port_runs_through_heartbeat_storage_api_and_facets(config, snapshot, mo
     monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
-    response = {'urls': [{'yanked': True}, {'yanked': True}]}
+    response = {'info': {'yanked': True}}
     calls = []
 
     def handler(request):
@@ -35,7 +34,7 @@ def test_port_runs_through_heartbeat_storage_api_and_facets(config, snapshot, mo
         assert original['status'] == 'ok'
         assert calls == ['https://pypi.org/pypi/upstream-fixture/3.9.0/json']
         assert collected['sources'] == snapshot['sources']
-        api = TestClient(create_app(db))
+        api = ProjectedClient(create_app(db))
         listing = api.get('/api/v1/packages?maintenance=Yanked').json()
         assert listing['total'] == listing['maintenance_labels']['Yanked'] == 1
         assert listing['items'][0]['name'] == 'binutils'
@@ -52,12 +51,12 @@ def test_port_runs_through_heartbeat_storage_api_and_facets(config, snapshot, mo
         projection = monitor_model.project(collected, 'binutils', datetime.now(timezone.utc))
         assert projection['findings'][0]['stale']
 
-        collected['sources']['binutils']['srcmd5'] = 'new-source'
+        collected['sources']['binutils']['version'] = '4.0'
         changed = monitor.plan(config, collected, 'binutils', 'yanked')
         assert monitor.execute('yanked', changed, io, original)['findings'] == []
         assert monitor_model.project(collected, 'binutils', datetime.now(timezone.utc))['findings'] == []
 
-        response = {'urls': [{'yanked': False}]}
+        response = {'info': {'yanked': False}}
         healthy = monitor.execute('yanked', plan, io, original)
         assert healthy['status'] == 'ok' and healthy['findings'] == []
 
@@ -112,12 +111,12 @@ def test_v2_port_catalog_checks_and_facets_share_the_same_observation(config, sn
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
     with httpx.Client(transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json={'urls': [{'yanked': True}]}))) as client:
+            lambda request: httpx.Response(200, json={'info': {'yanked': True}}))) as client:
         collected = monitor.collect(config, 'unused', db, io=IO(client=client))
         # Metadata is published with observations; an idle heartbeat writes neither.
         generation = collected['generation']
         assert monitor.collect(config, 'unused', db, io=IO(client=client))['generation'] == generation
-    api = TestClient(create_app(db))
+    api = ProjectedClient(create_app(db))
     listing = api.get('/api/v2/packages?monitor=yanked').json()
     assert {'id': 'yanked', 'title': 'Release files', 'kind': 'evidence'} in listing['monitors']
     assert listing['total'] == 5  # Focusing is not silently excluding unconfigured packages.
@@ -127,7 +126,8 @@ def test_v2_port_catalog_checks_and_facets_share_the_same_observation(config, sn
     assert result['data'] == {
         'kind': 'evidence', 'finding_count': 1,
         'labels': [{'label': 'Yanked', 'count': 1, 'stale': False}],
-        'entries': [{'id': 'yanked:release-yanked', 'title': 'upstream-fixture', 'stale': False,
+        'entries': [{'id': 'yanked:release-yanked', 'title': 'upstream-fixture 3.9.0', 'stale': False,
+                     'scope': 'current', 'target_version': None, 'tags': [],
                      'evidence_url': 'https://pypi.org/pypi/upstream-fixture/3.9.0/json'}],
     }
     assert result['check']['status'] == 'ok'

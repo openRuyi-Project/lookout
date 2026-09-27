@@ -1,6 +1,7 @@
 """Writer transactions commit/rollback before explicitly closing their connection."""
 from contextlib import closing
 from copy import deepcopy
+import json
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -115,6 +116,25 @@ class StateConnectionTests(unittest.TestCase):
             self.assertFalse(state.commit_build_heartbeat(self.db, self.snapshot, {}, {'error': 'offline'}))
         self.assertEqual(connections, [])
         self.assertEqual(self.snapshot, before)
+
+    def test_decode_does_not_block_writer_or_mix_snapshot_revisions(self):
+        _, revision = state.read_cached(self.db)
+        changed = {**self.snapshot, 'generation': 7}
+        body = json.dumps(changed)
+        decode = json.loads
+
+        def decode_while_writer_commits(payload):
+            # A second real connection must commit before decoding completes.
+            # timeout=0 makes a retained reader lock fail, without timing races.
+            with closing(sqlite3.connect(self.db, timeout=0)) as conn, conn:
+                conn.execute('UPDATE snapshot SET payload=? WHERE id=1', (body,))
+                conn.execute("UPDATE snapshot_clock SET revision='next-fixture' WHERE id=1")
+            return decode(payload)
+
+        with patch.object(state.json, 'loads', decode_while_writer_commits):
+            observed = state.read_cached(self.db)
+        self.assertEqual(observed, (self.snapshot, revision))
+        self.assertEqual(state.read_cached(self.db), (changed, 'next-fixture'))
 
 
 if __name__ == '__main__':

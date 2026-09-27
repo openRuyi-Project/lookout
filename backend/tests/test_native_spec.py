@@ -79,6 +79,21 @@ def test_describe_unparseable_spec_is_error_not_guess():
     result=native_spec.describe(b'this is not a spec at all\n')
     assert result['metadata'] is None and result['metadata_error']
 
+
+def test_local_source_include_is_native_and_hash_checked():
+    data = b'URL: https://fixture.example/\n'
+    provenance = {'path': 'SPECS/sample/series', 'name': 'series', 'sha256': hashlib.sha256(data).hexdigest()}
+    body = SPEC.replace(b'%description', b'Source1: series\n%include %{SOURCE1}\n%description')
+    assert native_spec.describe(body)['metadata'] is None
+    result = native_spec.describe(body, local_sources=[(provenance, data)])
+    assert result['metadata']['url'] == 'https://fixture.example/'
+    assert result['native_query']['context']['local_sources'] == [provenance]
+    assert result['native_query']['context']['sandbox']['seccomp'] == 'allow-list'
+    with pytest.raises(ValueError, match='pinned hash'):
+        native_spec.describe(body, local_sources=[(provenance, data + b'changed')])
+    with pytest.raises(ValueError, match='filename'):
+        native_spec.describe(body, local_sources=[({**provenance, 'name': '../secret'}, data)])
+
 def test_concurrent_parsing_does_not_corrupt_macro_state():
     # librpm macro state is global; the module lock must keep parallel callers correct.
     import concurrent.futures

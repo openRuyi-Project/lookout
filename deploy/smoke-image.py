@@ -114,6 +114,30 @@ for path in ('/', '/packages/smoke-fixture'):
         name = self.start('seeded', volumes)
         self.wait_live(name)
         self.assert_seeded(name)
+        # Orphaned Git/RPM helpers must not accumulate against RLIMIT_NPROC.
+        # Exercise the image's real PID 1, rather than a mocked waitpid loop.
+        result = self.python(name, '''import os, json, time
+children = []
+for _ in range(8):
+    parent = os.fork()
+    if parent == 0:
+        child = os.fork()
+        if child == 0:
+            time.sleep(0.1)
+            os._exit(0)
+        print(child, flush=True)
+        os._exit(0)
+    os.waitpid(parent, 0)
+''')
+        pids = [int(line) for line in result.stdout.splitlines()]
+        self.python(name, f'''from pathlib import Path
+import time
+deadline = time.monotonic() + 3
+while any(Path('/proc', str(pid)).exists() for pid in {pids!r}):
+    assert time.monotonic() < deadline, 'PID 1 did not reap orphaned helpers'
+    time.sleep(0.05)
+''')
+        print('PASS init: orphaned helpers reaped', flush=True)
         self.python(name, '''import os, sys, importlib.util
 from pathlib import Path
 assert os.geteuid() == 10001
@@ -143,6 +167,18 @@ assert snapshot['sources']['smoke-fixture']['version'] == '1.2.3'
         self.assert_seeded(restarted)
         self.stop(restarted)
         print('PASS seeded: HTTP list/detail, UID, read-only config/app, writable data, backup, persistence, SIGTERM', flush=True)
+        recovered = self.start('hot-journal', self.fixture('hot-journal'))
+        self.wait_live(recovered)
+        self.assert_seeded(recovered)
+        self.python(recovered, '''import sys
+sys.path.insert(0, '/app/backend')
+from tracker import state
+snapshot = state.read('/data/state/tracker.sqlite3')
+assert 'uncommitted' not in snapshot
+assert snapshot['generation'] < 999999
+''')
+        self.stop(recovered)
+        print('PASS hot-journal: real interrupted transaction recovered before startup; committed data retained', flush=True)
         self.negative('invalid')
         self.negative('unwritable')
         self.negative('root', root=True)

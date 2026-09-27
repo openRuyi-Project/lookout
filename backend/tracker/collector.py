@@ -238,7 +238,8 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
     repo, git = spec['repo'], spec.get('git', 'git')
     if not repo:
         return old_specs
-    macros = spec_git.read_macros(repo, spec['macro_package'], git=git) if spec['macro_package'] else []
+    macros = [item for package in spec_git.macro_packages(spec)
+              for item in spec_git.read_macros(repo, package, git=git)]
     origin = {k: spec.get(k) for k in ('url', 'branch', 'source_url_template')}
     result = {}
     for name in names:
@@ -246,8 +247,10 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
         entries = logs.get(name, [])
         head = entries[0]['commit'] if entries else None
         previous_context = previous.get('native_query', {}).get('context', {})
+        source_names = spec.get('local_sources', {}).get(name, [])
         same_parser = (previous_context.get('resolver') == native_spec.RESOLVER
-                       and previous_context.get('additional_macros') == [provenance for provenance, _ in macros])
+                       and previous_context.get('additional_macros') == [provenance for provenance, _ in macros]
+                       and [p['name'] for p in previous_context.get('local_sources', [])] == source_names)
         if (head is not None and previous.get('head') == head and same_parser
                 and previous.get('metadata') is not None and not previous.get('error')):
             # SPECS/<name> unchanged since last observation: refresh changelog only, skip parsing.
@@ -255,7 +258,11 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
                                                      'metadata': previous['metadata'], 'source_origin': origin}, now)
             continue
         data = spec_git.read_spec(repo, name, git=git)
-        described = describe(data, macros=macros) if data is not None else {'metadata': None, 'metadata_error': 'SPEC not found in clone'}
+        try:
+            inputs = {'local_sources': spec_git.read_local_sources(repo, name, source_names, git)} if source_names else {}
+            described = describe(data, macros=macros, **inputs) if data is not None else {'metadata': None, 'metadata_error': 'SPEC not found in clone'}
+        except ValueError:
+            described = {'metadata': None, 'metadata_error': 'Configured local SPEC inputs unavailable or invalid'}
         entry = state.success(previous, {'head': head, 'changelog': entries,
                                          'metadata': described['metadata'],
                                          'native_query': described.get('native_query', {}), 'source_origin': origin}, now)
@@ -301,7 +308,7 @@ def check_specs(config, db, describe=native_spec.describe):
                 fingerprint = cfg.track_fingerprint({
                     'resolver': native_spec.RESOLVER,
                     **{key: spec.get(key) for key in ('url', 'branch', 'source_url_template',
-                                                     'macro_package', 'changelog_limit')},
+                                                     'macro_package', 'extra_macro_packages', 'local_sources', 'changelog_limit')},
                 })
                 prior = old['components'].get('spec_git', {})
                 incremental = (prior.get('input_fingerprint') == fingerprint
@@ -310,7 +317,7 @@ def check_specs(config, db, describe=native_spec.describe):
                 if incremental and prior['head'] != head:
                     logs, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
                                                      since=prior['head'])
-                if incremental and spec['macro_package'] in logs:
+                if incremental and any(package in logs for package in spec_git.macro_packages(spec)):
                     incremental = False
                 if not incremental:
                     logs, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git)

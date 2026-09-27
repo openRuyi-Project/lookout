@@ -14,7 +14,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import quote
 from .state import usable_version
 
-RESOLVER = 7  # native BuildSystem declaration joins the same confined parse
+RESOLVER = 8  # hash-checked local Source inputs join the same confined parse
 _SIZE_LIMIT = 1024 * 1024
 _TIMEOUT = 5.0
 _MAX_OUTPUT = 256 * 1024
@@ -130,7 +130,7 @@ def _run(inputs, work):
         writer.close()
 
 
-def _parse(spec, macros):
+def _parse(spec, macros, local_sources=()):
     if len(spec) > _SIZE_LIMIT:
         raise ValueError('SPEC exceeds size limit')
     if len(macros) > 16:
@@ -138,13 +138,28 @@ def _parse(spec, macros):
     for provenance, data in macros:
         if len(data) > _SIZE_LIMIT or hashlib.sha256(data).hexdigest() != provenance['sha256']:
             raise ValueError('native macro content does not match its pinned hash')
+    if len(local_sources) > 16:
+        raise ValueError('too many local SPEC sources')
+    names = set()
+    for provenance, data in local_sources:
+        name = provenance.get('name')
+        if (not isinstance(name, str) or not name or Path(name).name != name or name in ('.', '..')
+                or name in names or '\\' in name or '\x00' in name):
+            raise ValueError('local SPEC source requires a unique filename')
+        if len(data) > _SIZE_LIMIT or hashlib.sha256(data).hexdigest() != provenance['sha256']:
+            raise ValueError('local SPEC source content does not match its pinned hash')
+        names.add(name)
     context = {'resolver': RESOLVER, 'rpm': None, 'target': None,
                'environment': 'one-shot Landlock+seccomp native RPM worker',
                'additional_macros': [m[0] for m in macros]}
+    if local_sources:
+        context['local_sources'] = [p for p, _ in local_sources]
     with _WORKERS, TemporaryDirectory(prefix='openruyi-rpmspec-') as temp:
         inputs, work = Path(temp) / 'inputs', Path(temp) / 'work'
         inputs.mkdir(); work.mkdir()
         (inputs / 'package.spec').write_bytes(spec)
+        for provenance, data in local_sources:
+            (work / provenance['name']).write_bytes(data)
         for index, (_, data) in enumerate(macros):
             (inputs / f'macros.{index:02}').write_bytes(data)
         result, error = _run(inputs, work)
@@ -162,8 +177,8 @@ def query(spec, macros=()):
             'version_error': None if valid else (error or 'native rpmspec could not establish VERSION')}
 
 
-def describe(spec, macros=()):
-    value, error, context = _parse(spec, macros)
+def describe(spec, macros=(), *, local_sources=()):
+    value, error, context = _parse(spec, macros, local_sources)
     metadata = None
     if value and value['name']:
         metadata = {name: value[name] or None for name in ('name', 'version', 'summary', 'license', 'url')}

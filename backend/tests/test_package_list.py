@@ -1,7 +1,7 @@
 from itertools import product
 
 import pytest
-from fastapi.testclient import TestClient
+from conftest import ProjectedClient
 
 from tracker import build_status, state, view
 from tracker.api import create_app
@@ -22,7 +22,7 @@ def test_blocked_is_an_issue_once_per_source_package(snapshot, tmp_path):
     snapshot['builds']['foo4']['x86_64']['raw_status'] = 'scheduled'
     db = tmp_path / 'snapshot.db'
     state.commit(db, snapshot)
-    client = TestClient(create_app(db))
+    client = ProjectedClient(create_app(db))
     result = client.get('/api/v1/packages?view=problems').json()
     assert result['total'] == result['counts']['problems'] == 2
     assert {row['name'] for row in result['items']} == {'binutils', 'foo3'}

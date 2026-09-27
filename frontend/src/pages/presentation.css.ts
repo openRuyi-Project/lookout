@@ -11,7 +11,7 @@ export const GET: APIRoute = async () => {
   const rules = Object.entries(response.data.appearances || {}).flatMap(([value, colors]) => {
     if (!/^#[0-9a-f]{6}$/i.test(colors.background) || !/^#[0-9a-f]{6}$/i.test(colors.foreground)) return [];
     const selector = JSON.stringify(encodeURIComponent(value));
-    return [`.value-tag[data-appearance=${selector}]{background-color:${colors.background};color:${colors.foreground}}`];
+    return [`[data-appearance=${selector}]{--appearance-background:${colors.background};--appearance-foreground:${colors.foreground}}`];
   });
   return new Response(rules.join('\n'), {headers: {'Content-Type': 'text/css; charset=utf-8'}});
 };

@@ -1,7 +1,9 @@
 """Bounded provider HTTP with shared, dated cache. Never used by the API."""
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import threading
@@ -24,6 +26,7 @@ class IO:
         self.today = datetime.now(timezone.utc).date()
         self.memory, self.locks = {}, {}
         self.guard = threading.Lock()
+        self.host_locks, self.next_request, self.cooldowns = {}, {}, {}
 
     def close(self):
         if self.owns_client:
@@ -32,7 +35,34 @@ class IO:
     def for_hosts(self, hosts, *, max_age=None):
         return ProviderIO(self, frozenset(hosts), max_age)
 
-    def json(self, method, url, body=None, *, max_age=None):
+    def wait_for_host(self, host, interval):
+        if not isinstance(interval, (int, float)) or not math.isfinite(interval) or not 0 <= interval <= 60:
+            raise ValueError('invalid provider request interval')
+        with self.guard:
+            lock = self.host_locks.setdefault(host, threading.Lock())
+        with lock:
+            if self.cooldowns.get(host, 0) > time.monotonic():
+                raise ValueError('provider requested a cooldown')
+            delay = self.next_request.get(host, 0) - time.monotonic()
+            if delay > 0:
+                time.sleep(delay)
+            if interval:
+                self.next_request[host] = time.monotonic() + interval
+
+    def defer_host(self, host, retry_after):
+        try:
+            delay = float(retry_after)
+        except (TypeError, ValueError):
+            try:
+                delay = (parsedate_to_datetime(retry_after) - datetime.now(timezone.utc)).total_seconds()
+            except (TypeError, ValueError, OverflowError):
+                delay = 60
+        if not math.isfinite(delay):
+            delay = 60
+        with self.guard:
+            self.cooldowns[host] = time.monotonic() + max(60, delay)
+
+    def json(self, method, url, body=None, *, max_age=None, min_interval=0):
         key = hashlib.sha256(json.dumps([method, url, body], sort_keys=True).encode()).hexdigest()
         with self.guard:
             lock = self.locks.setdefault(key, threading.Lock())
@@ -52,9 +82,13 @@ class IO:
                     raise ValueError('provider request failed earlier in this run')
                 return cached['data']
             try:
+                host = urlsplit(url).hostname
+                self.wait_for_host(host, min_interval)
                 deadline = time.monotonic() + 30
                 with self.client.stream(method, url, json=body if method == 'POST' else None,
-                                        headers={'User-Agent': 'openRuyi-Package-Monitor/0.1.0'}) as response:
+                                        headers={'User-Agent': 'openRuyi-monitor (https://github.com/Jingwiw/openRuyi-monitor)'}) as response:
+                    if response.status_code in (429, 503):
+                        self.defer_host(host, response.headers.get('Retry-After'))
                     response.raise_for_status()
                     body_bytes = read_response(response, max_bytes=16 * 1024 * 1024, deadline=deadline)
                 data = json.loads(body_bytes)
@@ -78,10 +112,10 @@ class ProviderIO:
         self.max_age = max_age
         self.today = owner.today
 
-    def json(self, method, url, body=None):
+    def json(self, method, url, body=None, *, min_interval=0):
         parsed = urlsplit(url)
         if (method not in ('GET', 'POST') or parsed.scheme != 'https'
                 or parsed.hostname not in self.hosts or parsed.port not in (None, 443)
                 or parsed.username or parsed.password or parsed.fragment):
             raise ValueError('provider URL outside declared HTTPS hosts')
-        return self.owner.json(method, url, body, max_age=self.max_age)
+        return self.owner.json(method, url, body, max_age=self.max_age, min_interval=min_interval)

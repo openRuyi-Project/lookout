@@ -1,9 +1,11 @@
 """Preflight failures must occur before services or collectors are started."""
 import importlib.util
 from pathlib import Path
+import sqlite3
 
 import pytest
 from tracker import runtime_checks, state
+from journal_fixture import leave_hot_journal
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -99,3 +101,47 @@ def test_supervisor_bad_config_starts_no_tasks(runtime, tmp_path, monkeypatch, c
     monkeypatch.setattr(entry.threading, 'Thread', lambda **_: pytest.fail('no task before preflight'))
     assert entry.main() == 2
     assert 'runtime preflight failed:' in capsys.readouterr().out
+
+
+def test_startup_recovers_real_hot_journal_but_readonly_checks_do_not(runtime, tmp_path):
+    db = tmp_path / 'state #1?.db'
+    snapshot = {**state.empty(), 'generation': 7}
+    state.commit(db, snapshot)
+    before = db.read_bytes()
+    leave_hot_journal(db)
+    journal = Path(str(db) + '-journal')
+    assert journal.stat().st_size > 512
+    with pytest.raises(sqlite3.OperationalError, match='readonly'):
+        state.read(db)
+    with pytest.raises(RuntimeError, match='database is unreadable'):
+        runtime_checks.check_runtime(runtime, db)
+    assert runtime_checks.check_runtime(runtime, db, recover=True)
+    assert not journal.exists()
+    assert state.read(db) == snapshot
+    assert db.read_bytes() == before
+    assert runtime_checks.check_runtime(runtime, db, recover=True)
+    assert db.read_bytes() == before
+
+
+def test_recovery_never_creates_missing_or_replaces_corrupt_database(runtime, tmp_path):
+    db = tmp_path / 'db'
+    assert runtime_checks.check_runtime(runtime, db, recover=True)
+    assert not db.exists()
+    db.write_bytes(b'not sqlite')
+    journal = Path(str(db) + '-journal')
+    journal.write_bytes(b'invalid journal')
+    with pytest.raises(RuntimeError, match='database is unreadable'):
+        runtime_checks.check_runtime(runtime, db, recover=True)
+    assert db.read_bytes() == b'not sqlite'
+
+
+def test_recovery_respects_application_writer_lock(tmp_path):
+    db = tmp_path / 'db'
+    state.commit(db, {**state.empty(), 'generation': 1})
+    leave_hot_journal(db)
+    # No second writer is allowed to start recovery under another writer's lock.
+    from unittest.mock import patch
+    with patch.object(state, 'writer_lock', side_effect=BlockingIOError('writer busy')):
+        with pytest.raises(BlockingIOError, match='writer busy'):
+            state.recover(db)
+    assert Path(str(db) + '-journal').exists()

@@ -5,9 +5,9 @@ from datetime import datetime, timedelta, timezone
 import os
 import threading
 
-from fastapi.testclient import TestClient
+from conftest import ProjectedClient
 import pytest
-from tracker import api, state, view
+from tracker import api, state, view, read_model
 from conftest import make_snapshot
 
 NOW = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
@@ -22,13 +22,13 @@ def setup_cache(tmp_path, config, monkeypatch, change=None):
     db = tmp_path / 'cache.sqlite3'
     state.commit(db, snapshot)
     clock, calls = [NOW], []
-    monkeypatch.setattr(api.time, 'time', lambda: clock[0].timestamp())
+    monkeypatch.setattr(read_model.time, 'time', lambda: clock[0].timestamp())
     project = view.project_monitors
     def counted(snap, now=None):
         calls.append((snap['generation'], now))
         return project(snap, now)
     monkeypatch.setattr(view, 'project_monitors', counted)
-    return TestClient(api.create_app(db)), db, snapshot, clock, calls
+    return ProjectedClient(api.create_app(db)), db, snapshot, clock, calls
 
 
 def get(client, path='/api/v1/packages/binutils'):
@@ -201,8 +201,10 @@ def test_concurrent_replacement_never_mixes_snapshot_and_projection(tmp_path, co
         second = pool.submit(get, client, '/api/v1/packages')
         proceed.set()
         old, new = first.result(timeout=5), second.result(timeout=5)
-    assert old['items'][0]['current'] == '3.9.0'
-    assert old['targets'][0]['label'] == old['items'][0]['builds'][0]['label'] == 'rva23'
+    # Publication may overtake the first HTTP dispatch. Either complete model
+    # is valid, but scope/targets must belong to the same one as its rows.
+    label = {'3.9.0': 'rva23', '3.9.1': 'new target'}[old['items'][0]['current']]
+    assert old['targets'][0]['label'] == old['items'][0]['builds'][0]['label'] == label
     assert new['items'][0]['current'] == '3.9.1'
     assert new['targets'][0]['label'] == new['items'][0]['builds'][0]['label'] == 'new target'
 

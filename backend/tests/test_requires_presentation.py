@@ -1,0 +1,113 @@
+"""Runtime summaries remain concise without discarding conditional evidence."""
+from copy import deepcopy
+
+import pytest
+
+from tracker import presentation
+
+
+def assessment(**changes):
+    return dict(dependency='fixture', name='Fixture dependency', kind='runtime', scheme='pep440',
+                identity={'ecosystem': 'Fixture', 'name': 'fixture'}, extras=[], optional=False,
+                condition=None, package='fixture-package', mapping='mapped',
+                current=dict(expression='>=1', source='Fixture', url='https://example.org/current'),
+                target=None, observed={'version': '2'}, satisfaction='satisfied', reason=None,
+                target_satisfaction='unknown', target_reason='requirement_not_observed', changed=False,
+                **changes)
+
+
+def changed(**changes):
+    result = assessment()
+    result.update(changes)
+    return result
+
+
+def result(*requirements):
+    return dict(id='requires', data={'requirements': list(requirements)})
+
+
+def texts(cell):
+    return [[value.text for value in line] for line in cell.lines]
+
+
+def test_list_groups_runtime_and_optional_without_marker_programs():
+    marker = '(platform == "one" and platform != "two") and feature == "speedups"'
+    items = result(changed(condition='platform == "one"', satisfaction='unknown', reason='condition_not_evaluated'),
+                   changed(name='Optional library', optional=True, condition=marker,
+                           satisfaction='unknown', reason='condition_not_evaluated'))
+    before = deepcopy(items)
+    cells = presentation.requires_cells({}, items, presentation.Links())
+    lines = texts(cells[0])
+    assert lines[0] == ['Runtime'] and lines[2] == ['Optional']
+    assert 'Fixture dependency' in lines[1] and 'Optional library' in lines[3]
+    assert not any('platform' in value or 'speedups' in value for line in lines for value in line)
+    assert items == before
+
+    sections = presentation.requires_sections(items, presentation.Links())
+    assert [(s.id, s.collapsible) for s in sections] == [
+        ('requires', False), ('requires-optional', False), ('requires-conditions', True)]
+    clauses = [value.text for entry in sections[-1].entries for field in entry.fields for value in field.values]
+    assert clauses == ['platform == "one"', marker]
+
+
+def test_condition_variants_share_a_summary_but_keep_each_clause():
+    items = result(*(changed(optional=True, condition=condition, satisfaction='unknown',
+                             reason='condition_not_evaluated')
+                     for condition in ('feature == "one"', 'feature == "two"', 'feature == "one"')))
+    cells = presentation.requires_cells({}, items, presentation.Links())
+    assert len(cells[0].lines) == 2  # Optional heading plus one assessment.
+    sections = presentation.requires_sections(items, presentation.Links())
+    assert len(sections[0].table.rows) == 1
+    assert [value.text for value in sections[1].entries[0].fields[0].values] == [
+        'feature == "one"', 'feature == "two"']
+    assert len(items['data']['requirements']) == 3
+
+
+@pytest.mark.parametrize('different', [
+    {'identity': {'ecosystem': 'Other', 'name': 'fixture'}}, {'extras': ['tls']},
+    {'current': {'expression': '>=2', 'source': 'Fixture', 'url': 'https://example.org/current'}},
+    {'current': {'expression': '>=1', 'source': 'Fixture', 'url': 'https://example.org/other'}},
+    {'observed': {'version': '3'}}, {'reason': 'dependency_unavailable'},
+    {'mapping': 'ambiguous'}, {'optional': None},
+])
+def test_semantically_different_assessments_are_not_merged(different):
+    first = changed(optional=True, condition='feature == "one"')
+    second = {**first, 'condition': 'feature == "two"', **different}
+    assert len(presentation.requirement_groups([first, second])) == 2
+
+
+def test_unconditional_and_unknown_legacy_conditions_are_not_reclassified():
+    first = changed(optional=None, condition=None, satisfaction='unknown', reason='requirement_unavailable')
+    second = {**first, 'condition': 'opaque-feature-expression'}
+    assert len(presentation.requirement_groups([first, second])) == 2
+    sections = presentation.requires_sections(result(first, second), presentation.Links())
+    assert not any(s.id == 'requires-optional' for s in sections)
+    assert sections[-1].entries[0].fields[-1].values[0].text == 'Not observed'
+
+
+@pytest.mark.parametrize('mapping,label', [('not_mapped', 'Not mapped'),
+                                         ('not_packaged', 'Not packaged'),
+                                         ('ambiguous', 'Ambiguous mapping')])
+def test_missing_package_evidence_is_explicit_not_an_unmet_mark(mapping, label):
+    item = changed(package=None, observed=None, mapping=mapping, satisfaction='unknown',
+                   reason='condition_not_evaluated', condition='platform == "one"')
+    values = [value.text for value in presentation.requirement_values(item)]
+    assert label in values and '?' not in values and '✗' not in values
+
+
+def test_dependency_extras_remain_visible_without_long_conditions():
+    values = presentation.requirement_values(changed(extras=['tls'], optional=False))
+    assert values[0].text == 'Fixture dependency[tls]'
+
+
+def test_explicit_but_absent_package_does_not_link_to_a_missing_detail():
+    item = changed(package='missing-package', mapping='not_packaged', satisfaction='unknown', observed=None)
+    values = presentation.requirement_values(item)
+    assert values[0].href is None
+    assert values[-1].text == 'Not packaged'
+
+
+def test_unspecified_version_is_omitted_only_from_unchanged_list_summary():
+    item = changed(current=dict(expression='', source='Fixture', url='https://example.org/current'))
+    assert 'any version' not in [value.text for value in presentation.requirement_values(item, compact=True)]
+    assert 'any version' in [value.text for value in presentation.requirement_values(item)]

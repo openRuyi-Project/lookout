@@ -9,6 +9,17 @@ import hashlib
 import pytest
 from tracker import spec_git as sg
 
+
+def test_local_sources_require_regular_pinned_blobs(monkeypatch):
+    monkeypatch.setattr(sg, '_git_text', lambda *args: ('100644 blob abc\tSPECS/fixture/series\n', None))
+    monkeypatch.setattr(sg, '_git_bytes', lambda *args: b'fixture')
+    result = sg.read_local_sources('/repo', 'fixture', ['series'])
+    assert result == [({'path': 'SPECS/fixture/series', 'name': 'series',
+                        'sha256': hashlib.sha256(b'fixture').hexdigest()}, b'fixture')]
+    monkeypatch.setattr(sg, '_git_text', lambda *args: ('120000 blob abc\tSPECS/fixture/series\n', None))
+    with pytest.raises(ValueError, match='regular'):
+        sg.read_local_sources('/repo', 'fixture', ['series'])
+
 FS, GS, RS = sg.FS, sg.GS, sg.RS
 
 

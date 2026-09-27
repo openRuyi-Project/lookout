@@ -1,4 +1,4 @@
-from . import version_rules
+from . import source_release, version_rules
 """Only the documented nvchecker CLI/JSON interface. Candidate ordering remains native."""
 import json
 from contextlib import contextmanager
@@ -36,19 +36,28 @@ def due_names(config, snapshot, now):
     if snapshot.get('components', {}).get('nvchecker', {}).get('options_fingerprint') != options:
         return list(config['native'])
     policy = refresh(config)
-    selected = []
+    changed, selected = [], []
     for name, rule in config['native'].items():
         old = snapshot.get('tracks', {}).get(name, {})
+        fingerprint = track_fingerprint(rule)
         previous = {**old, 'fingerprint': old.get('configuration_fingerprint'),
                     'status': 'error' if old.get('error') else 'ok'}
-        if policy.due(previous, track_fingerprint(rule), now):
+        if previous['fingerprint'] != fingerprint:
+            changed.append(name)
+        elif policy.due(previous, fingerprint, now):
             selected.append(name)
-    return sorted(selected, key=lambda name: (snapshot.get('tracks', {}).get(name, {}).get('attempted_at') or '', name))
+    # Native workers group and concurrently schedule entries, so TOML order is
+    # not a priority queue. Isolate new/edited rules from a slow periodic sweep.
+    # Even a failed attempt records its rule fingerprint: the next heartbeat
+    # resumes ordinary work and failed rules retain their normal retry backoff.
+    return sorted(changed or selected, key=lambda name: (snapshot.get('tracks', {}).get(name, {}).get('attempted_at') or '', name))
 
 
 def _event_error(item):
     """Fixed public categories only: provider exception text can contain secrets."""
     detail = str(item.get('error', '')).lower()
+    if 'rate limited' in detail or str(item.get('event', '')).startswith('rate limited'):
+        return 'nvchecker rate limited'
     if 'timed out' in detail or 'timeouterror' in detail:
         return 'nvchecker request timeout'
     status = re.search(r'\bhttp ([45][0-9]{2})\b', detail)
@@ -60,7 +69,7 @@ def _event_error(item):
 
 
 def import_events(stdout, native, previous, now, command_error=None):
-    versions, errors = {}, {}
+    versions, errors, revisions = {}, {}, {}
     malformed = False
     for line in stdout.splitlines():
         if not line.strip():
@@ -84,6 +93,17 @@ def import_events(stdout, native, previous, now, command_error=None):
             v = item.get('version')
             if isinstance(v, str) and v and len(v) <= 200 and '\n' not in v:
                 versions[name] = v
+                rich = item.get('rich_result') or {}
+                revision = (rich.get('revision') or item.get('revision')) if isinstance(rich, dict) else None
+                if source_release.commit_hash(revision):
+                    committed_at = rich.get('revision_creation_time')
+                    # The installed Gitea provider returns its committer date as
+                    # version, but omits the equivalent RichResult timestamp.
+                    if (native[name].get('source') == 'gitea'
+                            and source_release.tracks_commits(native[name]) and not committed_at):
+                        committed_at = v
+                    revisions[name] = dict(revision=revision, revision_creation_time=source_release.revision_time(
+                        committed_at))
             else:
                 errors[name] = 'invalid nvchecker version'
     result = {}
@@ -94,7 +114,12 @@ def import_events(stdout, native, previous, now, command_error=None):
             # Do not relabel a result from another source/branch after a config edit.
             old = {'previous_configuration': {k: old[k] for k in ('version', 'source', 'fetched_at') if k in old}}
         if name in versions and name not in errors:
-            result[name] = success(old, {'version': versions[name], 'source': public_source(entry), 'source_checked_at': None}, now)
+            # Equal timestamps need not identify equal commits. If a native
+            # event omits RichResult, do not relabel old metadata as fresh.
+            metadata = {key: None for key in ('revision', 'revision_creation_time') if key in old}
+            metadata.update(revisions.get(name, {}))
+            result[name] = success(old, {'version': versions[name], 'source': public_source(entry),
+                'source_checked_at': None, **metadata}, now)
         else:
             result[name] = failure(old, errors.get(name) or command_error or 'nvchecker did not report this track', now)
             result[name]['source'] = public_source(entry)
@@ -227,8 +252,7 @@ def run(config, previous, now, tracks=None, on_results=None):
     native = config['native'] if names is None else {name: config['native'][name] for name in names}
     if not native:
         return {}, None
-    command_names = (sorted(native, key=lambda n: (previous.get(n, {}).get('reported_at', previous.get(n, {}).get('attempted_at')) or '', n))
-                     if on_results is not None and names is None else names)
+    command_names = list(native) if on_results is not None and names is None else names
     try:
         with command_config(config, command_names) as path:
             command = ['nvchecker', '--logger=json', '--json-log-fd=1', '--tries', '3', '-c', path]

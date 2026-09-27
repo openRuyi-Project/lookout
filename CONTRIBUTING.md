@@ -36,6 +36,12 @@ the package index; pytest and Hypothesis are absent from the shipped image. An u
 release gate. Its temporary filesystem permits executable installer-test shims;
 production mount policy and SPEC confinement are unchanged. Live provider validation is a separate, explicitly requested check.
 
+Regression fixtures pin inputs, including historical releases, and assert their
+outputs. Do not pin today's provider results, package counts or shipped rule
+inventory in algorithm tests. Validate shipped configuration by its schema and
+policy; keep live coverage/latency measurements outside the offline release gate.
+Freeze semantic clocks and coordinate concurrent tests by events, not machine speed.
+
 ## Before requesting review
 
 - Own and review every submitted change, including generated code and text.
