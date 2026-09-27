@@ -67,6 +67,35 @@ class StateConnectionTests(unittest.TestCase):
         self.assert_closed(connections)
         self.assertEqual(state.read(self.db), changed)
 
+    def test_missing_database_is_a_cold_start_without_creating_it(self):
+        missing = self.db.parent / 'missing.db'
+        self.assertEqual(state.read_cached(missing), (state.empty(), None))
+        self.assertFalse(missing.exists())
+
+    def test_existing_database_requires_a_snapshot_row(self):
+        with closing(sqlite3.connect(self.db)) as conn, conn:
+            conn.execute('DELETE FROM snapshot')
+        before = self.db.read_bytes()
+        connections, recording = self.record_connections()
+        with recording, self.assertRaisesRegex(ValueError, 'snapshot row is missing'):
+            state.read(self.db)
+        self.assert_closed(connections)
+        self.assertEqual(self.db.read_bytes(), before)
+
+    def test_invalid_snapshot_envelope_is_rejected_without_writing(self):
+        for payload in ([], None, {**self.snapshot, 'schema': 2},
+                        {**self.snapshot, 'schema': True},
+                        {**self.snapshot, 'generation': True},
+                        {**self.snapshot, 'generation': -1},
+                        {**self.snapshot, 'generation': '1'}):
+            with self.subTest(payload=payload):
+                with closing(sqlite3.connect(self.db)) as conn, conn:
+                    conn.execute('UPDATE snapshot SET payload=? WHERE id=1', (json.dumps(payload),))
+                before = self.db.read_bytes()
+                with self.assertRaisesRegex(ValueError, 'snapshot payload is invalid'):
+                    state.read(self.db)
+                self.assertEqual(self.db.read_bytes(), before)
+
     def test_snapshot_commit_closes_and_rolls_back_on_error(self):
         changed = {**self.snapshot, 'generation': 7}
         connections, recording = self.record_connections('INSERT OR REPLACE INTO snapshot_clock')

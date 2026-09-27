@@ -136,7 +136,7 @@ def evidence_revision(subject, findings):
 
 
 def same_scope(proposed, previous, scope):
-    """A target change is not a change to the current release query."""
+    """Match upstream-release scopes only; source revisions are not dependencies here."""
     if (not previous or previous.get('scope') != 'current_and_upgrade'
             or previous.get('adapter_version') != proposed.get('adapter_version')
             or previous.get('inputs') != proposed['inputs']):

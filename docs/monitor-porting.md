@@ -76,6 +76,12 @@ Findings name their own scope and upgrade target. See
 [Requires](../backend/tracker/monitors/requires/monitor.py): a failed target check
 must not discard a successful current-release observation.
 
+This combined scope is limited to exact upstream-release checks.
+`runner.same_scope()` matches adapter version, resolved inputs and release
+versions, not source revision or the full query fingerprint. It cannot safely
+reuse facts dependent on local patches or other revision-specific input; use a
+single scope for those checks.
+
 ### Facts and failure
 
 Build results with `monitors.model.finding()` and `evidence()`. Their Pydantic
@@ -129,13 +135,15 @@ omitted fields cannot change the provider query or its interpretation:
 - `monitors.model.version_query` retains the current/target version pair for
   upstream metadata checks.
 - EOL retains the derived release cycle.
-- A check that examines local patches must retain the relevant source revision.
+- A single-scope check that examines local patches must retain the relevant source
+  revision.
 
 A packaging-only revision can then reuse upstream evidence without a provider
-call. Publication rechecks the fingerprint and source availability before
-attaching the result. A successful unchanged poll advances `checked_at`, not
-`changed_at` or `evidence_revision`. A heartbeat skips publication when its projected
-state is unchanged; input invalidation or catalog changes can still require a write
+call. Publication rechecks source availability and the fingerprint; combined
+checks may retain an independently matching release scope. A successful unchanged
+poll advances `checked_at`, not `changed_at` or `evidence_revision`. A heartbeat
+skips publication when its projected state is unchanged; input invalidation or
+catalog changes can still require a write
 without provider jobs. A temporary source failure gates retained evidence without
 turning it into a fresh result.
 Periodic rechecks remain necessary: vulnerabilities and provider corrections can

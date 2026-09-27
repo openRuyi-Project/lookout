@@ -24,6 +24,7 @@ replace operator settings.
 From a clean checkout at an explicit commit:
 
 ```sh
+set -eu
 test -z "$(git status --porcelain)"
 IMAGE="localhost/openruyi-monitor:$(git rev-parse --short=12 HEAD)"
 podman build --format docker -t "$IMAGE" -f Containerfile .
@@ -62,6 +63,11 @@ not cross-host shared SQLite storage. `:Z` assigns private SELinux labels.
 
 ## Preflight without starting services
 
+Use a new data directory or stop the existing service first. This command uses
+[Podman private labels](https://docs.podman.io/en/latest/markdown/podman-run.1.html#volume-v-source-volume-host-dir-container-dir-options):
+`:Z` relabels the mounted directory for this container, so it must not be run
+against a directory still used by another container.
+
 Override the image entrypoint explicitly. Passing `python ...` after the image
 without this override does **not** run an independent preflight.
 
@@ -95,12 +101,18 @@ python3 - "$IMAGE" "$CONFIG_DIR" "$DATA_DIR" "$TMP_QUADLET_DIR" <<'PY'
 from pathlib import Path
 import sys
 image, config, data, output = sys.argv[1:]
-assert not image.endswith(':latest') and all('\n' not in x for x in (image, config, data))
-assert Path(config).is_absolute() and Path(data).is_absolute()
+if any(not value or any(c.isspace() or c in "\\%\"'\x00" for c in value)
+       for value in (image, config, data)):
+    raise SystemExit('Use values without whitespace, quotes, backslashes or % specifiers')
+if image.endswith(':latest') or not (':' in image.rsplit('/', 1)[-1] or '@sha256:' in image):
+    raise SystemExit('Use an explicit image tag or digest, not latest')
+if not all(Path(p).is_absolute() and ':' not in p for p in (config, data)):
+    raise SystemExit('Use absolute volume paths without colons')
 text = Path('deploy/quadlet/openruyi-monitor.container.in').read_text()
 for key, value in [('IMAGE', image), ('CONFIG_DIR', config), ('DATA_DIR', data)]:
     text = text.replace('@' + key + '@', value)
-assert '@' not in text
+if any('@' + key + '@' in text for key in ('IMAGE', 'CONFIG_DIR', 'DATA_DIR')):
+    raise SystemExit('Unresolved template placeholder')
 with (Path(output) / 'openruyi-monitor.container').open('x') as stream:
     stream.write(text)
 PY
@@ -143,7 +155,7 @@ container's localhost. Replace the domain and arrange DNS, ports 80/443, and
 any private-site authentication/network restrictions outside the application.
 
 - `/livez`: Node → FastAPI HTTP chain only.
-- `/readyz` and compatibility `/healthz`: a prepared snapshot is readable, possibly degraded.
+- `/readyz`: a prepared snapshot is readable, possibly degraded.
 - `/api/v2/status`: collection coverage and timestamp progression.
 
 An empty data volume may be live before ready. Degraded is not fully healthy;
@@ -175,9 +187,10 @@ arrange at least one independent storage copy and an explicit retention policy.
 ## Upgrade and rollback
 
 Record the image ID/tag, config directory, and backup path. Build/test the new
-image, prepare a new config, run preflight, and take a backup. Stop the old
-instance before switching the unit's image/config. Retain data; never run two
-complete collectors against it.
+image and prepare a new config. Take an online backup, stop the old instance,
+then run preflight against the real config/data mounts before switching the
+unit. This order avoids relabeling a live container's private SELinux volumes.
+Retain data; never run two complete collectors against it.
 
 For code rollback, stop the new instance and restore the previous tested image
 and matching config. Do not automatically rewind observations. Database restore

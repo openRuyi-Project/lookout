@@ -44,6 +44,25 @@ def test_unchanged_plan_preserves_all_authored_text(tmp_path):
         assert (review / path.relative_to(runtime.parent)).read_bytes() == path.read_bytes()
 
 
+@pytest.mark.parametrize('owner', [0, 1, 2], ids=['base', 'candidate', 'runtime'])
+@pytest.mark.parametrize('symlink_parent', [False, True], ids=['direct', 'symlink-parent'])
+def test_plan_cannot_write_inside_an_input_directory(tmp_path, owner, symlink_parent):
+    paths = configs(tmp_path)
+    parent = paths[owner].parent
+    if symlink_parent:
+        alias = tmp_path / 'input-alias'
+        alias.symlink_to(parent, target_is_directory=True)
+        parent = alias
+    before = {str(path.relative_to(tmp_path)): path.read_bytes()
+              for path in tmp_path.rglob('*') if path.is_file()}
+    output = parent / 'review'
+    with pytest.raises(ValueError, match='outside the input configuration directories'):
+        config_change.plan(*paths, output)
+    assert not output.exists()
+    assert {str(path.relative_to(tmp_path)): path.read_bytes()
+            for path in tmp_path.rglob('*') if path.is_file()} == before
+
+
 def test_single_rule_edit_preserves_unrelated_tables_and_comments(tmp_path):
     base, candidate, runtime = configs(tmp_path)
     path = candidate.parent / 'versions/nvchecker.toml'
@@ -59,6 +78,42 @@ def test_single_rule_edit_preserves_unrelated_tables_and_comments(tmp_path):
     config_change.apply(review, runtime, tmp_path / 'prepared')
     assert (tmp_path / 'prepared/versions/nvchecker.toml').read_text() == expected
     assert config.load(tmp_path / 'prepared/tracker.toml')['native_options']['http_timeout'] == 30
+
+
+@pytest.mark.parametrize('replacement', [None, 'python-next'])
+def test_plan_rejects_unpromoted_dependency_mapping_changes(tmp_path, replacement):
+    base, candidate, runtime = configs(tmp_path)
+    dependency = '\n[openruyi.dependencies]\npython = "python"\n'
+    for path in (base, candidate, runtime):
+        path.write_text(path.read_text() + dependency)
+    text = candidate.read_text()
+    candidate.write_text(text.replace(dependency, '' if replacement is None else
+                                     dependency.replace('"python"', '"' + replacement + '"')))
+    review = tmp_path / 'review'
+    before = runtime.read_bytes()
+    with pytest.raises(ValueError, match='change site settings separately'):
+        config_change.plan(base, candidate, runtime, review)
+    assert not review.exists()
+    assert runtime.read_bytes() == before
+
+
+def test_buildsystem_promotion_retains_operator_dependency_mapping(tmp_path):
+    base, candidate, runtime = configs(tmp_path)
+    appearance = '\n[openruyi.buildsystems.fixture]\nbackground = "#112233"\nforeground = "#ffffff"\n'
+    dependency = '\n[openruyi.dependencies]\npython = "python"\n'
+    for path in (base, candidate, runtime):
+        path.write_text(path.read_text() + appearance + dependency)
+    candidate.write_text(candidate.read_text().replace('#112233', '#445566'))
+    runtime.write_text(runtime.read_text().replace('python = "python"', 'python = "operator-python"'))
+    before = runtime.read_bytes()
+    review, prepared = tmp_path / 'review', tmp_path / 'prepared'
+    result = config_change.plan(base, candidate, runtime, review)
+    assert result['changed_buildsystems'] == ['fixture']
+    config_change.apply(review, runtime, prepared)
+    loaded = config.load(prepared / 'tracker.toml')
+    assert loaded['openruyi']['dependencies'] == {'python': 'operator-python'}
+    assert loaded['openruyi']['buildsystems']['fixture']['background'] == '#445566'
+    assert runtime.read_bytes() == before
 
 
 def test_overlapping_literal_edit_is_not_silently_reformatted():

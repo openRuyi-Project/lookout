@@ -64,7 +64,15 @@ def read_cached(db, previous=None):
     if reuse:
         snapshot = previous[0]
     else:
-        snapshot = json.loads(row[0]) if row else empty()
+        if row is None:
+            raise ValueError('snapshot row is missing')
+        snapshot = json.loads(row[0])
+    # Only a missing database is a cold start; an existing unsupported snapshot
+    # must not reach collectors that could overwrite it using the current schema.
+    if (not isinstance(snapshot, dict) or type(snapshot.get('schema')) is not int
+            or snapshot['schema'] != 1 or type(snapshot.get('generation')) is not int
+            or snapshot['generation'] < 0):
+        raise ValueError('snapshot payload is invalid')
     if stamp:
         snapshot = {**snapshot,
             'builds': {name: {tid: {**fact, 'fetched_at': stamp, 'attempted_at': stamp}

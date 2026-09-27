@@ -20,7 +20,7 @@ class MetadataIO:
 
     def json(self, method, url):
         self.calls.append((method, url))
-        return {"info": deepcopy(self.info)}
+        return {"info": {"name": "upstream-fixture", "version": "2.0", **deepcopy(self.info)}}
 
 
 def read(info):

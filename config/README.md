@@ -131,8 +131,9 @@ pypi = "upstream-widget"
 
 ## 新增软件包
 
-OBS 库存中的包即使没有版本规则也会显示，其他 monitor 独立工作。用只读快照
-提出候选，审阅 Source0、SPEC 身份和发布策略后加入原生文件：
+OBS 库存中的包即使没有版本规则也会显示，其他 monitor 独立工作。
+`setup` 离线读取快照，目前仅从 crates.io Source0 提出规则候选。审阅身份和
+发布策略后，再加入原生文件：
 
 ```sh
 PYTHONPATH=backend python -m tracker.package setup 包名 \
@@ -140,11 +141,13 @@ PYTHONPATH=backend python -m tracker.package setup 包名 \
   --output /tmp/new-package-proposal.json
 ```
 
-`entry=null` 表示证据不足。上游别名属于身份映射；SPEC Name 与目录不一致则是
-打包问题，例外需注明 `TODO(drop)` 的删除条件。
+`entry=null` 表示未生成候选，不等于没有上游；来源尚不支持或证据不足都可能
+产生该结果，需查看 `reason`。上游别名属于身份映射；SPEC Name 与目录不一致
+则是打包问题，例外需注明 `TODO(drop)` 的删除条件。
 
-批量发现使用同一套身份校验；`--verify` 调用 provider 验证，失败候选不进入
-输出规则，整个过程不改运行配置：
+`discover` 支持更多来源，可查询 Anitya；不加 `--verify` 也可能联网。
+`--verify` 额外调用 nvchecker 验证候选，失败候选不进入输出规则，整个过程
+不改运行配置：
 
 ```sh
 PYTHONPATH=backend python -m tracker.monitors.version.discover \
@@ -157,13 +160,15 @@ registry 查询不能把 `1.2.0-rc.1` 改成 `1.2.0`。主比较仍遵循配置�
 
 ## 推广到运行配置
 
-保留修改前目录 `BASE`、修改副本 `CANDIDATE`、运营目录 `RUNTIME`，以及只读
-快照 `SNAPSHOT_COPY`。`REVIEW` 和 `PREPARED` 必须是尚不存在的目录：
+`plan/apply` 离线推广版本规则、包策略、BuildSystem 配色和 monitor 设置，
+不需要快照。其余运营设置（包括依赖映射）须在新运营配置目录中单独修改并预检。
+保留修改前目录 `BASE`、修改副本 `CANDIDATE` 和运营目录 `RUNTIME`；
+`REVIEW` 和 `PREPARED` 必须是尚不存在的目录：
 
 ```sh
 PYTHONPATH=backend python -m tracker.package plan \
   --base-config "$BASE/tracker.toml" --config "$CANDIDATE/tracker.toml" \
-  --runtime-config "$RUNTIME/tracker.toml" --db "$SNAPSHOT_COPY" \
+  --runtime-config "$RUNTIME/tracker.toml" \
   --output "$REVIEW" --format human
 PYTHONPATH=backend python -m tracker.package apply \
   --review "$REVIEW" --runtime-config "$RUNTIME/tracker.toml" \

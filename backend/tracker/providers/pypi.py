@@ -2,6 +2,9 @@
 
 from urllib.parse import quote
 
+from packaging.utils import canonicalize_name
+from packaging.version import InvalidVersion, Version
+
 from tracker.identity import from_package
 from tracker.providers.model import Release
 
@@ -33,7 +36,20 @@ def release(name, version, io):
     data = io.json("GET", url)
     if not isinstance(data, dict) or not isinstance(data.get("info"), dict):
         raise ValueError("PyPI release response has no metadata object")
-    return data["info"], url
+    info = data["info"]
+    observed_name, observed_version = info.get("name"), info.get("version")
+    if (not isinstance(observed_name, str) or not 1 <= len(observed_name) <= 512
+            or canonicalize_name(observed_name) != canonicalize_name(name)
+            or not isinstance(observed_version, str) or not 1 <= len(observed_version) <= 512):
+        raise ValueError("PyPI response identity does not match the query")
+    if observed_version != version:
+        try:
+            same_version = Version(observed_version) == Version(version)
+        except InvalidVersion:
+            same_version = False
+        if not same_version:
+            raise ValueError("PyPI response identity does not match the query")
+    return info, url
 
 
 def metadata(settings, version, io):

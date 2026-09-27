@@ -201,3 +201,57 @@ def test_obs_finite_header_timeout(config):
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+@pytest.mark.parametrize('stored', [
+    '[1]',
+    '{"time":"invalid","data":{}}',
+    '{"time":1000}',
+    '{"time":1000,"error":true}',
+    '{"time":true,"data":{}}',
+    '{"time":-1,"data":{}}',
+    '{"time":1001,"data":{}}',
+    '{"time":NaN,"data":{}}',
+    '{"time":Infinity,"data":{}}',
+    '{"time":' + '9' * 400 + ',"data":{}}',
+    '{broken',
+])
+def test_invalid_monitor_disk_cache_is_replaced_not_a_persistent_failure(tmp_path, monkeypatch, stored):
+    monkeypatch.setattr(monitor_io.time, 'time', lambda: 1000)
+    url = 'https://example.org/release'
+    key = hashlib.sha256(json.dumps(['GET', url, None], sort_keys=True).encode()).hexdigest()
+    path = tmp_path / (key + '.json')
+    path.write_text(stored)
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(200, json={'fresh': True})
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        for _ in range(2):
+            assert monitor_io.IO(tmp_path, client=client).json('GET', url) == {'fresh': True}
+    assert len(calls) == 1
+    assert json.loads(path.read_text()) == {'time': 1000, 'data': {'fresh': True}}
+
+
+def test_monitor_failure_memo_is_shared_in_run_but_never_persisted(tmp_path):
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        if len(calls) == 1:
+            raise httpx.ConnectError('fixture unavailable')
+        return httpx.Response(200, content=b'null')
+
+    url = 'https://example.org/release'
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        owner = monitor_io.IO(tmp_path, client=client)
+        with pytest.raises(httpx.ConnectError):
+            owner.json('GET', url)
+        with pytest.raises(ValueError, match='failed earlier'):
+            owner.json('GET', url)
+        assert list(tmp_path.iterdir()) == []
+        assert monitor_io.IO(tmp_path, client=client).json('GET', url) is None
+        assert monitor_io.IO(tmp_path, client=client).json('GET', url) is None
+    assert len(calls) == 2

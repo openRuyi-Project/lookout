@@ -80,8 +80,13 @@ class IO:
             path = self.cache / (key + '.json') if self.cache else None
             if cached is None and path and path.is_file() and path.stat().st_size <= 32 * 1024 * 1024:
                 try:
-                    cached = json.loads(path.read_text())
-                except (OSError, ValueError):
+                    stored = json.loads(path.read_text())
+                    # Disk is a disposable success cache, not persistent failure state.
+                    if (isinstance(stored, dict) and set(stored) == {'time', 'data'}
+                            and type(stored['time']) in (int, float)
+                            and math.isfinite(stored['time']) and stored['time'] >= 0):
+                        cached = stored
+                except (OSError, ValueError, OverflowError):
                     pass
             ttl = self.ttl if max_age is None else min(self.ttl, max_age)
             if cached and 0 <= now - cached.get('time', 0) < ttl:

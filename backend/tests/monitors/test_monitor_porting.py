@@ -24,7 +24,7 @@ def test_port_runs_through_heartbeat_storage_api_and_facets(config, snapshot, mo
     monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
-    response = {'info': {'yanked': True}}
+    response = {'info': {'name': 'upstream-fixture', 'version': '3.9.0', 'yanked': True}}
     calls = []
 
     def handler(request):
@@ -62,7 +62,7 @@ def test_port_runs_through_heartbeat_storage_api_and_facets(config, snapshot, mo
         assert monitor.execute('yanked', changed, io, original)['findings'] == []
         assert monitor_model.project(collected, 'binutils', datetime.now(timezone.utc))['findings'] == []
 
-        response = {'info': {'yanked': False}}
+        response = {'info': {'name': 'upstream-fixture', 'version': '3.9.0', 'yanked': False}}
         healthy = monitor.execute('yanked', plan, io, original)
         assert healthy['status'] == 'ok' and healthy['findings'] == []
 
@@ -117,7 +117,7 @@ def test_v2_port_catalog_checks_and_facets_share_the_same_observation(config, sn
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
     with httpx.Client(transport=httpx.MockTransport(
-            lambda request: httpx.Response(200, json={'info': {'yanked': True}}))) as client:
+            lambda request: httpx.Response(200, json={'info': {'name': 'upstream-fixture', 'version': '3.9.0', 'yanked': True}}))) as client:
         collected = monitor.collect(config, 'unused', db, io=IO(client=client))
         # Metadata is published with observations; an idle heartbeat writes neither.
         generation = collected['generation']

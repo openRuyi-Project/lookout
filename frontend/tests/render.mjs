@@ -175,9 +175,22 @@ let health = 'ok';
 let ready = {status: 200, body: {status: 'degraded', generation: 1}};
 let appearancePalette = {custom: {background: '#123456', foreground: '#ffffff'}};
 let retainedCount = 0;
+const publicPaths = [
+  '/api/v2/packages', '/api/v2/packages/security', '/api/v2/tracks/widget',
+  '/api/v2/targets', '/api/v2/status', '/api/v2/export',
+];
+const forwardedRequests = [];
 const mock = createServer((req, res) => {
+  forwardedRequests.push(req.url);
   if (unavailable) { res.writeHead(503, {'Content-Type':'application/json'});res.end('{}');return; }
   const url = new URL(req.url, 'http://localhost');
+  if (publicPaths.includes(url.pathname) && url.searchParams.has('proxy_fixture')) {
+    const status = Number(url.searchParams.get('fixture_status')) || 200;
+    const headers = {'Content-Type': 'application/json'};
+    if (url.pathname === '/api/v2/export') headers['Content-Disposition'] = 'attachment; filename="fixture.json"';
+    res.writeHead(status, headers);
+    res.end(JSON.stringify({path: url.pathname, query: [...url.searchParams]})); return;
+  }
   if (url.pathname === '/healthz') {
     if (health === 'stall') return;
     if (health === 'disconnected') { req.socket.destroy(); return; }
@@ -285,6 +298,23 @@ try {
   }
   unavailable = false;
   console.log('PASS health: liveness, readiness, degraded, no snapshot, failure, timeout, no-store');
+  for (const path of publicPaths) {
+    const query = '?proxy_fixture=1&build=rva23%3Afailed&build=rva20%3Ablocked&q=with%20space';
+    const result = await wire(path + query);
+    assert.equal(result.status, 200, path);
+    assert.deepEqual(JSON.parse(result.body), {path, query: [...new URLSearchParams(query)]});
+    if (path.endsWith('/export')) assert.equal(result.headers['content-disposition'], 'attachment; filename="fixture.json"');
+  }
+  for (const status of [404, 422, 503]) {
+    const result = await wire('/api/v2/status?proxy_fixture=1&fixture_status=' + status);
+    assert.equal(result.status, status, 'proxy preserves upstream status');
+  }
+  for (const path of ['/api/v1/status', '/api/v1/packages', '/api/v2/internal', '/api/v2/packages/security/extra']) {
+    const count = forwardedRequests.length;
+    assert.equal((await wire(path)).status, 404, path);
+    assert.equal(forwardedRequests.length, count, 'rejected route must not contact backend');
+  }
+  console.log('PASS API proxy: v2 routes, query, status, export header, rejected paths');
   const invalidSelection = await wire('/?monitor=not-registered');
   assert.equal(invalidSelection.status, 422);
   assert.match(invalidSelection.body.toString(), /Invalid filter selection/);
@@ -630,6 +660,19 @@ try {
   assert.equal((await wire('/',{},'HEAD')).body.length,0);
   const json=await wire('/api/v2/packages',{'Accept-Encoding':'gzip'});assert.equal(json.status,200);assert.equal(json.headers['cache-control'],'no-store');assert.equal(json.headers['content-encoding'],'gzip');assert.ok(JSON.parse(gunzipSync(json.body)).items.length>0);
   const redirect=await wire('/theme?to=dark&from=%2F');assert.equal(redirect.status,303);assert.equal(redirect.headers['cache-control'],'no-store');assert.ok(redirect.headers['set-cookie']);assert.equal(redirect.headers.etag,undefined);
+  for (const from of ['/\t/example.invalid', '/\n/example.invalid', '/\r/example.invalid',
+      '//example.invalid', '/\\example.invalid', 'https://example.invalid']) {
+    for (const to of ['dark', 'invalid']) {
+      const response = await wire('/theme?' + new URLSearchParams({to, from}));
+      assert.equal(response.status, 303);
+      assert.equal(response.headers.location, '/', `Unsafe theme return: ${JSON.stringify(from)}`);
+    }
+  }
+  const back = '/packages/a%2Bb?monitor=requires&q=one%20two#checks';
+  const returned = await wire('/theme?' + new URLSearchParams({to: 'auto', from: back}));
+  assert.equal(returned.status, 303);
+  assert.equal(returned.headers.location, back);
+  console.log('PASS theme redirect: control characters and external targets rejected; local path/query/fragment retained');
   unavailable=true;
   const failure=await wire('/');assert.equal(failure.status,503);assert.equal(failure.headers['cache-control'],'no-store');assert.equal(failure.headers.etag,undefined);
   unavailable=false;

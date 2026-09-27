@@ -2,7 +2,6 @@
 """Create a verified, non-overwriting SQLite snapshot backup."""
 import argparse
 from contextlib import closing
-import json
 import math
 import os
 from pathlib import Path
@@ -10,6 +9,10 @@ import sqlite3
 import sys
 import tempfile
 import time
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'backend'))
+from tracker import state
 
 
 def backup(db, output, timeout_seconds):
@@ -46,15 +49,12 @@ def backup(db, output, timeout_seconds):
                 target.set_progress_handler(lambda: int(time.monotonic() >= deadline), 1000)
                 if target.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
                     raise ValueError('backup integrity check failed')
-                row = target.execute('SELECT payload FROM snapshot WHERE id=1').fetchone()
-                if row is None:
-                    raise ValueError('snapshot row is missing')
-                payload = json.loads(row[0])
-                if (not isinstance(payload, dict) or type(payload.get('schema')) is not int
-                        or payload['schema'] != 1 or type(payload.get('generation')) is not int
-                        or payload['generation'] < 0):
-                    raise ValueError('snapshot payload is invalid')
                 check_deadline()
+        try:
+            state.read(tmp)
+        except (KeyError, TypeError, AttributeError) as error:
+            raise ValueError('snapshot payload cannot be read with its clock') from error
+        check_deadline()
         with tmp.open('rb') as stream:
             os.fsync(stream.fileno())
         check_deadline()

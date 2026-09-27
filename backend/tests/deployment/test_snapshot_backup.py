@@ -1,6 +1,7 @@
 """Real SQLite backups and bounded failure paths; no providers or production data."""
 from contextlib import closing
 import importlib.util
+import json
 from pathlib import Path
 import sqlite3
 import threading
@@ -49,24 +50,77 @@ def test_refuses_occupied_paths(source, tmp_path, kind):
 
 
 @pytest.mark.parametrize('kind', ['missing', 'corrupt', 'empty', 'no-row', 'invalid-json', 'invalid-schema', 'boolean'])
-def test_invalid_source_leaves_no_backup(tmp_path, kind):
+def test_invalid_source_leaves_no_backup(tmp_path, kind, capsys):
     source = tmp_path / 'source'
     output = tmp_path / 'output'
+    payloads = {'invalid-json': '{', 'invalid-schema': '{"schema": 2, "generation": 0}',
+                'boolean': '{"schema": true, "generation": false}'}
     if kind == 'corrupt':
         source.write_bytes(b'broken')
+    elif kind in payloads:
+        state.commit(source, {**state.empty(), 'generation': 8})
+        with closing(sqlite3.connect(source)) as db, db:
+            db.execute('UPDATE snapshot SET payload=? WHERE id=1', (payloads[kind],))
     elif kind != 'missing':
         with closing(sqlite3.connect(source)) as db:
             if kind != 'empty':
                 db.execute('CREATE TABLE snapshot (id INTEGER PRIMARY KEY, payload TEXT)')
-                if kind != 'no-row':
-                    payload = {'invalid-json': '{', 'invalid-schema': '{"schema": 2, "generation": 0}',
-                               'boolean': '{"schema": true, "generation": false}'}[kind]
-                    db.execute('INSERT INTO snapshot VALUES (1,?)', (payload,))
                 db.commit()
+    if kind == 'invalid-json':
+        with pytest.raises(json.JSONDecodeError) as error:
+            backup.backup(source, output, 30)
+        expected_error = str(error.value)
+    elif kind in payloads:
+        expected_error = 'snapshot payload is invalid'
     assert backup.main(['--db', str(source), '--output', str(output)]) == 2
+    captured = capsys.readouterr()
+    assert not captured.out
+    if kind in payloads:
+        assert captured.err == f'backup failed: {expected_error}\n'
     assert not output.exists() and not list(tmp_path.glob('.snapshot-*'))
     if kind == 'missing':
         assert not source.exists()
+
+
+@pytest.mark.parametrize('kind', ['missing-table', 'missing-row', 'missing-column', 'invalid-projection'])
+def test_unreadable_snapshot_clock_leaves_no_backup(source, tmp_path, kind):
+    with closing(sqlite3.connect(source)) as db, db:
+        if kind == 'missing-table':
+            db.execute('DROP TABLE snapshot_clock')
+        elif kind == 'missing-row':
+            db.execute('DELETE FROM snapshot_clock')
+        elif kind == 'missing-column':
+            db.execute('DROP TABLE snapshot_clock')
+            db.execute('CREATE TABLE snapshot_clock (id INTEGER PRIMARY KEY, revision TEXT)')
+            db.execute("INSERT INTO snapshot_clock VALUES (1, 'revision')")
+        else:
+            db.execute("UPDATE snapshot_clock SET build_checked_at='2026-01-02T00:00:00+00:00'")
+    before = source.read_bytes()
+    with pytest.raises((sqlite3.Error, ValueError, KeyError)):
+        state.read(source)
+    output = tmp_path / 'backup'
+    assert backup.main(['--db', str(source), '--output', str(output)]) == 2
+    assert source.read_bytes() == before
+    assert not output.exists() and not list(tmp_path.glob('.snapshot-*'))
+
+
+def test_backup_preserves_clock_adjusted_observations(source, tmp_path):
+    old = '2026-01-01T00:00:00+00:00'
+    new = '2026-01-02T00:00:00+00:00'
+    snapshot = {**state.empty(), 'generation': 8,
+                'builds': {'widget': {'target': state.success({}, {'raw_status': 'failed'}, old)}},
+                'components': {'builds': state.success({}, {}, old)}}
+    state.commit(source, snapshot)
+    with closing(sqlite3.connect(source)) as db, db:
+        db.execute('UPDATE snapshot_clock SET build_checked_at=?', (new,))
+    before = source.read_bytes()
+    expected = state.read(source)
+    assert expected['builds']['widget']['target']['fetched_at'] == new
+    assert expected['components']['builds']['fetched_at'] == new
+    output = tmp_path / 'backup'
+    assert backup.main(['--db', str(source), '--output', str(output)]) == 0
+    assert state.read(output) == expected
+    assert source.read_bytes() == before
 
 
 @pytest.mark.parametrize('timeout', ['nan', 'inf', '0', '-1'])

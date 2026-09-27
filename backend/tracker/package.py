@@ -8,6 +8,7 @@ from pathlib import Path
 
 from tracker import config as cfg, config_change, state
 from tracker.monitors.version import nvchecker as nv
+from tracker.monitors.version.rules import same_values
 
 
 def location(path, keys):
@@ -61,7 +62,7 @@ def explain(config_path, name, db=None, runtime_config=None):
             "observation": snapshot.get("tracks", {}).get(track),
         }
         if runtime is not None:
-            rule["runtime_matches"] = runtime["native"].get(track) == entry
+            rule["runtime_matches"] = same_values(runtime["native"].get(track), entry)
             rule["runtime_location"] = rule_location(runtime, track)
         rules.append(rule)
     spec = snapshot.get("specs", {}).get(name, {})
@@ -73,7 +74,7 @@ def explain(config_path, name, db=None, runtime_config=None):
         "binding_location": package_location(config, name),
         "version_rule_location": rule_location(config, binding["compare"] or name),
         "binding_is_implicit": name not in config["packages"],
-        "runtime_binding_matches": cfg.binding(runtime, name) == binding if runtime is not None else None,
+        "runtime_binding_matches": same_values(cfg.binding(runtime, name), binding) if runtime is not None else None,
         "spec": {
             "path": f"SPECS/{name}",
             "url": cfg.spec_source_url(origin, name, spec.get("head") or origin.get("branch") or ""),
@@ -156,7 +157,6 @@ def main(argv=None):
     p.add_argument("--config", required=True)
     p.add_argument("--runtime-config", required=True)
     p.add_argument("--output", required=True)
-    p.add_argument("--db")
     p = commands.add_parser("apply")
     p.add_argument("--review", required=True)
     p.add_argument("--runtime-config", required=True)

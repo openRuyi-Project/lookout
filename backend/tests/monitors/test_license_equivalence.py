@@ -13,7 +13,8 @@ class Metadata:
 
     def json(self, method, url):
         self.calls.append((method, url))
-        return {"info": {"license_expression": next(self.expressions)}}
+        return {"info": {"name": "fixture", "version": url.split("/")[-2],
+                         "license_expression": next(self.expressions)}}
 
 
 def check(old, new):

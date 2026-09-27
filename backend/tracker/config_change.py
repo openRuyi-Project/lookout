@@ -216,15 +216,23 @@ def plan(base_path, candidate_path, runtime_path, output):
     base_file, _, base = inputs(base_path)
     candidate_file, _, candidate = inputs(candidate_path)
     runtime_file, native_file, runtime = inputs(runtime_path)
+    output = Path(output).resolve()
+    if any(output.is_relative_to(path.parent) for path in (base_file, candidate_file, runtime_file)):
+        raise ValueError("review output must be outside the input configuration directories")
     # This command promotes package rules, not unrelated operator/site settings.
     a, b = tomllib.loads(base_file.read_text()), tomllib.loads(candidate_file.read_text())
-    for key in ("packages_config", "openruyi", "monitors"):
+    for key in ("packages_config", "monitors"):
         a.pop(key, None)
         b.pop(key, None)
+    for document in (a, b):
+        document.get("openruyi", {}).pop("buildsystems", None)
+        if document.get("openruyi") == {}:
+            document.pop("openruyi")
     a.get("collector", {}).pop("nvchecker_config", None)
     b.get("collector", {}).pop("nvchecker_config", None)
     if not version_rules.same_values(a, b):
-        raise ValueError("change site settings separately; plan only promotes native rules and package bindings")
+        raise ValueError("change site settings separately; plan promotes version rules, package policies, "
+                         "monitor settings and build-system colors")
     base_options = tomllib.loads(Path(base["nvpath"]).read_text()).get("__config__", {})
     candidate_options = tomllib.loads(Path(candidate["nvpath"]).read_text()).get("__config__", {})
     if not version_rules.same_values(base_options, candidate_options):
@@ -270,7 +278,6 @@ def plan(base_path, candidate_path, runtime_path, output):
     for path, loaded in ((base_file, base), (candidate_file, candidate), (runtime_file, runtime)):
         cfg.require_unchanged(loaded, path)
 
-    output = Path(output).resolve()
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
     for name, text in texts.items():
         (output / name).parent.mkdir(parents=True, exist_ok=True)

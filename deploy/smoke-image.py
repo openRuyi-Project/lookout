@@ -86,6 +86,11 @@ def get(path):
     with urllib.request.urlopen(base + path, timeout=3) as response:
         return response.read()
 assert json.loads(get('/readyz'))['status'] in ('ready', 'degraded')
+assert json.loads(get('/api/v2/status'))['generation'] >= 1
+assert len(json.loads(get('/api/v2/targets'))) == 3
+export = json.loads(get('/api/v2/export'))
+assert export['schema'] == 2
+assert any(package['name'] == 'smoke-fixture' for package in export['packages'])
 for path in ('/', '/packages/smoke-fixture'):
     body = get(path).decode()
     assert 'smoke-fixture' in body and '1.2.3' in body
@@ -166,7 +171,7 @@ assert snapshot['sources']['smoke-fixture']['version'] == '1.2.3'
         self.wait_live(restarted)
         self.assert_seeded(restarted)
         self.stop(restarted)
-        print('PASS seeded: HTTP list/detail, UID, read-only config/app, writable data, backup, persistence, SIGTERM', flush=True)
+        print('PASS seeded: HTTP list/detail/status/targets/export, UID, read-only config/app, writable data, backup, persistence, SIGTERM', flush=True)
         recovered = self.start('hot-journal', self.fixture('hot-journal'))
         self.wait_live(recovered)
         self.assert_seeded(recovered)

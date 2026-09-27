@@ -222,14 +222,14 @@ def test_monitor_phase_cannot_overwrite_other_observations(snapshot):
 def test_real_license_adapter_compares_same_pair_and_requires_spdx():
     from tracker.monitors import license as monitor_license
     subject = {'version': '1.0', 'target_version': '2.0'}
-    io = FixtureIO({'/1.0/': {'info': {'license_expression': 'MIT'}},
-                    '/2.0/': {'info': {'license_expression': 'Apache-2.0'}}})
+    io = FixtureIO({'/1.0/': {'info': {'name': 'fixture', 'version': '1.0', 'license_expression': 'MIT'}},
+                    '/2.0/': {'info': {'name': 'fixture', 'version': '2.0', 'license_expression': 'Apache-2.0'}}})
     result = monitor_license.check(subject, {'pypi': 'fixture'}, io)
     assert result['findings'][0]['label'] == 'License'
     assert result['findings'][0]['target_version'] == '2.0'
     io.responses['/2.0/']['info']['license_expression'] = 'mit'
     assert monitor_license.check(subject, {'pypi': 'fixture'}, io)['findings'] == []
-    io.responses['/2.0/']['info'] = {'license': 'MIT'}
+    io.responses['/2.0/']['info'] = {'name': 'fixture', 'version': '2.0', 'license': 'MIT'}
     assert monitor_license.check(subject, {'pypi': 'fixture'}, io)['status'] == 'unsupported'
 
 

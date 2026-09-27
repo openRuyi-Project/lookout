@@ -1,5 +1,7 @@
 """Preflight failures must occur before services or collectors are started."""
+from contextlib import closing
 import importlib.util
+import json
 from pathlib import Path
 import sqlite3
 
@@ -66,6 +68,23 @@ def test_corrupt_database_and_directory_refused(runtime, tmp_path):
     assert db.read_bytes() == b'not sqlite'
     with pytest.raises(RuntimeError, match='not a regular file'):
         runtime_checks.check_runtime(runtime, tmp_path)
+
+
+@pytest.mark.parametrize('payload', [None, [], {'schema': 2, 'generation': 1},
+                                    {'schema': 1, 'generation': True},
+                                    {'schema': 1, 'generation': -1}])
+def test_existing_invalid_snapshot_fails_preflight_without_writing(runtime, tmp_path, payload):
+    db = tmp_path / 'db'
+    state.commit(db, state.empty())
+    with closing(sqlite3.connect(db)) as conn, conn:
+        if payload is None:
+            conn.execute('DELETE FROM snapshot')
+        else:
+            conn.execute('UPDATE snapshot SET payload=? WHERE id=1', (json.dumps(payload),))
+    before = db.read_bytes()
+    with pytest.raises(RuntimeError, match='database is unreadable'):
+        runtime_checks.check_runtime(runtime, db)
+    assert db.read_bytes() == before
 
 
 @pytest.mark.parametrize('result', [

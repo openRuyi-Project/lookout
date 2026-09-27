@@ -1,12 +1,11 @@
 // The theme works without scripting: set a cookie and redirect to the same site.
 import type {APIRoute} from 'astro';
+import {safeHref} from '../lib/document';
 
 const THEMES = new Set(['auto', 'light', 'dark']);
 
-// Only same-origin absolute paths; reject protocol-relative and external targets.
 function safeReturn(from: string | null): string {
-  if (!from || from[0] !== '/' || from[1] === '/' || from.startsWith('/\\')) return '/';
-  return from;
+  return from?.startsWith('/') && safeHref(from) ? from : '/';
 }
 
 export const GET: APIRoute = ({url, cookies, redirect}) => {

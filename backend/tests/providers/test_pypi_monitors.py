@@ -27,7 +27,8 @@ class ReleaseIO:
     def json(self, method, url):
         assert method == "GET"
         assert url.startswith("https://pypi.org/pypi/upstream-fixture/")
-        return {"info": deepcopy(self.responses[url.split("/")[-2]])}
+        version = url.split("/")[-2]
+        return {"info": {"name": "upstream-fixture", "version": version, **deepcopy(self.responses[version])}}
 
 
 @pytest.mark.parametrize("adapter", [monitor_license, monitor_yanked, monitor_requires])
@@ -60,7 +61,8 @@ def test_yanked_missing_or_invalid_assertion_is_not_a_negative(yanked):
 def test_individual_file_yanks_do_not_imply_release_yanked(info, expected):
     class FilesIO:
         def json(self, method, url):
-            return {"info": info, "urls": [{"yanked": True}, {"yanked": False}]}
+            return {"info": {"name": "upstream-fixture", "version": "1.0", **info},
+                    "urls": [{"yanked": True}, {"yanked": False}]}
 
     result = monitor_yanked.check(SUBJECT, SETTINGS, FilesIO())
     assert result["status"] == expected and result["findings"] == []
@@ -147,6 +149,7 @@ def test_pypi_monitors_share_http_cache_without_coupling_to_license_availability
         calls.append(str(request.url))
         version = request.url.path.split("/")[-2]
         return httpx.Response(200, json={"info": {
+            "name": "upstream-fixture", "version": version,
             "requires_python": ">=3.8" if version == "1.0" else ">=3.10",
             "yanked": version == "1.0", "yanked_reason": "Broken sdist"}})
 
@@ -187,7 +190,7 @@ def test_independent_scopes_and_refresh_policies(config, snapshot, monkeypatch):
 
 
 @pytest.mark.parametrize("provider", ["yanked", "requires"])
-@pytest.mark.parametrize("failure", ["network", "malformed"])
+@pytest.mark.parametrize("failure", ["network", "malformed", "identity"])
 def test_failed_checks_retain_matching_previous_evidence(config, snapshot, monkeypatch, provider, failure):
     config["native"]["binutils"] = {"source": "pypi", "pypi": "upstream-fixture"}
     monkeypatch.setattr(state, "compare", lambda *args: "outdated")
@@ -200,6 +203,7 @@ def test_failed_checks_retain_matching_previous_evidence(config, snapshot, monke
             return httpx.Response(200, json={"info": None})
         version = request.url.path.split("/")[-2]
         return httpx.Response(200, json={"info": {
+            "name": "other-project" if response == "identity" else "upstream-fixture", "version": version,
             "yanked": True, "requires_python": ">=3.8" if version == "3.9.0" else ">=3.10"}})
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
@@ -240,7 +244,9 @@ def test_failed_release_retains_only_its_dated_evidence_while_other_release_refr
         scope = "current" if "/3.9.0/" in request.url.path else "upgrade"
         if fail and scope == failed_scope:
             raise httpx.ConnectError("offline for this release")
-        return httpx.Response(200, json={"info": {"requires_python": ">=3.8" if scope == "current" else ">=3.10"}})
+        return httpx.Response(200, json={"info": {
+            "name": "upstream-fixture", "version": request.url.path.split("/")[-2],
+            "requires_python": ">=3.8" if scope == "current" else ">=3.10"}})
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         io = IO(client=client, ttl=0)
@@ -263,3 +269,43 @@ def test_failed_release_retains_only_its_dated_evidence_while_other_release_refr
         projected = monitor_model.project(snapshot, "binutils", datetime.fromisoformat(retry_at))
         assert {finding["scope"]: finding["stale"] for finding in projected["findings"]} == {
             failed_scope: True, successful_scope: False}
+
+
+@pytest.mark.parametrize('info', [
+    {'name': 'other-project', 'version': '1.0'},
+    {'name': 'upstream-fixture', 'version': '9.0'},
+    {'name': 'upstream-fixture'},
+    {'version': '1.0'},
+    {'name': None, 'version': '1.0'},
+    {'name': 'upstream-fixture', 'version': 1},
+    {'name': 'upstream-fixture', 'version': 'not-a-release'},
+])
+def test_pypi_release_rejects_missing_or_mismatched_identity(info):
+    from tracker.providers.pypi import release
+
+    class MetadataIO:
+        def json(self, method, url):
+            return {'info': info}
+
+    with pytest.raises(ValueError, match='identity'):
+        release('upstream-fixture', '1.0', MetadataIO())
+
+
+@pytest.mark.parametrize('version, observed', [
+    ('1.0', '1.0.0'),
+    ('1.0rc1', '1.0RC1'),
+    ('1.0+linux', '1.0+LINUX'),
+    ('legacy-release', 'legacy-release'),
+])
+def test_pypi_release_keeps_equivalent_identity_and_literal_evidence(version, observed):
+    from tracker.providers.pypi import release
+
+    info = {'name': 'Upstream_Fixture', 'version': observed, 'yanked': False}
+
+    class MetadataIO:
+        def json(self, method, url):
+            return {'info': info}
+
+    result, url = release('upstream-fixture', version, MetadataIO())
+    assert result is info
+    assert url == f'https://pypi.org/pypi/upstream-fixture/{version.replace("+", "%2B")}/json'

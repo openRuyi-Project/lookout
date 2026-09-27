@@ -43,11 +43,13 @@ A complete, successful OBS status poll with unchanged facts updates only SQLite'
 failed or changed vectors take the full-snapshot path; missing observations cannot
 become fresh through a clock update.
 
-`state.read_cached` reads the payload and clock in one SQLite transaction. Each
-full commit folds in the clock and assigns a new storage revision, even when an
-import retains the content generation. Cache reuse requires the same storage
-revision and database file identity. SQLite backups include both tables; readers
-require the current clock schema.
+`state.read_cached` reads the payload and clock in one SQLite transaction and
+folds the clock into the returned snapshot. Collectors read, merge and commit
+under the writer lock. `state.commit` stores the supplied snapshot, resets the
+clock and assigns a new storage revision; it does not refresh old input. This
+also applies when an import retains the content generation. Cache reuse requires
+the same storage revision and database file identity. SQLite backups include both
+tables; readers require the current clock schema.
 
 Writes use rollback journals and `synchronous=FULL`. API connections are read-only.
 On startup, under the writer lock, SQLite may recover an interrupted transaction;
@@ -90,19 +92,21 @@ checks require a confirmed newer, comparable release and published version polic
 current-version checks do not depend on an available upgrade.
 
 The runner owns scheduling and storage; adapters own provider inputs and factual
-interpretation. Each adapter supplies a pure refresh policy. Input changes queue
-work immediately; unchanged inputs receive periodic checks. Failed or partial
-checks use persisted retry counts. Work runs in bounded batches and HTTP cache age is capped by the effective
-policy. A heartbeat with no provider jobs may still publish input invalidations
+interpretation. An adapter may supply a pure refresh policy; otherwise the runner
+uses its default. Input changes queue work immediately; unchanged inputs receive
+periodic checks. Failed or partial checks use persisted retry counts. Work runs in
+bounded batches and HTTP cache age is capped by the effective policy. A heartbeat
+with no provider jobs may still publish input invalidations
 or catalog changes; unchanged stored observations and settings require no write.
 Collection schedules and operator overrides are defined in `monitors/schedule.py`
 and each collector's `polling()` or adapter's `refresh()`.
 
-Old findings survive a provider failure only while their query inputs still
-match. Their original successful-check time is retained. Query changes, changed
-upgrade targets or an adapter `VERSION` change invalidate reuse. Rebinding source
-context alone does not refresh external evidence. Invalid saved findings produce
-`schema_changed`, not invented replacement facts.
+Single-scope findings survive provider failure only while the query fingerprint
+matches, retaining their original successful-check time. Combined current/upgrade
+checks reuse each exact upstream release independently; their
+[scope contract](monitor-porting.md#module-contract) excludes revision-dependent
+facts. Rebinding source context does not refresh external evidence. Invalid saved
+findings produce `schema_changed`, not invented replacement facts.
 
 Timestamp and revision fields have distinct meanings:
 

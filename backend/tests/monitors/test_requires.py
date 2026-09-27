@@ -303,7 +303,9 @@ def test_dependency_mapping_is_published_even_on_an_idle_heartbeat(config, snaps
 
     def handler(request):
         calls.append(str(request.url))
-        return httpx.Response(200, json={'info': {'requires_python': '>=3.8' if '/3.9.0/' in str(request.url) else '>=3.10'}})
+        return httpx.Response(200, json={'info': {
+            'name': 'widget', 'version': request.url.path.split('/')[-2],
+            'requires_python': '>=3.8' if '/3.9.0/' in str(request.url) else '>=3.10'}})
 
     with httpx.Client(transport=httpx.MockTransport(handler)) as client:
         io = IO(client=client)
