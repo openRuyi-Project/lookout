@@ -5,7 +5,9 @@
 import argparse
 import json
 from pathlib import Path
-from . import config as cfg, config_change, nv, state, version_rules
+
+from tracker import config as cfg, config_change, state
+from tracker.monitors.version import nvchecker as nv, rules as version_rules
 
 
 def location(path, keys):
@@ -156,7 +158,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.command == "setup":
-            from .onboarding import propose
+            from tracker.monitors.version.onboarding import propose
 
             if not args.db or not args.output:
                 raise ValueError("setup requires --db SNAPSHOT_COPY and --output NEW_JSON")

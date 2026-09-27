@@ -18,53 +18,105 @@
    through nvchecker's different generic version comparator.
 """
 import ast
+from pathlib import Path
 import re
 import sys
 import tomllib
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
-from tracker.version_rules import load
-WRITE_PATH = {'collector', 'obs', 'nv', 'native_spec', 'discover', 'discover_sources', 'package', 'config_change', 'spec_git', 'spec_worker', 'spec_sandbox', 'monitor', 'monitor_io', 'monitor_eol', 'monitor_security', 'monitor_cve', 'monitor_license', 'http_io', 'pypi_metadata', 'requires_pypi'}
-READ_PATH = ['api.py', 'view.py']
+from tracker.monitors.version.rules import load
+# Side-effect-free monitor types and comparisons can be read without collecting.
+PURE_MONITORS = {
+    'tracker.monitors.contract', 'tracker.monitors.model', 'tracker.monitors.schedule',
+    'tracker.monitors.build.status', 'tracker.monitors.version.compare',
+    'tracker.monitors.version.rules', 'tracker.monitors.source.release',
+    'tracker.monitors.requires.model', 'tracker.monitors.requires.compare',
+}
+WRITE_PATH = {'tracker.collector', 'tracker.package', 'tracker.config_change', 'tracker.runtime_checks'}
+READ_PREFIXES = ('tracker.readmodel', 'tracker.presentation')
+EXTERNAL_IO = {'httpx', 'requests', 'urllib.request', 'subprocess'}
 
 
-def _imported_submodules(node):
-    """Every tracker submodule a node imports, across all import forms."""
-    names = set()
+def _runtime_imports(tree):
+    """TYPE_CHECKING dependencies do not execute when a read module is imported."""
+    for node in ast.iter_child_nodes(tree):
+        if isinstance(node, ast.If) and (
+            isinstance(node.test, ast.Name) and node.test.id == 'TYPE_CHECKING'
+            or isinstance(node.test, ast.Attribute) and node.test.attr == 'TYPE_CHECKING'
+        ):
+            for child in node.orelse:
+                yield from _runtime_imports(ast.Module(body=[child], type_ignores=[]))
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            yield node
+        else:
+            yield from _runtime_imports(node)
+
+
+def _imported_submodules(node, module, packages, available):
+    """Resolve complete module names, including executed package initializers."""
+    dependencies = set()
     if isinstance(node, ast.Import):
-        # import tracker.collector [as c]
-        for alias in node.names:
-            parts = alias.name.split('.')
-            if parts[0] == 'tracker' and len(parts) > 1:
-                names.add(parts[1])
-    elif isinstance(node, ast.ImportFrom):
-        if node.level and not node.module:
-            # from . import collector, view
-            names.update(alias.name for alias in node.names)
-        elif node.module:
-            # from .collector import x  /  from tracker.collector import x
-            names.add(node.module.split('.')[-1])
-    return names
+        dependencies.update(alias.name for alias in node.names)
+    else:
+        base = node.module or ''
+        if node.level:
+            package = module if module in packages else module.rpartition('.')[0]
+            prefix = package.split('.')[:len(package.split('.')) - node.level + 1]
+            base = '.'.join([*prefix, base]).rstrip('.')
+        dependencies.add(base)
+        dependencies.update(base + '.' + alias.name for alias in node.names
+                            if base + '.' + alias.name in available)
+    loaded = set()
+    for dependency in dependencies:
+        if any(dependency == name or dependency.startswith(name + '.') for name in EXTERNAL_IO):
+            loaded.add(dependency)
+        parts = dependency.split('.')
+        loaded.update('.'.join(parts[:length]) for length in range(1, len(parts) + 1)
+                      if '.'.join(parts[:length]) in available)
+    return loaded
 
 
 def check_read_write_separation():
-    errors = []
     root = ROOT / 'backend/tracker'
-    graph = {}
-    for path in root.glob('*.py'):
-        graph[path.stem] = set().union(*(_imported_submodules(n) for n in ast.walk(ast.parse(path.read_text(), str(path)))))
-    for filename in READ_PATH:
-        start = Path(filename).stem
+    sources, packages = {}, set()
+    for path in sorted(root.rglob('*.py')):
+        parts = path.relative_to(root).with_suffix('').parts
+        if parts[-1] == '__init__':
+            name = '.'.join(('tracker', *parts[:-1]))
+            packages.add(name)
+        else:
+            name = '.'.join(('tracker', *parts))
+        sources[name] = ast.parse(path.read_text(), str(path))
+    graph = {
+        name: set().union(*(_imported_submodules(node, name, packages, sources)
+                           for node in _runtime_imports(tree)))
+        for name, tree in sources.items()
+    }
+
+    def collects(name):
+        if any(name == boundary or name.startswith(boundary + '.') for boundary in EXTERNAL_IO):
+            return True
+        if name in packages:
+            return False  # Its initializer is traversed, not assumed harmless.
+        if name in WRITE_PATH:
+            return True
+        if name.startswith('tracker.providers.'):
+            return name != 'tracker.providers.model'
+        return name.startswith('tracker.monitors.') and name not in PURE_MONITORS
+
+    errors = []
+    starts = [name for name in graph if name == 'tracker.api'
+              or any(name == prefix or name.startswith(prefix + '.') for prefix in READ_PREFIXES)]
+    for start in sorted(starts):
         todo, visited = [(start, [start])], set()
         while todo:
             name, chain = todo.pop()
             if name in visited:
                 continue
             visited.add(name)
-            for dependency in graph.get(name, ()):
-                if dependency in WRITE_PATH or (dependency.startswith('monitor_') and dependency not in ('monitor_model', 'monitor_views')):
+            for dependency in sorted(graph.get(name, ())):
+                if collects(dependency):
                     errors.append('read path reaches write module: ' + ' -> '.join([*chain, dependency]))
                 elif dependency in graph:
                     todo.append((dependency, [*chain, dependency]))

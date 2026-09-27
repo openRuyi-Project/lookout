@@ -211,7 +211,7 @@ const mock = createServer((req, res) => {
       buildsystems: {custom: 1}, maintenance_labels: {NewSignal: 1, License: 1},
       requires_counts: {all: 3, unmet: 1, changes: 1},
       version_signals: {security: 1, license: 1},
-      build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'issues',label:'Issues',count:2}, {value:'blocked',label:'Blocked',count:1}]])),
+      build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'failed',label:'Failed',count:2}, {value:'blocked',label:'Blocked',count:1}]])),
       items: (url.searchParams.get('q') === 'quiet' ? rows.map(pkg=>({...pkg,maintenance:[],maintenance_findings:[]})) : rows).slice((page - 1) * perPage, page * perPage).map(pkg => monitored(pkg, true, focus)),
       total: rows.length, page, per_page: perPage, pages,
       counts: {all: packages.length, updates: 3, problems: 1, attention: 1, untracked: 1}, targets,
@@ -266,24 +266,25 @@ try {
     assert.equal(result.headers.get('cache-control'), 'no-store');
     assert.deepEqual(await result.json(), body, path);
   }
+  assert.equal((await wire('/healthz')).status, 404);
   ready = {status: 503, body: {status: 'unavailable'}};
   await probe('/livez', 200, {status: 'ok'});
-  for (const path of ['/readyz', '/healthz']) await probe(path, 503, ready.body);
+  await probe('/readyz', 503, ready.body);
   ready = {status: 200, body: {status: 'degraded', generation: 1}};
-  for (const path of ['/readyz', '/healthz']) await probe(path, 200, ready.body);
+  await probe('/readyz', 200, ready.body);
   for (const failure of ['error', 'not-ok', 'disconnected', 'stall']) {
     health = failure;
     await probe('/livez', 503, {status: 'unavailable'});
   }
   health = 'ok';
   unavailable = true;
-  for (const path of ['/livez', '/readyz', '/healthz']) {
+  for (const path of ['/livez', '/readyz']) {
     const result = await fetch(`http://127.0.0.1:${port}${path}`);
     assert.equal(result.status, 503);
     assert.equal(result.headers.get('cache-control'), 'no-store');
   }
   unavailable = false;
-  console.log('PASS health: liveness, readiness/compatibility, degraded, no snapshot, failure, timeout, no-store');
+  console.log('PASS health: liveness, readiness, degraded, no snapshot, failure, timeout, no-store');
   const invalidSelection = await wire('/?monitor=not-registered');
   assert.equal(invalidSelection.status, 422);
   assert.match(invalidSelection.body.toString(), /Invalid filter selection/);
@@ -627,7 +628,7 @@ try {
   assert.match(appCSS, /\[aria-current\]\[data-appearance\]\{[^}]*box-shadow:[^}]*var\(--appearance-background/);
   const range=await wire(cssPath,{'Accept-Encoding':'gzip',Range:'bytes=0-9'});assert.equal(range.status,206);assert.equal(range.headers['content-encoding'],undefined);assert.equal(range.body.length,10);
   assert.equal((await wire('/',{},'HEAD')).body.length,0);
-  const json=await wire('/api/v1/packages',{'Accept-Encoding':'gzip'});assert.equal(json.status,200);assert.equal(json.headers['cache-control'],'no-store');assert.equal(json.headers['content-encoding'],'gzip');assert.ok(JSON.parse(gunzipSync(json.body)).items.length>0);
+  const json=await wire('/api/v2/packages',{'Accept-Encoding':'gzip'});assert.equal(json.status,200);assert.equal(json.headers['cache-control'],'no-store');assert.equal(json.headers['content-encoding'],'gzip');assert.ok(JSON.parse(gunzipSync(json.body)).items.length>0);
   const redirect=await wire('/theme?to=dark&from=%2F');assert.equal(redirect.status,303);assert.equal(redirect.headers['cache-control'],'no-store');assert.ok(redirect.headers['set-cookie']);assert.equal(redirect.headers.etag,undefined);
   unavailable=true;
   const failure=await wire('/');assert.equal(failure.status,503);assert.equal(failure.headers['cache-control'],'no-store');assert.equal(failure.headers.etag,undefined);

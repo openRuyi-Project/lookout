@@ -18,8 +18,8 @@ if [ "$ENGINE" = podman ]; then
 else
   "$ENGINE" build --build-arg "RUNTIME_IMAGE=$IMAGE" -t "$TEST_IMAGE" -f "$ROOT/deploy/Containerfile.check" "$ROOT"
 fi
-# Host-installer tests execute temporary command shims. Declare exec explicitly
-# for this offline test harness; production mounts and worker confinement stay unchanged.
+# Native tests execute temporary command shims. This offline harness needs exec;
+# production mounts and worker confinement stay unchanged.
 "$ENGINE" run "$@" --rm --network none --read-only --cap-drop=all \
   --security-opt=no-new-privileges --user 10001:10001 \
   --tmpfs /tmp:rw,nosuid,nodev,exec,size=128m \

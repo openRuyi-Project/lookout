@@ -1,13 +1,14 @@
 """Fail-closed checks performed before the supervisor starts children."""
 import argparse
 import os
+from pathlib import Path
 import sqlite3
 import sys
 import tempfile
-from pathlib import Path
 
-from . import native_spec, state
-from .config import load
+from tracker import state
+from tracker.config import load
+from tracker.monitors.source import rpm as native_spec
 
 PROBE = b"""Name: openruyi-runtime-probe
 Version: 1.0

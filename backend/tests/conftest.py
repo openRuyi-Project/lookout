@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from fastapi.testclient import TestClient
 import pytest
 import tomlkit
-from fastapi.testclient import TestClient
+
 from tracker import state
 from tracker.config import track_fingerprint
 
@@ -68,3 +69,46 @@ def configured_path(config, tmp_path):
                                   for key in ('obs', 'targets', 'collector', 'packages')}))
     config.update(cfg.load(path))
     return path
+
+
+@pytest.fixture
+def scoped_client(snapshot, tmp_path, monkeypatch):
+    from tracker.readmodel import snapshot as view
+    from tracker.readmodel.packages import PackageList
+    from tracker.api import create_app
+    monkeypatch.setattr(state, 'compare', lambda current, latest, *args:
+                        'unknown' if not current or not latest else
+                        'current' if current == latest else 'outdated')
+    snapshot['monitor_catalog'] = {
+        'requires': {'title': 'Requires'},
+        'fixture_signature': {'title': 'Artifact signatures'},
+    }
+    rows, collection = view.project_monitors(snapshot)
+    checks = {'binutils': 'ok', 'foo3': 'unsupported', 'foo4': 'error',
+              'unknown': 'not_configured', 'untracked': 'ok'}
+    requirement_choices = {'binutils': ['unmet'], 'untracked': ['changes']}
+    for row in rows:
+        name = row['name']
+        system = 'meson' if name == 'foo4' else 'cmake'
+        source = row['monitors']['source']
+        source['data']['buildsystem'] = system
+        source['dimensions']['buildsystem'] = [system]
+        requires = row['monitors']['requires']
+        requires['check']['status'] = checks[name]
+        requires['dimensions'].update({
+            'requires': requirement_choices.get(name, []),
+            'check:requires': [checks[name]],
+            'findings:requires': ['yes'] if name in requirement_choices else [],
+            'maintenance': ['Requires'] if name in requirement_choices else [],
+        })
+        signature = row['monitors']['fixture_signature']
+        signature['check']['status'] = checks[name]
+        signature['dimensions'].update({
+            'check:fixture_signature': [checks[name]],
+            'findings:fixture_signature': ['yes'] if name in ('foo3', 'untracked') else [],
+            'maintenance': ['Signature'] if name in ('foo3', 'untracked') else [],
+        })
+    index = PackageList(rows, snapshot['targets'])
+    app = create_app(tmp_path / 'unused.sqlite3')
+    monkeypatch.setattr(app.state.projection, 'read', lambda: (snapshot, index, collection))
+    return TestClient(app)

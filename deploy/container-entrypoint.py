@@ -18,8 +18,11 @@ WEB_PORT = os.environ.get("PORT", "8080")
 API_PORT = os.environ.get("API_PORT", "18731")
 
 sys.path.insert(0, f"{APP}/backend")
+from tracker.monitors import runner as monitor
+from tracker.monitors.build import obs
+from tracker.monitors.source import git as spec_git
+from tracker.monitors.version import nvchecker as nv
 from tracker.runtime_checks import load_runtime
-from tracker import monitor, nv, obs, spec_git
 
 _stop = threading.Event()
 _procs = {}

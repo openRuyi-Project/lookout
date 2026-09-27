@@ -173,8 +173,8 @@ container's localhost. Replace the domain and arrange DNS, ports 80/443, and
 any private-site authentication/network restrictions outside the application.
 
 - `/livez`: Node → FastAPI HTTP chain only.
-- `/readyz` and compatibility `/healthz`: a snapshot is readable, possibly degraded.
-- `/api/v1/status`: collection coverage and timestamp progression.
+- `/readyz`: a snapshot is readable, possibly degraded.
+- `/api/v2/status`: collection coverage and timestamp progression.
 
 An empty data volume may be live before ready. Degraded is not fully healthy;
 do not create fake snapshots to satisfy probes.

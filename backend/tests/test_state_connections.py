@@ -84,23 +84,25 @@ class StateConnectionTests(unittest.TestCase):
         self.assertEqual(actual['components']['builds']['fetched_at'], '2026-09-25T00:01:00+00:00')
         self.assertEqual(actual['generation'], self.snapshot['generation'])
 
-    def test_heartbeat_closes_on_legacy_early_return(self):
+    def test_heartbeat_closes_when_schema_is_incomplete(self):
         with closing(sqlite3.connect(self.db)) as conn, conn:
             conn.execute('DROP TABLE snapshot_clock')
         connections, recording = self.record_connections()
-        with recording:
-            self.assertFalse(self.heartbeat())
+        before = self.db.read_bytes()
+        with recording, self.assertRaises((sqlite3.OperationalError, ValueError)):
+            self.heartbeat()
         self.assert_closed(connections)
-        self.assertEqual(state.read(self.db), self.snapshot)
+        self.assertEqual(self.db.read_bytes(), before)
 
     def test_heartbeat_closes_when_clock_row_is_absent(self):
         with closing(sqlite3.connect(self.db)) as conn, conn:
             conn.execute('DELETE FROM snapshot_clock')
         connections, recording = self.record_connections()
-        with recording:
-            self.assertFalse(self.heartbeat())
+        before = self.db.read_bytes()
+        with recording, self.assertRaises((sqlite3.OperationalError, ValueError)):
+            self.heartbeat()
         self.assert_closed(connections)
-        self.assertEqual(state.read(self.db), self.snapshot)
+        self.assertEqual(self.db.read_bytes(), before)
 
     def test_heartbeat_closes_on_database_error(self):
         connections, recording = self.record_connections('UPDATE snapshot_clock')

@@ -2,11 +2,12 @@
 import os
 from pathlib import Path
 import sys
+
 import tomlkit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tests.journal_fixture import leave_hot_journal
 from tracker import config, state
-from journal_fixture import leave_hot_journal
 
 PACKAGE = 'smoke-fixture'
 VERSION = '1.2.3'

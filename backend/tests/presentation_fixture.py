@@ -4,8 +4,9 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from tracker import presentation
-from tracker.requirements import RequirementAssessment
+
+from tracker.presentation import pages as presentation_pages
+from tracker.monitors.requires.model import RequirementAssessment
 
 request = json.load(sys.stdin)
 operation = request['operation']
@@ -18,11 +19,11 @@ for package in packages:
             monitor['data']['requirements'] = [RequirementAssessment.model_validate(item).model_dump()
                                                for item in monitor['data']['requirements']]
 if operation == 'detail':
-    result = presentation.detail(request['payload']).model_dump()
+    result = presentation_pages.detail(request['payload']).model_dump()
 elif operation == 'list':
-    result = presentation.listing(request['payload'], request['query']).model_dump()
+    result = presentation_pages.listing(request['payload'], request['query']).model_dump()
 elif operation == 'theme':
-    result = presentation.theme(request['payload'])
+    result = presentation_pages.theme(request['payload'])
 else:
     raise ValueError(operation)
 json.dump(result, sys.stdout)

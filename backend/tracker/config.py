@@ -1,12 +1,13 @@
 """Operator-owned configuration, never supplied by an HTTP request."""
-from pathlib import Path
-from . import version_rules
 import hashlib
-import os
 import json
+import os
+from pathlib import Path
 import re
 import tomllib
-from urllib.parse import urlsplit, urlunsplit, parse_qs, quote
+from urllib.parse import parse_qs, quote, urlsplit, urlunsplit
+
+from tracker.monitors.version import rules as version_rules
 
 def load(path):
     path = Path(path).resolve()

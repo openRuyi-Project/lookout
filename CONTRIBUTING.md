@@ -4,11 +4,33 @@ For a package correction, use the [configuration guide](config/README.md).
 For a new monitor, use the [porting guide](docs/monitor-porting.md).
 For data ownership and safety boundaries, use the [maintainer reference](docs/design.md).
 
+## Where to edit
+
+| Task | Entry point |
+|---|---|
+| Add/correct a package's version rule | `config/versions/nvchecker.toml` |
+| Set a monitor identity or comparison policy | `config/tracker.toml` |
+| Change an observation | `backend/tracker/monitors/<name>/` (small monitors are single files) |
+| Register an evidence monitor | `backend/tracker/monitors/registry.py` |
+| Change scheduling, retries or publication | `backend/tracker/monitors/runner.py` and `schedule.py` |
+| Reuse external registry data | `backend/tracker/providers/` |
+| Compose stored facts, filtering and counts | `backend/tracker/readmodel/` |
+| Choose visible facts and their grouping | `backend/tracker/presentation/` |
+| Register a new reading shape | `backend/tracker/presentation/registry.py` |
+| Change layout, controls or styling | `frontend/src/pages/`, `components/document/`, `styles/` |
+| Change persistence or HTTP contracts | `backend/tracker/state.py`, `api.py` |
+
+Tests follow these responsibilities under `backend/tests/`. Shared fixtures live
+in `conftest.py` and `helpers/`; tests do not import other test modules. Frontend
+contract types are generated. Adding an ordinary evidence monitor does not require
+a frontend registration or a new presenter.
+
 ## Development checks
 
 Python 3.14+ is required. Dependency inputs live in `backend/pyproject.toml`;
-`requirements.lock` contains runtime dependencies, and `requirements-test.lock`
-adds pytest/Hypothesis. Regenerate on dependency changes (uv is a developer tool):
+`backend/requirements.lock` contains runtime dependencies;
+`backend/requirements-test.lock` adds pytest/Hypothesis and setuptools for
+installed-wheel tests. Regenerate on dependency changes (uv is a developer tool):
 
 ```sh
 uv pip compile backend/pyproject.toml --python-version 3.14 --python-platform linux --no-header --no-annotate -o backend/requirements.lock
@@ -31,8 +53,10 @@ and license copies needed for reproducible builds and distribution.
 The CI workflow separates lightweight checks from the container/native suite.
 Native tests require RPM, Landlock ABI 6+, seccomp and an unprivileged worker.
 `deploy/check-image.sh IMAGE` builds a disposable test layer on that image, then
-runs the suite without provider network access. Only building the test layer needs
-the package index; pytest and Hypothesis are absent from the shipped image. An unsupported kernel fails the check; skipped tests fail this
+runs the suite without provider network access. The wheel test builds and imports
+subpackages away from the checkout, including the confined SPEC worker. Only
+building the test layer needs the package index; test tools are absent from the
+shipped image. An unsupported kernel fails the check; skipped tests fail this
 release gate. Its temporary filesystem permits executable installer-test shims;
 production mount policy and SPEC confinement are unchanged. Live provider validation is a separate, explicitly requested check.
 

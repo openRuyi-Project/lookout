@@ -45,16 +45,16 @@ def read_cached(db, previous=None):
 
     Successful, unchanged build polls have a small clock row. They never relabel
     failed/missing records: commit_build_heartbeat requires a complete clean vector.
-    Old databases without a clock remain readable and are never cached by generation.
     """
     if not Path(db).is_file():
         return empty(), None
     with closing(sqlite3.connect(Path(db).resolve().as_uri() + '?mode=ro', uri=True, timeout=10)) as conn:
         conn.execute('BEGIN')
-        exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='snapshot_clock'").fetchone()
-        clock = conn.execute('SELECT revision, build_checked_at FROM snapshot_clock WHERE id=1').fetchone() if exists else None
-        revision, stamp = clock if clock else (None, None)
-        reuse = bool(previous and stamp is not None and revision is not None and previous[1] == revision)
+        clock = conn.execute('SELECT revision, build_checked_at FROM snapshot_clock WHERE id=1').fetchone()
+        if clock is None:
+            raise ValueError('snapshot clock row is missing')
+        revision, stamp = clock
+        reuse = bool(previous and stamp is not None and previous[1] == revision)
         if not reuse:
             row = conn.execute('SELECT payload FROM snapshot WHERE id=1').fetchone()
     # Payload and clock came from one transaction. Decode the captured text
@@ -99,14 +99,11 @@ def commit_build_heartbeat(db, latest, patches, component):
                     or {k: v for k, v in fact.items() if k not in stamps} !=
                        {k: v for k, v in old.items() if k in BUILD_FIELDS['builds'] - stamps}):
                 return False
-    # Metadata exists after the first ordinary commit. Keep legacy databases on
-    # that path rather than adding a second migration or mutating a reader.
     with closing(sqlite3.connect(db, timeout=10)) as conn, conn:
-        exists = conn.execute("SELECT 1 FROM sqlite_master WHERE name='snapshot_clock'").fetchone()
-        if not exists:
-            return False
         updated = conn.execute('UPDATE snapshot_clock SET build_checked_at=? WHERE id=1', (stamp,))
-        return updated.rowcount == 1
+        if updated.rowcount != 1:
+            raise ValueError('snapshot clock row is missing')
+        return True
 
 
 def commit(db, snapshot):

@@ -107,7 +107,7 @@ PYTHONPATH=backend python -m tracker.package apply \
 批量补规则可用同一份只读快照：
 
 ```sh
-PYTHONPATH=backend python -m tracker.discover \
+PYTHONPATH=backend python -m tracker.monitors.version.discover \
   --config config/tracker.toml --db /path/to/snapshot-copy.sqlite3 \
   --output /tmp/version-candidates --verify
 ```

@@ -32,8 +32,8 @@ check and promote one package without reading the complete rule inventory.
 
 ## Interfaces
 
-The running service exposes uniform monitor results at `/api/v2/packages` (with v1 compatibility), `/api/v1/status`,
-`/api/v1/export` and `/openapi.json`. The package list links to per-package source,
+The running service exposes uniform monitor results at `/api/v2/packages`, `/api/v2/status`,
+`/api/v2/export` and `/openapi.json`. The package list links to per-package source,
 build and maintenance evidence. Network access and credentials are operator-owned.
 
 ## License

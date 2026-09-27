@@ -24,12 +24,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8,<10", "hypothesis>=6.168.1,<7"]
+test = ["pytest>=8,<10", "hypothesis>=6.168.1,<7", "setuptools>=68"]
 # ruff is a developer-only linter; it is not installed in the runtime lock.
 lint = ["ruff>=0.6"]
 
-[tool.setuptools]
-packages = ["tracker"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tracker", "tracker.*"]
+namespaces = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

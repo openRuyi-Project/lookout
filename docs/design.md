@@ -2,18 +2,31 @@
 
 | Constraint | Reason | Implementation / check |
 |---|---|---|
-| HTTP readers never collect | Request latency and read-only authority | `api.py`, `view.py`, `scripts/check-architecture.py` |
+| HTTP readers never collect | Request latency and read-only authority | `api.py`, `readmodel.snapshot`, `scripts/check-architecture.py` |
 | Each collector phase owns its fields | Concurrent phases cannot erase each other | `state.merge`, phase-ownership tests |
 | Failed checks retain dated evidence | Failure is not absence of an update | `state.py`, streaming/targeted collector tests |
-| Source identity precedes version inference | Similar names can identify different projects | `onboarding.propose`, native Source0 tests |
+| Source identity precedes version inference | Similar names can identify different projects | `monitors.version.onboarding.propose`, native Source0 tests |
 | Ordinary promotion preserves untouched text | A small rule correction needs a small review | `config_change.merge_text`, promotion tests |
 | Generated API types follow OpenAPI | Avoid manual frontend schema synchronization | `scripts/api-types.py --check` |
 
 Configuration syntax and operator commands live in [config/README.md](../config/README.md).
-`version_rules.load` reads one native file once, returning entries, options and
+`monitors.version.rules.load` reads one native file once, returning entries, options and
 its exact input digest. Discovery produces reviewable candidates, not runtime
 rules. `package explain` locates the package's table; promotion compares the final
 loaded rules, package policies and operator options with the reviewed result.
+
+## Python boundaries
+
+Monitor code is grouped by the observation it owns. `providers/` contains shared
+external-data adapters, `readmodel/` composes saved facts, and `presentation/`
+turns those facts into reading documents. Astro owns layout and reusable controls.
+See [Where to edit](../CONTRIBUTING.md#where-to-edit) for concrete entry points.
+
+Package initializers are inert: they do not register adapters or re-export a
+second API. Executable adapters are registered explicitly in `monitors/registry.py`;
+readers consume the saved catalog instead. Pure domain models and comparisons can
+be shared without importing collection. The recursive architecture check follows
+absolute/relative imports and package initializers to enforce that boundary.
 
 ## OBS collection
 
@@ -35,25 +48,24 @@ and assigns a new storage revision, even if generation was retained by an import
 API caching uses that storage revision plus file identity and freshness deadlines.
 A clock-only change refreshes build timestamps, not source/version/security
 projections. Missing records cannot become fresh through this path. Backup uses
-SQLite's backup API and includes both tables; old schema-1 snapshots remain readable.
+SQLite's backup API and includes both tables; startup requires the current snapshot and clock schema.
 
 ## Package selection
 
-`build_status` owns OBS status meaning; `monitor_views` folds build flavors into one target
-observation. `package_list` indexes each cached projection once. Requests apply
+`monitors.build.status` owns OBS status meaning; `readmodel.monitors` folds build flavors into one target
+observation. `readmodel.packages` indexes each cached projection once. Requests apply
 their search and selections to the same read-only index. List
 membership and every count use intersections of the same sets, before pagination.
 A facet ignores only its own selection when calculating available choices.
 `build=TARGET:STATE` may repeat for distinct configured targets; selections across
-targets are ANDed. Issues includes failed, unresolvable, broken and blocked, not
-queued/running work, disabled targets or unknown observations. Staleness remains
+targets are ANDed. Selectors expose observed OBS statuses rather than an invented aggregate status. Staleness remains
 independent of the observed status. The frontend renders API choices and preserves
 selections in links. A small same-origin script submits the GET form immediately
 on selection; it does not fetch, filter or count data. Without scripting, the form
 retains a submit button.
 Search and selections share one GET form. The UI API validates the query and
 returns reading documents; generic Astro components render their controls,
-tables and fields. Monitor-specific reading adapters live in `presentation.py`.
+tables and fields. Monitor-specific reading adapters live in `presentation/`.
 
 `base.css` owns theme pairs, native controls and focus defaults; `app.css` owns
 shell and page layouts. Themes use CSS `light-dark()` (Baseline 2024). Wide tables
@@ -89,9 +101,9 @@ header. This is metadata parsing, not an OBS target build or binary validation.
 
 ## Version decisions and monitor ports
 
-`version_status.evaluate` owns source selection, freshness, compare policy and
-upgrade eligibility. `view` and the monitor runner consume this same result;
-`monitor_model.project` cannot accept a separately supplied upgrade boolean.
+`monitors.version.compare.evaluate` owns source selection, freshness, compare policy and
+upgrade eligibility. `readmodel.snapshot` and the monitor runner consume this same result;
+`monitors.model.project` cannot accept a separately supplied upgrade boolean.
 `evaluate_all` resolves each package once per pass, shared across adapters. The
 historical `last_known_relation` remains evidence, not a second update decision.
 A changed operator version policy waits for its snapshot publication before an
@@ -99,19 +111,17 @@ upgrade monitor runs; current-version monitors are independent of update status.
 
 Configuration is static native TOML plus tracker policy. Loading/promoting it does
 not read observations; discovery alone consumes saved Source0 to propose rules.
-The retired automatic-rule identity guard and its unused snapshot plumbing are
-not a fallback configuration engine.
 
 The monitor runner owns lifecycle and storage; adapters own provider inputs and
 interpretation; projection owns visibility. A new label uses the existing generic
 API and renderer. Source, Version and Build use the same result envelope, with
-typed domain payloads; v1 is a compatibility projection of v2 monitor results.
+typed domain payloads in the v2 fact API.
 Reading adapters and page layouts are separate from the selector and linked
 query facets. See the [monitor porting guide](monitor-porting.md) for the small
 module contract, reusable components and an executable end-to-end example.
 
 Upgrade monitors do not run without a confirmed newer comparable release.
-LicenseChange compares same-project PyPI SPDX expressions, not free text against
+License compares same-project PyPI/crates.io SPDX expressions, not free text against
 RPM's aggregate License. Missing comparable metadata is unsupported, not equal.
 ABIChange requires comparable old/new build artifacts and is not implemented.
 
@@ -159,14 +169,14 @@ adapter must bind judgments to finding identity and relevant evidence revision;
 poll timestamps alone must not invalidate a judgment. Source revision, local
 patches, upstream identity/ranges and upgrade target are relevant changes.
 
-`/api/v1/status` groups identical upstream provider errors with affected package
+`/api/v2/status` groups identical upstream provider errors with affected package
 names and counts. These are triage groups, not a claim of a proven common outage;
 per-package errors and old observations remain intact.
 
-Finding-schema migration: old prose records remain stored but are not rendered
-as structured facts. Checks reports `schema_changed` until recollection; adapter
-VERSION changes invalidate cached inputs. Errors and stale structured evidence
-remain visible. No synthetic conversion of prior advice into provider facts.
+Saved findings must validate against the current contract before presentation.
+Invalid records produce `schema_changed`, not invented facts; an adapter VERSION
+change invalidates cached inputs and schedules recollection. Provider failures
+retain valid matching evidence with its original observation time.
 
 Monitor heartbeat (`heartbeat_seconds`, default 30) schedules bounded batches;
 each adapter owns a pure refresh policy (see [porting](monitor-porting.md#refresh-policy)).

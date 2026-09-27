@@ -6,19 +6,22 @@ Plan never writes runtime. Apply creates a NEW configuration directory, never
 replaces live mounts. The existing deployment/restart selects that directory.
 """
 
-from pathlib import Path
 from collections.abc import MutableMapping
 from contextlib import contextmanager
-import hashlib
 import difflib
+import hashlib
 import json
 import os
+from pathlib import Path
 import shutil
 import tempfile
 import tomllib
+
 import tomlkit
 from tomlkit.items import Comment, InlineTable, Table, Whitespace
-from . import config as cfg, version_rules
+
+from tracker import config as cfg
+from tracker.monitors.version import rules as version_rules
 
 
 def digest(path):

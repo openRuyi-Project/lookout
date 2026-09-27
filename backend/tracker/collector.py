@@ -6,7 +6,11 @@ from datetime import datetime
 import json
 from pathlib import Path
 from urllib.parse import quote
-from . import config as cfg, nv, obs, state, native_spec, spec_git
+
+from tracker import config as cfg, state
+from tracker.monitors.build import obs
+from tracker.monitors.source import git as spec_git, rpm as native_spec
+from tracker.monitors.version import nvchecker as nv
 
 HISTORY_VERSION_BATCH_SIZE = 12  # at most 24 extra OBS requests per collection (before HTTP retries)
 
@@ -512,7 +516,7 @@ def main():
         if args.only in ('all', 'specs'):
             snapshot = check_specs(config, args.db)
         if args.only in ('all', 'monitors'):
-            from . import monitor
+            from tracker.monitors import runner as monitor
             snapshot = monitor.collect(config, args.config, args.db)
     except BlockingIOError:
         print(json.dumps({'error': 'collector already running'}))
