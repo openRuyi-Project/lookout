@@ -239,8 +239,9 @@ def test_real_native_cli_two_selected_tracks_and_error_exit(config, snapshot, tm
                             for name, path in [('binutils','one'),('widget@3','two'),('widget@4','unselected')]}
         write_native(tmp_path, config, {'max_concurrency':2,'http_timeout':2})
         tracker = tmp_path / 'tracker.toml'
+        (tmp_path / 'packages.toml').write_text(tomlkit.dumps(config['packages']))
         tracker.write_text(tomlkit.dumps({
-            'obs': config['obs'], 'targets': config['targets'], 'packages': config['packages'],
+            'obs': config['obs'], 'targets': config['targets'], 'packages_config': 'packages.toml',
             'collector': {'nvchecker_config': 'native.toml', 'nvchecker_timeout_seconds': 30},
         }))
         for name, fact in snapshot['tracks'].items():

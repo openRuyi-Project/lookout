@@ -11,10 +11,13 @@ from tracker.identity import request_url
 from tracker.monitors.version import rules as version_rules
 
 def load(path):
-    path = Path(path).resolve()
-    raw = path.read_bytes()
+    path = Path(path).absolute()
+    raw = read_input(path)
+    path = path.resolve()
     config = tomllib.loads(raw.decode())
-    config['config_digest'] = hashlib.sha256(raw).hexdigest()
+    if 'packages' in config:
+        raise ValueError('inline packages are not supported; use packages_config with root package tables')
+    input_hashes = {str(path): hashlib.sha256(raw).hexdigest()}
     for key, default in (('obs_interval_seconds', 60), ('build_interval_seconds', 15), ('nvchecker_interval_seconds', 21600),
                          ('nvchecker_timeout_seconds', 7200), ('build_history_interval_seconds', 300)):
         value = config['collector'].setdefault(key, default)
@@ -28,12 +31,35 @@ def load(path):
         if config['collector'].get(stale, default) <= config['collector'][interval]:
             raise ValueError(f'{stale} must exceed {interval}')
     nvpath = path.parent / config['collector'].get('nvchecker_config', 'nvchecker.toml')
+    if nvpath.exists() and nvpath.samefile(path):
+        raise ValueError('native rules and tracker configuration must be distinct files')
     rules = version_rules.load(nvpath)
+    nvpath = nvpath.resolve()
+    input_hashes[str(nvpath)] = rules.digest
     config['nvpath'] = str(nvpath)
     config['native'] = rules.entries
     config['native_options'] = rules.options
-    config['nv_digest'] = rules.digest
-    config.setdefault('packages', {})
+    config['packages_path'] = None
+    config['packages'] = {}
+    if 'packages_config' in config:
+        reference = config['packages_config']
+        if not isinstance(reference, str) or not reference:
+            raise ValueError('packages_config must name a package policy file')
+        packages_path = path.parent / reference
+        raw = read_input(packages_path)
+        if any(packages_path.samefile(loaded) for loaded in input_hashes):
+            raise ValueError('package policies must use a distinct file from tracker and native rules')
+        packages_path = packages_path.resolve()
+        config['packages'] = tomllib.loads(raw.decode())
+        allowed = {'compare', 'watch', 'comparable', 'not_applicable', 'track_label', 'monitors'}
+        for name, policy in config['packages'].items():
+            if not name or not isinstance(policy, dict) or set(policy) - allowed:
+                raise ValueError(f'{name}: expected a root package policy table')
+        config['packages_path'] = str(packages_path)
+        input_hashes[str(packages_path)] = hashlib.sha256(raw).hexdigest()
+    config['input_hashes'] = input_hashes
+    config['config_digest'] = input_hashes[str(path)]
+    config['nv_digest'] = input_hashes[str(nvpath)]
     # Distribution presentation data has one owner; the frontend knows no
     # BuildSystem categories. CSS values are deliberately limited to hex colors.
     config.setdefault('openruyi', {}).setdefault('buildsystems', {})
@@ -116,15 +142,26 @@ def load(path):
     return config
 
 
-def require_unchanged(config, path):
+def read_input(path):
+    """Read one regular configuration input without following a replacement link."""
+    path = Path(path)
+    if path.is_symlink() or not path.is_file():
+        raise ValueError('configuration input must be a regular file: ' + str(path))
+    return path.read_bytes()
+
+
+def require_unchanged(config, path=None):
     """Confirm the exact inputs already validated by load(), without parsing again."""
     try:
-        tracker_digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
-        native_digest = version_rules.digest(config['nvpath'])
+        inputs = config['input_hashes']
+        if path is not None:
+            tracker = Path(path)
+            if tracker.is_symlink() or inputs.get(str(tracker.resolve())) != config['config_digest']:
+                raise ValueError('changed tracker input')
+        if any(hashlib.sha256(read_input(name)).hexdigest() != expected for name, expected in inputs.items()):
+            raise ValueError('changed input')
     except (OSError, ValueError) as error:
         raise ValueError('configuration changed or unavailable during collection; result not published') from error
-    if (tracker_digest != config['config_digest'] or native_digest != config['nv_digest']):
-        raise ValueError('configuration changed during collection; result not published')
 
 
 def track_fingerprint(entry):

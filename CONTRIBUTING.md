@@ -9,7 +9,8 @@ For data ownership and safety boundaries, use the [maintainer reference](docs/de
 | Task | Entry point |
 |---|---|
 | Add/correct a package's version rule | `config/versions/nvchecker.toml` |
-| Set a monitor identity or comparison policy | `config/tracker.toml` |
+| Set a package's monitor identity or comparison policy | `config/packages.toml` |
+| Set service paths, targets or collection budgets | `config/tracker.toml` |
 | Change an observation | `backend/tracker/monitors/<name>/` (small monitors are single files) |
 | Register an evidence monitor | `backend/tracker/monitors/registry.py` |
 | Change scheduling, retries or publication | `backend/tracker/monitors/runner.py` and `schedule.py` |

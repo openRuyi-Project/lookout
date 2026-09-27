@@ -7,13 +7,21 @@ import json
 from pathlib import Path
 
 from tracker import config as cfg, config_change, state
-from tracker.monitors.version import nvchecker as nv, rules as version_rules
+from tracker.monitors.version import nvchecker as nv
 
 
 def location(path, keys):
     positions, _ = config_change.table_positions(Path(path).read_text())
-    span = positions.get(tuple(keys))
-    return {"file": str(Path(path).resolve()), "table": list(keys), "line": span[0] + 1 if span else None}
+    authored = next((tuple(keys[:depth]) for depth in range(len(keys), 0, -1)
+                     if tuple(keys[:depth]) in positions), None)
+    span = positions.get(authored)
+    return {"file": str(Path(path).resolve()), "table": list(authored or keys),
+            "line": span[0] + 1 if span else None}
+
+
+def package_location(config, name, *keys):
+    path = config.get('packages_path')
+    return location(path, (name, *keys)) if path else None
 
 
 def rule_location(config, name):
@@ -62,7 +70,7 @@ def explain(config_path, name, db=None, runtime_config=None):
         "name": name,
         "binding": binding,
         "rules": rules,
-        "binding_location": location(config_path, ("packages", name)),
+        "binding_location": package_location(config, name),
         "version_rule_location": rule_location(config, binding["compare"] or name),
         "binding_is_implicit": name not in config["packages"],
         "runtime_binding_matches": cfg.binding(runtime, name) == binding if runtime is not None else None,
@@ -87,10 +95,7 @@ def check(config_path, name, db=None):
     before = config_change.digest(db) if db and Path(db).is_file() else None
     # Never pass a production state path to a collector; no oldver/newver writes.
     facts, error = nv.run(config, {}, state.utcnow(), tracks=selected)
-    if config_change.digest(config_path) != config["config_digest"]:
-        raise ValueError("tracker configuration changed during check")
-    if version_rules.digest(config["nvpath"]) != config["nv_digest"]:
-        raise ValueError("native configuration changed during check")
+    cfg.require_unchanged(config, config_path)
     if before is not None and before != config_change.digest(db):
         # A concurrent production writer is not our write; do not assert unchanged.
         unchanged = False
@@ -116,6 +121,9 @@ def human_result(action, result, report=None):
         for rule in rules or [result["version_rule_location"]]:
             lines.append(f"Edit: {rule['file']}:{rule.get('line') or '?'}")
             lines.append("Rule: explicit rule" if rules else "Rule: untracked")
+        policy = result.get("binding_location")
+        if policy and not result["binding_is_implicit"]:
+            lines.append(f"Policy: {policy['file']}:{policy.get('line') or '?'}")
     elif action == "check":
         lines.append("Check: " + ("passed" if result["passed"] else "failed"))
         for name, fact in result["tracks"].items():

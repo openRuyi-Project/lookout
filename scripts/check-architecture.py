@@ -9,7 +9,7 @@
 
 1. Read/write separation: the read path (api, view) must never import the
    write/network path (collector, obs, nv, native_spec).
-2. Thin config: config/tracker.toml must hold no label-only binding whose label
+2. Thin config: package policies must hold no label-only binding whose label
    equals the value derived from the package name. Redundant bindings belong in
    the naming rule, not in the file.
 3. No pinned versions: the native nvchecker config must not carry manual/hardcoded
@@ -26,6 +26,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 from tracker.monitors.version.rules import load
+from tracker import config as configuration
 # Side-effect-free monitor types and comparisons can be read without collecting.
 PURE_MONITORS = {
     'tracker.monitors.contract', 'tracker.monitors.model', 'tracker.monitors.schedule',
@@ -125,7 +126,7 @@ def check_read_write_separation():
 
 def check_thin_config():
     errors = []
-    cfg = tomllib.loads((ROOT / 'config/tracker.toml').read_text())
+    cfg = configuration.load(ROOT / 'config/tracker.toml')
     rule = re.compile(r'-(\d+(?:\.\d+)*)$')
     for name, binding in cfg.get('packages', {}).items():
         if set(binding) != {'track_label'}:
@@ -133,7 +134,7 @@ def check_thin_config():
         m = rule.search(name)
         derived = f'{m.group(1)}.x' if m else 'stable'
         if binding['track_label'] == derived:
-            errors.append(f'[packages."{name}"] label "{binding["track_label"]}" is derivable; drop it')
+            errors.append(f'{cfg["packages_path"]} [{name}] label "{binding["track_label"]}" is derivable; drop it')
     return errors
 
 

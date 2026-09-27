@@ -46,7 +46,8 @@ def test_explain_explicit_package_locations_offline_without_state_write(tmp_path
                     'filter': 'first(.stable_versions[])'},
         'revision': {'source': 'git', 'git': 'https://example.org/fixture.git'},
     }))
-    path.write_text(config_change.edit_tables(path.read_text(), {'revision': {'comparable': False}}, ('packages',)))
+    policies = path.parent / 'packages.toml'
+    policies.write_text(config_change.edit_tables(policies.read_text(), {'revision': {'comparable': False}}))
     db=tmp_path/'absent.db'
     for name in ['history', 'widget', 'revision']:
         value=package.explain(path,name,db,path)
@@ -89,7 +90,7 @@ def test_check_rejects_rule_directory_mutation(tmp_path, monkeypatch, mutation):
             path.unlink()
         return {'widget': {'version': '2.0', 'error': None}}, None
     monkeypatch.setattr(nv, 'run', run)
-    with pytest.raises(ValueError, match='native configuration changed'):
+    with pytest.raises(ValueError, match='configuration changed or unavailable'):
         package.check(tracker, 'widget', tmp_path / 'missing.db')
     assert not (tmp_path / 'missing.db').exists()
 
@@ -144,12 +145,14 @@ def test_native_policy_roundtrip_preserves_monitors_and_operator_settings(tmp_pa
         policy = {'monitors': monitor}
         if change != 'add':
             policy['track_label'] = 'old-line'
-        path.write_text(config_change.edit_tables(path.read_text(), {'widget': policy}, ('packages',)))
+        policies = path.parent / 'packages.toml'
+        policies.write_text(config_change.edit_tables(policies.read_text(), {'widget': policy}))
     policy = {'monitors': monitor}
     if change != 'delete':
         policy['track_label'] = 'new-line'
     candidate = paths[1]
-    candidate.write_text(config_change.edit_tables(candidate.read_text(), {'widget': policy}, ('packages',)))
+    policies = candidate.parent / 'packages.toml'
+    policies.write_text(config_change.edit_tables(policies.read_text(), {'widget': policy}))
     # Historical files beside the actual input cannot override reviewed policy.
     for path in paths:
         (path.parent / 'groups.toml').write_text('schema=1\n[binding.widget]\ntrack_label="hidden"\n')

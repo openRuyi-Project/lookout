@@ -23,8 +23,10 @@ def test_explicit_provider_identity_and_track_label_are_preserved(configured_pat
     native = tomlkit.parse(native_path.read_text())
     native['widget'] = {'source': 'pypi', 'pypi': 'explicit-upstream-identity'}
     native_path.write_text(tomlkit.dumps(native))
-    document['packages']['widget'] = {'track_label': 'reviewed-maintenance-line'}
-    configured_path.write_text(tomlkit.dumps(document))
+    packages_path = configured_path.parent / document['packages_config']
+    packages = tomlkit.parse(packages_path.read_text())
+    packages['widget'] = {'track_label': 'reviewed-maintenance-line'}
+    packages_path.write_text(tomlkit.dumps(packages))
     loaded = cfg.load(configured_path)
     assert loaded['native']['widget'] == {'source': 'pypi', 'pypi': 'explicit-upstream-identity'}
     assert cfg.binding(loaded, 'widget')['track_label'] == 'reviewed-maintenance-line'
@@ -70,7 +72,7 @@ def test_unchanged_configuration_is_checked_without_parsing(config, configured_p
         pytest.fail('a loaded configuration must not be parsed again for publication')
     monkeypatch.setattr(cfg, 'load', unexpected)
     monkeypatch.setattr(cfg.tomllib, 'loads', unexpected)
-    before = {path: path.read_bytes() for path in (configured_path, Path(config['nvpath']))}
+    before = {Path(name): Path(name).read_bytes() for name in config['input_hashes']}
     cfg.require_unchanged(config, configured_path)
     assert {path: path.read_bytes() for path in before} == before
 
@@ -80,12 +82,13 @@ def test_configuration_guard_covers_every_loaded_input(config, configured_path, 
     if change == 'rule':
         path = Path(config['nvpath'])
         text = path.read_text().replace('source = "manual"', 'source = "pypi"', 1)
+    elif change == 'binding':
+        path = Path(config['packages_path'])
+        text = path.read_text().replace('3.x', 'new-line', 1)
     else:
         path = configured_path
         text = path.read_text()
-        if change == 'binding':
-            text = text.replace('3.x', 'new-line', 1)
-        elif change == 'operator_option':
+        if change == 'operator_option':
             document = tomlkit.parse(text)
             document['collector']['source_workers'] += 1
             text = tomlkit.dumps(document)

@@ -3,13 +3,57 @@
 | 修改内容 | 唯一生效入口 |
 |---|---|
 | 上游身份、发布筛选、版本线、版本前缀 | [`versions/nvchecker.toml`](versions/nvchecker.toml) 中对应的原生表 |
-| compare/watch/comparable 等包策略、monitor 身份 | [`tracker.toml`](tracker.toml) 中的 `[packages.<name>]` |
+| compare/watch/comparable 等包策略、monitor 身份 | [`packages.toml`](packages.toml) 中的 `[<name>]` |
 | BuildSystem 配色 | `tracker.toml` 的 `[openruyi.buildsystems]` |
 | 依赖身份 → openRuyi 源包映射 | `tracker.toml` 的 `[openruyi.dependencies]`；缺失映射显示未知，不猜包名 |
 | 周期、代理、凭据和路径 | 部署的外部配置及环境；凭据不入库 |
 
 默认只加载 `collector.nvchecker_config` 指向的原生文件。旁边的单包 TOML
 不是覆盖入口；配置加载不根据包名或 Source0 自动生成规则。
+
+## 按包修改
+
+```text
+config/
+├── tracker.toml             # 运营设置：目标、路径、周期、启用的 monitors
+├── packages.toml            # 包策略与 monitor 身份例外，按包名查找
+└── versions/nvchecker.toml  # 上游版本规则，按 track 名查找
+```
+
+`tracker.toml` 用 `packages_config` 显式指定包策略文件；不再接受内嵌的 `[packages]`。
+不扫描目录，不合并同名文件，也不维护另一份自动生成的规则。
+
+例如，EOL 的产品和周期属于包身份；抓取与判定逻辑不在 TOML 中：
+
+```toml
+# packages.toml
+[openssl.monitors.eol]
+product = "openssl"
+cycle_parts = 2
+```
+
+License 默认复用已观测 Source0 的 registry 身份，缺失时使用版本规则身份。
+没有独立 License 配置不等于未覆盖，也不应复制上游的许可证到本地配置。
+确需身份例外时才增加对应表：
+
+```toml
+# packages.toml，示例：确认 Source0/版本规则不能表达所需身份后再添加
+[widget.monitors.license]
+pypi = "upstream-widget"
+```
+
+离线定位配置和实现；提供 `--db` 才能同时解释已采集的 Source0 和检查状态：
+
+```sh
+PYTHONPATH=backend python -m tracker.monitors explain openssl --monitor eol \
+  --config config/tracker.toml --format human
+PYTHONPATH=backend python -m tracker.monitors explain python-requests --monitor license \
+  --config config/tracker.toml --format human
+```
+
+输出区分显式例外、推导身份和缺少身份；未定义的表不会伪造行号。
+修改抓取协议、判定或展示，见[贡献入口](../CONTRIBUTING.md#where-to-edit)，
+不是在配置中写代码。
 
 ## 版本来源
 
@@ -53,10 +97,10 @@ nvchecker 直接读取，没有展开或覆盖优先级；同一个包只能定�
 身份例外或发布筛选，也不要把规则塞进一条难以审阅的长行。
 
 普通包名与 track 同名，无需额外绑定。需要旁路观察时，在同一个原生文件
-定义 `widget@prerelease` 表，再在 tracker 中关联：
+定义 `widget@prerelease` 表，再在 packages.toml 中关联：
 
 ```toml
-[packages.widget]
+[widget]
 watch = ["widget@prerelease"]
 ```
 
@@ -77,8 +121,8 @@ branch = "main"
 
 支持 GitHub/codeload、GitLab、Forgejo 与 cgit 的完整 commit 归档 Source0，
 且 RPM `+git日期.短hash` 必须与之相符。分支应由仓库引用验证，不按包名猜测。
-已有 release 规则保留：另加 `widget@commits` 表，在 tracker 的
-`[packages.widget]` 设置 `compare = "widget@commits"`、`watch = ["widget"]`。
+已有 release 规则保留：另加 `widget@commits` 表，在 packages.toml 的
+`[widget]` 设置 `compare = "widget@commits"`、`watch = ["widget"]`。
 只修改比较来源不应删除已配置的 monitor 身份。
 本地 tarball、短 Source0 SHA、多 commit 混合包、独立子组件需额外证据，不能只看 `+git` 就放行。
 相同 hash 为 current，不同为 changed（分支头变化，不推断提交先后或正式版本升级）。

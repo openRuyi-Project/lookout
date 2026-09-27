@@ -109,6 +109,7 @@ def test_discovery_run_shares_one_client_and_closes_it(tmp_path, monkeypatch):
     native = tmp_path / 'native.toml'
     native.write_text('')
     config = {'native': {}, 'packages': {}, 'nvpath': str(native),
+              'input_hashes': {str(native): hashlib.sha256(b'').hexdigest()},
               'nv_digest': hashlib.sha256(b'').hexdigest()}
     data = snapshot()
     data['generation'] = 1

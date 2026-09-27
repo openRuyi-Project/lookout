@@ -113,6 +113,7 @@ def test_verification_reuses_native_selected_cli_without_relocating_keyfile(tmp_
     native = tmp_path / 'native.toml'; native.write_text('[__config__]\nkeyfile="keys.toml"\n[existing]\nsource="pypi"\n')
     import hashlib
     cfg = {'nvpath': str(native), 'native': {'existing': {'source': 'pypi'}},
+           'input_hashes': {str(native): hashlib.sha256(native.read_bytes()).hexdigest()},
            'nv_digest': hashlib.sha256(native.read_bytes()).hexdigest()}
     row = {**candidate(), **discover.match(candidate(), response())}
     before = native.read_bytes()
@@ -133,6 +134,7 @@ def test_cli_only_emits_actually_verified_rules_and_no_live_write(tmp_path, monk
     import hashlib
     native = tmp_path / 'native.toml'; native.write_text('[existing]\nsource="pypi"\npypi="existing"\n')
     cfg = {'nvpath': str(native), 'native': {'existing': {'source': 'pypi', 'pypi': 'existing'}},
+           'input_hashes': {str(native): hashlib.sha256(native.read_bytes()).hexdigest()},
            'nv_digest': hashlib.sha256(native.read_bytes()).hexdigest(), 'packages': {}}
     data = snapshot(); data['generation'] = 42
     monkeypatch.setattr(config, 'load', lambda p, **kwargs: cfg)
@@ -180,7 +182,8 @@ def test_batch_reuses_registry_proposal_without_homepage_lookup(tmp_path, monkey
     native = tmp_path / 'native.toml'
     native.write_text('[existing]\nsource="pypi"\npypi="existing"\n')
     cfg = {'native': {'existing': {'source': 'pypi', 'pypi': 'existing'}}, 'packages': {},
-           'nvpath': str(native), 'nv_digest': hashlib.sha256(native.read_bytes()).hexdigest()}
+           'nvpath': str(native), 'input_hashes': {str(native): hashlib.sha256(native.read_bytes()).hexdigest()},
+           'nv_digest': hashlib.sha256(native.read_bytes()).hexdigest()}
     data = {'generation': 42, 'sources': {'unrelated-rpm-name': {'version': '2.3.4'}},
             'specs': {'unrelated-rpm-name': {
                 'metadata': {'version': '2.3.4', 'url': None, 'sources': [
@@ -223,6 +226,7 @@ def test_component_module_mismatch_cannot_fall_back_to_root_repository(tmp_path,
     native = tmp_path / 'native.toml'
     native.write_text('')
     cfg = {'native': {}, 'packages': {}, 'nvpath': str(native),
+           'input_hashes': {str(native): hashlib.sha256(native.read_bytes()).hexdigest()},
            'nv_digest': hashlib.sha256(native.read_bytes()).hexdigest()}
     data = snapshot()
     data['generation'] = 42

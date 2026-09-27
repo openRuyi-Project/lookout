@@ -6,6 +6,27 @@ Source, Version, Build and supplemental evidence share one **read contract**:
 is a successful check with a failed build result. An unavailable check is never
 converted to an empty successful result.
 
+## Find the owner
+
+Package-specific data is described in the [configuration guide](../config/README.md).
+Implementation paths follow the fact being changed:
+
+| Change | Entry point |
+|---|---|
+| Version selection or comparison | `backend/tracker/monitors/version/` |
+| License comparison | `backend/tracker/monitors/license.py` |
+| EOL query and release-cycle interpretation | `backend/tracker/monitors/eol.py` |
+| PyPI / crates.io metadata shared by monitors | `backend/tracker/providers/pypi.py` / `cratesio.py` |
+| Evidence collection registration | `backend/tracker/monitors/registry.py` |
+| Facts → reading document | `backend/tracker/presentation/` |
+| Document → HTML and layout | `frontend/src/components/document/` and `pages/` |
+
+A short monitor can be a single module; split it into a package when it has
+separate responsibilities, as Requires and Security do. Package initializers stay
+side-effect free so importing a model does not import collection code. The
+`nvchecker_source/` namespace is nvchecker's own discovery interface, not a second
+monitor registry. Ordinary evidence ports reuse the shared presenter and renderer.
+
 ## Add a version source
 
 An ordinary package needs only a native table in `config/versions/nvchecker.toml`.
@@ -163,7 +184,7 @@ plugin loader or separate service is needed.
 
 `package` contains `name`, RPM-expanded `version`, source `revision` and the
 reviewed native rule's public `identity`. Upgrade context also has `target_version`.
-`configured` is only this monitor's `[packages.NAME].monitors.ID` value.
+`configured` is only this monitor's `[NAME.monitors.ID]` value from `config/packages.toml`.
 `subject` has the same source fields but no native rule; `inputs` is the resolved
 provider-specific identity. An explicit identity takes precedence over derivation.
 Use `identity.from_native` for supported registry protocols; do not infer
@@ -429,7 +450,7 @@ current release and keeps current/upgrade coverage separate. Unknown input,
 missing provider fields and network failures are separate from no finding. A new
 backend must improve these counts on the same snapshot without changing version
 rules or treating a missing assertion as false. EOL uses explicit product/cycle
-data in `tracker.toml`; its applicable population is not the whole registry.
+data in `config/packages.toml`; its applicable population is not the whole registry.
 
 ## Change a layout or introduce a new payload kind
 

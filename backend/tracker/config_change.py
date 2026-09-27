@@ -175,8 +175,9 @@ def inputs(path):
     path = Path(path).resolve()
     config = cfg.load(path)
     native = Path(config["nvpath"])
-    if not native.resolve().is_relative_to(path.parent) or native == path:
-        raise ValueError("promotion requires version files inside the configuration directory")
+    if any(not Path(name).is_relative_to(path.parent) or Path(name).suffix != '.toml'
+           for name in config['input_hashes']):
+        raise ValueError("promotion requires TOML inputs inside the configuration directory")
     return path, native, config
 
 
@@ -217,7 +218,7 @@ def plan(base_path, candidate_path, runtime_path, output):
     runtime_file, native_file, runtime = inputs(runtime_path)
     # This command promotes package rules, not unrelated operator/site settings.
     a, b = tomllib.loads(base_file.read_text()), tomllib.loads(candidate_file.read_text())
-    for key in ("packages", "openruyi", "monitors"):
+    for key in ("packages_config", "openruyi", "monitors"):
         a.pop(key, None)
         b.pop(key, None)
     a.get("collector", {}).pop("nvchecker_config", None)
@@ -240,7 +241,7 @@ def plan(base_path, candidate_path, runtime_path, output):
         {"monitors": candidate.get("monitors")},
         {"monitors": runtime.get("monitors")},
     )
-    tracker_text = edit_tables(runtime_file.read_text(), binding_changes, ("packages",))
+    tracker_text = runtime_file.read_text()
     tracker_text = edit_tables(tracker_text, appearance_changes, ("openruyi", "buildsystems"))
     tracker_text = edit_tables(tracker_text, monitor_changes)
     output_native = str(native_file.relative_to(runtime_file.parent))
@@ -249,8 +250,25 @@ def plan(base_path, candidate_path, runtime_path, output):
         native_file.read_text(), output_native,
     )
     texts = {output_native: native_text, runtime_file.name: tracker_text}
-    baseline_files = [runtime_file, *version_rules.files(native_file)]
-    baseline_hashes = {str(p.relative_to(runtime_file.parent)): digest(p) for p in baseline_files}
+    package_file = Path(runtime['packages_path']) if runtime['packages_path'] else None
+    if package_file is not None:
+        texts[str(package_file.relative_to(runtime_file.parent))] = edit_tables(package_file.read_text(), binding_changes)
+    elif binding_changes:
+        # A first override requires one explicitly named package file, not a
+        # search path or an implicit second source. Never overwrite an unowned file.
+        reference = candidate.get('packages_config')
+        if not reference or Path(reference).is_absolute() or '..' in Path(reference).parts:
+            raise ValueError('first package policies require a relative packages_config')
+        reference = str(Path(reference))
+        package_file = runtime_file.parent / reference
+        if package_file.exists() or package_file.is_symlink():
+            raise ValueError('package policy destination already exists outside the loaded inputs')
+        texts[reference] = edit_tables('', binding_changes)
+        texts[runtime_file.name] = edit_tables(tracker_text, {'packages_config': reference})
+    baseline_hashes = {str(Path(name).relative_to(runtime_file.parent)): digest
+                       for name, digest in runtime['input_hashes'].items()}
+    for path, loaded in ((base_file, base), (candidate_file, candidate), (runtime_file, runtime)):
+        cfg.require_unchanged(loaded, path)
 
     output = Path(output).resolve()
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
@@ -277,6 +295,8 @@ def plan(base_path, candidate_path, runtime_path, output):
         raise ValueError("text promotion differs from reviewed effective rules")
     if not version_rules.same_values(prepared_config["native_options"], runtime["native_options"]):
         raise ValueError("text promotion changed native operator options")
+    if set(prepared_config['input_hashes']) != {str(output / name) for name in texts}:
+        raise ValueError('reviewed files differ from the effective configuration inputs')
     record = {
         "schema": 1,
         "runtime_config": str(runtime_file),
@@ -296,10 +316,10 @@ def plan(base_path, candidate_path, runtime_path, output):
 def apply(review_dir, runtime_path, destination):
     review_dir = Path(review_dir).resolve()
     record = json.loads((review_dir / "review.json").read_text())
-    runtime_file, native_file, _ = inputs(runtime_path)
+    runtime_file, _, runtime = inputs(runtime_path)
     if record.get("schema") != 1 or str(runtime_file) != record["runtime_config"]:
         raise ValueError("review belongs to a different runtime configuration")
-    names = {str(p.relative_to(runtime_file.parent)) for p in [runtime_file, *version_rules.files(native_file)]}
+    names = {str(Path(name).relative_to(runtime_file.parent)) for name in runtime['input_hashes']}
     proposed = set(record["proposed_hashes"])
 
     def safe(n):
@@ -310,19 +330,26 @@ def apply(review_dir, runtime_path, destination):
         set(record["baseline_hashes"]) != names
         or runtime_file.name not in proposed
         or any(not safe(n) for n in proposed)
-        or proposed != names
+        or not names <= proposed
     ):
         raise ValueError("unexpected review file set")
 
     def unchanged():
-        return {
-            str(p.relative_to(runtime_file.parent)) for p in [runtime_file, *version_rules.files(native_file)]
-        } == names and all(digest(runtime_file.parent / n) == record["baseline_hashes"][n] for n in names)
+        try:
+            cfg.require_unchanged(runtime, runtime_file)
+        except ValueError:
+            return False
+        return (all(runtime['input_hashes'][str(runtime_file.parent / name)] == record['baseline_hashes'][name]
+                    for name in names)
+                and not any(os.path.lexists(runtime_file.parent / name) for name in proposed - names))
 
     if not unchanged():
         raise ValueError("runtime configuration drift; re-plan and review")
     if any(digest(review_dir / n) != record["proposed_hashes"][n] for n in proposed):
         raise ValueError("reviewed candidate changed; re-plan and review")
+    _, _, reviewed = inputs(review_dir / runtime_file.name)
+    if set(reviewed['input_hashes']) != {str(review_dir / name) for name in proposed}:
+        raise ValueError('unexpected reviewed input file set')
     destination = Path(destination).resolve()
     if destination.exists() or destination.is_relative_to(runtime_file.parent):
         raise ValueError("destination must be a fresh directory outside the runtime config")
@@ -339,7 +366,12 @@ def apply(review_dir, runtime_path, destination):
             (prepared / name).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(review_dir / name, prepared / name)
             (prepared / name).chmod(0o600)
-        cfg.load(prepared / runtime_file.name)
+        prepared_config = cfg.load(prepared / runtime_file.name)
+        prepared_hashes = {str(Path(name).relative_to(prepared)): value
+                           for name, value in prepared_config['input_hashes'].items()}
+        if prepared_hashes != record['proposed_hashes']:
+            raise ValueError('prepared configuration differs from reviewed inputs')
+        cfg.require_unchanged(reviewed, review_dir / runtime_file.name)
         if not unchanged():
             raise ValueError("runtime configuration changed during preparation")
         os.rename(prepared, destination)

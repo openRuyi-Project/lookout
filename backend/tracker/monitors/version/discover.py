@@ -206,8 +206,7 @@ def verify(config, proposals):
     if not proposals:
         return {}, None
     text = Path(config['nvpath']).read_text()
-    if version_rules.digest(config['nvpath']) != config['nv_digest']:
-        raise ValueError('native configuration changed during discovery')
+    cfg.require_unchanged(config)
     entries = {p['name']: p['entry'] for p in proposals}
     candidate = {**config, 'native': {**config['native'], **entries}}
     facts, error = nv.run(candidate, {}, state.utcnow(), tracks=list(entries))
@@ -341,8 +340,7 @@ def main(argv=None):
             if row.get('comparable') is False:
                 bindings.setdefault(row['name'], {})['comparable'] = False
     text = Path(config['nvpath']).read_text()
-    if version_rules.digest(config['nvpath']) != config['nv_digest']:
-        raise ValueError('native configuration changed during discovery')
+    cfg.require_unchanged(config)
     if args.verify:
         (output / 'candidate.nvchecker.toml').write_text(append_entries(text, accepted))
     (output / 'candidate-bindings.json').write_text(json.dumps(bindings,indent=2)+'\n')

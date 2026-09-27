@@ -22,7 +22,9 @@ def collection(config, snapshot, tmp_path, monkeypatch):
     path = tmp_path / 'tracker.toml'
     native = tmp_path / 'nvchecker.toml'
     native.write_text(tomlkit.dumps(config['native']))
-    raw = {key: config[key] for key in ('obs', 'targets', 'collector', 'packages', 'monitors')}
+    raw = {key: config[key] for key in ('obs', 'targets', 'collector', 'monitors')}
+    raw['packages_config'] = 'packages.toml'
+    (tmp_path / 'packages.toml').write_text(tomlkit.dumps(config['packages']))
     path.write_text(tomlkit.dumps(raw))
     loaded = cfg.load(path)
     snapshot['sources'] = {name: snapshot['sources'][name] for name in ('binutils', 'foo3')}

@@ -1,4 +1,4 @@
-"""Load exactly one native nvchecker file. Package policy lives in tracker.toml."""
+"""Load exactly one native nvchecker file. Package policy lives in packages.toml."""
 from dataclasses import dataclass
 import hashlib
 from pathlib import Path

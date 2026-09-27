@@ -36,10 +36,16 @@ def request_url(entry):
 
 
 def from_package(package):
+    return package_context(package)['identity']
+
+
+def package_context(package):
+    """Describe the same identity precedence used by registry monitors."""
     release = package.get('source_release')
     if release:
-        return {key: release[key] for key in ('ecosystem', 'name')}
-    return from_native(package.get('identity') or {})
+        return {'identity': {key: release[key] for key in ('ecosystem', 'name')}, 'origin': 'source_release'}
+    identity = from_native(package.get('identity') or {})
+    return {'identity': identity, 'origin': 'native' if identity is not None else None}
 
 
 def from_native(entry):

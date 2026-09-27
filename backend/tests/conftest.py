@@ -66,9 +66,10 @@ def configured_path(config, tmp_path):
     native = tmp_path / 'native.toml'
     native.write_text(tomlkit.dumps(config['native']))
     config['collector']['nvchecker_config'] = native.name
+    (tmp_path / 'packages.toml').write_text(tomlkit.dumps(config.get('packages', {})))
     path = tmp_path / 'tracker.toml'
-    path.write_text(tomlkit.dumps({key: config[key]
-                                  for key in ('obs', 'targets', 'collector', 'packages')}))
+    path.write_text(tomlkit.dumps({'packages_config': 'packages.toml', **{
+        key: config[key] for key in ('obs', 'targets', 'collector')}}))
     config.update(cfg.load(path))
     return path
 

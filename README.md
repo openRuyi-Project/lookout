@@ -20,14 +20,15 @@ not implemented.
 | Run, upgrade or roll back the service | [Deployment](docs/deployment.md) |
 | Find, add or correct a package rule | [Configuration](config/README.md) |
 | Develop and submit a change | [Contributing](CONTRIBUTING.md) |
-| Change collection boundaries or add a monitor | [Maintainer reference](docs/design.md) |
+| Change collection boundaries or add a monitor | [Monitor porting](docs/monitor-porting.md) |
 
 The supported deployment is a Linux container with native RPM bindings and
 Landlock ABI 6+ for confined SPEC parsing. Configuration and data are mounted
 separately from the image. The deployment guide points to the tested initializer.
 
 Package rules live in the native `config/versions/nvchecker.toml`; comparison and
-monitor policy live in `config/tracker.toml`. Use the configuration guide to locate,
+monitor identities live in `config/packages.toml`; `config/tracker.toml` owns
+service settings. Use the configuration guide to locate,
 check and promote one package without reading the complete rule inventory.
 
 ## Interfaces

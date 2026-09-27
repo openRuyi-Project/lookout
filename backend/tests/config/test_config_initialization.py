@@ -14,8 +14,11 @@ def test_documented_initializer_loads_and_refuses_overwrite(tmp_path):
     assert result.returncode == 0, result.stderr
     source = config.load(ROOT / 'config/tracker.toml')
     loaded = config.load(destination / "tracker.toml")
-    assert {k: v for k, v in loaded.items() if k != 'nvpath'} == {
-        k: v for k, v in source.items() if k != 'nvpath'}
+    locations = {'nvpath', 'packages_path', 'input_hashes'}
+    assert {k: v for k, v in loaded.items() if k not in locations} == {
+        k: v for k, v in source.items() if k not in locations}
+    assert {str(Path(name).relative_to(destination)): value for name, value in loaded['input_hashes'].items()} == {
+        str(Path(name).relative_to(ROOT / 'config')): value for name, value in source['input_hashes'].items()}
     assert Path(loaded['nvpath']).relative_to(destination) == Path(source['nvpath']).relative_to(ROOT / 'config')
     before = {str(p.relative_to(destination)): p.read_bytes() for p in destination.rglob("*") if p.is_file()}
     assert before == {str(p.relative_to(ROOT / 'config')): p.read_bytes()
