@@ -33,6 +33,10 @@ CHECK_GROUPS = {
 }
 
 
+def check_failed(check):
+    return check['status'] == 'error' or bool(check.get('failures'))
+
+
 def subject(snapshot, name):
     return version_status.evaluate(snapshot, name).subject
 
@@ -182,6 +186,17 @@ def project(snapshot, name, now, *, version=None):
         except (ValueError, TypeError):
             compatible = False
             status = "schema_changed" if same else status
+        failures = []
+        scopes = observation.get('scope_checks', {})
+        for scope, check in scopes.items():
+            if check['status'] == 'error':
+                failures.append(scope + ': ' + (check.get('note') or 'Provider check failed'))
+        if observation.get('error'):
+            failures.append(observation['error'])
+        elif observation.get('status') == 'partial' and not scopes:
+            failures.append(observation.get('note') or 'Provider response incomplete')
+        if not compatible:
+            failures.append('Saved evidence does not match the monitor schema')
         checks.append(
             {
                 "monitor": provider,
@@ -192,6 +207,7 @@ def project(snapshot, name, now, *, version=None):
                 "attempted_at": observation.get("attempted_at"),
                 "note": observation.get("input_note") if gated else observation.get("note"),
                 "error": observation.get("error"),
+                "failures": list(dict.fromkeys(failures)),
             }
         )
         if same and compatible:

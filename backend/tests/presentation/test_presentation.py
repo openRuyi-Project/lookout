@@ -236,7 +236,7 @@ def test_version_display_uses_decision_not_independent_comparison(snapshot):
     pkg['monitors']['version']['dimensions']['view'] = ['untracked']
     pkg['monitors']['version']['dimensions']['maintenance'] = ['Untracked']
     assert presentation_values.version_value(pkg)[0].tone == 'muted'
-    assert presentation_values.version_value(pkg)[0].title == 'Upstream is not tracked'
+    assert presentation_values.version_value(pkg)[0].title == 'No upstream version track configured'
 
 
 @pytest.mark.parametrize('matches,version', [(False, '3.9.0'), (None, '3.9.0'), (True, '3.9.0.arch')])

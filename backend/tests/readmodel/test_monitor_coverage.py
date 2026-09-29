@@ -43,7 +43,7 @@ def test_group_aliases_preserve_exact_check_states(snapshot, tmp_path, status):
     prefix = '/api/v2/packages?monitor=fixture&q=binutils'
     for group, accepted in (
         ('uncovered', {'not_configured', 'unsupported'}),
-        ('failed', {'error'}),
+        ('failed', {'error', 'partial'}),
     ):
         result = client.get(prefix + '&section=results&check=' + group).json()
         assert result['section'] == 'coverage'

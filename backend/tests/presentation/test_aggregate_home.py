@@ -30,15 +30,16 @@ def test_runtime_preview_keeps_only_unsatisfied_subconditions():
     assert requirements == before
 
 
-def test_runtime_preview_is_bounded_and_keeps_optional_scope():
+def test_runtime_preview_keeps_every_matching_dependency_and_optional_scope():
     requirements = result(*(changed(name=f'lib{i}', dependency=f'lib{i}', satisfaction='unsatisfied',
                                     optional=i == 0) for i in range(5)))
     lines = requires_preview({'detail_url': '/packages/fixture'}, requirements, Links())
-    assert len(lines) == 4 and lines[0][0].text == 'RuntimeDeps:'
+    assert len(lines) == 5 and lines[0][0].text == 'RuntimeDeps:'
     assert lines[0][1].text == 'lib1'  # Required declarations precede optional ones.
     optional = requires_preview({}, result(requirements['data']['requirements'][0]), Links())
     assert optional[0][0].text == 'RuntimeDeps:' and optional[0][-1].text == 'Optional'
-    assert lines[-1][0].text == '+2' and lines[-1][0].href == '/packages/fixture#requires'
+    assert {line[1].text for line in lines} == {f'lib{i}' for i in range(5)}
+    assert lines[-1][-1].text == 'Optional'
 
 
 def test_version_dependency_filter_explains_satisfied_changes():
@@ -50,17 +51,18 @@ def test_version_dependency_filter_explains_satisfied_changes():
     assert [value.text for value in lines[0]] == ['RuntimeDeps:', 'changed', '>=1', '✓', '→', '>=2', '✓']
 
 
-def test_build_reason_grouping_precedes_display_truncation():
+def test_build_reasons_group_identical_targets_without_omitting_details():
     def target(label, reason):
         return dict(label=label, raw_status='blocked', text='Blocked', issue=True, details=reason)
     prefix = 'waiting for ' + 'fixture-dependency, ' * 20
     data = dict(data={'targets': [target('one', prefix + 'A'), target('two', prefix + 'A'),
                                  target('three', prefix + 'B')]})
-    note, = build_note({'detail_url': '/packages/fixture'}, data, 2)
+    note, other = build_note({'detail_url': '/packages/fixture'}, data, 2)
     assert (note.column, note.span) == (2, 3)
     assert note.values[0].text == 'one, two:'
-    assert len(note.values[1].text) <= 120
-    assert note.values[2].text == '+1'
+    assert note.values[1].text == prefix + 'A'
+    assert other.values[0].text == 'three:'
+    assert other.values[1].text == prefix + 'B'
     assert note.values[1].href == '/packages/fixture#build'
 
 

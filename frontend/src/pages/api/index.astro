@@ -44,6 +44,9 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
     <p><code>404</code> missing resource · <code>422</code> invalid package query · <code>503</code> no snapshot.<br />
       Preserve <code>check</code> and <code>stale</code>; null means unknown.
       One snapshot per response, not across pages.</p>
+    <p><code>check.failures</code> identifies failed subchecks, including partial results.
+      <code>check_groups</code> counts the <code>uncovered</code> and <code>failed</code> filters;
+      <code>check_statuses</code> retains the individual states.</p>
     <p>Website display documents: <a href="/api/ui/packages">/api/ui/packages</a>,
       <a href="/api/ui/packages/bash">/api/ui/packages/{'{name}'}</a>.</p>
   </article>

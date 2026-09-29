@@ -112,14 +112,14 @@ def test_status_prefix_is_not_repeated_and_last_success_is_preserved(observed, c
     assert cell['lines'][1][0]['href'] == f'/packages/{PACKAGE}#build'
 
 
-def test_long_reason_is_bounded_link_with_complete_detail(observed, client_for):
+def test_long_reason_is_complete_in_both_listing_and_detail(observed, client_for):
     target = observed['targets'][0]['id']
     reason = 'nothing provides ' + ', '.join(f'fixture-library-{i}' for i in range(40))
     observed['builds'][PACKAGE][target].update(raw_status='unresolvable', details=reason)
     client = client_for(observed)
     cell = row(client.get('/api/ui/packages?monitor=build').json())['cells'][1]
     preview = cell['lines'][-1][0]
-    assert len(preview['text']) <= 120 and preview['text'].endswith('…')
+    assert preview['text'] == reason
     assert preview['href'] == f'/packages/{PACKAGE}#build'
     detail = client.get(f'/api/ui/packages/{PACKAGE}').json()
     build = next(section for section in detail['sections'] if section['id'] == 'build')

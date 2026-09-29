@@ -180,9 +180,9 @@ def listing_controls(payload, query, focus, links):
                 href=links.to(section='results', check='', freshness='retained', view='', signal='', requires='', build=[]),
                 selected=query.get('freshness') == 'retained'))
         navigation[-1].choices.extend([
-            Choice(label=CHECK_LABELS.get(group, group.title()), count=sum(counts['check_statuses'].get(status, 0) for status in statuses),
+            Choice(label=CHECK_LABELS.get(group, group.title()), count=counts['check_groups'][group],
                 href=links.to(section='coverage', check=group), selected=query.get('check') == group)
-            for group, statuses in CHECK_GROUPS.items()])
+            for group in CHECK_GROUPS])
     hidden_keys = ('monitor', 'view', 'section', 'check', 'freshness', 'requires', 'signal', 'buildsystem', 'per_page')
     hidden = [Parameter(name=key, value=str(query[key])) for key in hidden_keys if query.get(key)]
     hidden.extend(Parameter(name=key, value=value)

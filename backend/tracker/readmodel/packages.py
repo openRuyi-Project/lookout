@@ -87,7 +87,7 @@ class PackageList:
         for dimension, options in index.items():
             if dimension.startswith('check:'):
                 for group, statuses in monitor_model.CHECK_GROUPS.items():
-                    options[group] = set().union(*(options.get(status, ()) for status in statuses))
+                    options[group].update(set().union(*(options.get(status, ()) for status in statuses)))
         self.index = MappingProxyType({dimension: MappingProxyType({
             value: frozenset(members) for value, members in options.items()
         }) for dimension, options in index.items()})
@@ -117,6 +117,7 @@ class PackageList:
         coverage = coverage_selection.matching(without='check:' + monitor)
         results = coverage & self.index.get('findings:' + monitor, {}).get('yes', frozenset())
         check_statuses = coverage_selection.counts('check:' + monitor) if monitor else {}
+        check_groups = {group: check_statuses.get(group, 0) for group in monitor_model.CHECK_GROUPS}
         check_statuses = {status: count for status, count in check_statuses.items()
                           if status not in monitor_model.CHECK_GROUPS}
         selection = (_Selection(self.index, scope, {**selections, 'findings:' + monitor: 'yes'})
@@ -148,6 +149,7 @@ class PackageList:
             },
             'build_statuses': statuses,
             'check_statuses': check_statuses,
+            'check_groups': check_groups,
             'result_count': len(results), 'coverage_count': len(coverage),
             'retained_count': len(retained),
         }

@@ -148,6 +148,7 @@ class ObservationCheck(BaseModel):
     note: str | None = None
     changed_at: str | None = None
     evidence_revision: str | None = None
+    failures: list[str] = Field(default_factory=list, description='Failed collection subchecks; partial evidence remains usable.')
 
 
 class SourceSummary(BaseModel):
@@ -307,6 +308,7 @@ class MonitoredList(BaseModel):
     version_signals: dict[str, int]
     build_statuses: dict[str, list[BuildStatusOption]]
     check_statuses: dict[str, int]
+    check_groups: dict[str, int]
     section: Literal['results', 'coverage']
     result_count: int
     coverage_count: int
@@ -457,7 +459,7 @@ def create_app(db=None):
                     page=1, per_page=1,
                     findings_only=focused['kind'] in ('evidence', 'requires'))
                 result['navigation_counts'] = {key: navigation[key] for key in
-                    ('counts', 'requires_counts', 'version_signals', 'check_statuses', 'result_count', 'retained_count')}
+                    ('counts', 'requires_counts', 'version_signals', 'check_statuses', 'check_groups', 'result_count', 'retained_count')}
         return {**result,
                 'section': section,
                 'monitors': catalog, 'targets': snap['targets'], 'collection': collection,

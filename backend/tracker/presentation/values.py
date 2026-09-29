@@ -68,7 +68,7 @@ def version_value(pkg, *, compact=True, links=None):
     success = build['data']['source_success'] if build else None
     untracked = Issue.UNTRACKED in result.get('dimensions', {}).get('maintenance', [])
     tone = 'muted' if untracked or success is None else 'negative' if success is False else 'normal'
-    title = ('Upstream is not tracked' if untracked else
+    title = ('No upstream version track configured' if untracked else
              'Current source has not succeeded on every active build target' if success is False else
              'Current source build success is unknown' if success is None else
              'Current source succeeded on every active build target')

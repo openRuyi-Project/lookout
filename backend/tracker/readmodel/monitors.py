@@ -139,8 +139,11 @@ class Monitor:
 
     def read(self, context):
         result = self.project(context)
+        if result['check']['status'] == 'ok' and monitor_model.check_failed(result['check']):
+            result['check']['status'] = 'partial'
         result['dimensions']['check:' + self.id] = [result['check']['status']]
-        if result['check']['status'] == 'error':
+        if monitor_model.check_failed(result['check']):
+            result['dimensions']['check:' + self.id].append('failed')
             result['dimensions'].setdefault('maintenance', []).append(Issue.CHECK_FAILED)
         result['id'] = self.id
         result['title'] = self.title
@@ -164,7 +167,9 @@ def source(context):
                 source_url=cfg.spec_source_url(origin, name, spec.get('head') or origin.get('branch') or ''),
                 changelog=spec.get('changelog') or [], head=spec.get('head'), error=spec.get('error'),
                 obs=context.obs_source)
-    return dict(check=check_state([current], context.now, current['stale_after_seconds']),
+    check = check_state([current], context.now, current['stale_after_seconds'])
+    check['failures'] = list(dict.fromkeys(str(current[k]) for k in ('error', 'version_error') if current.get(k)))
+    return dict(check=check,
                 data=data, dimensions={'buildsystem': [system or '_not_detected']})
 
 
@@ -177,6 +182,9 @@ def version(context):
         check.update(status='not_applicable', stale=False)
     elif not value.track:
         check.update(status='not_configured', stale=False)
+    check['failures'] = ([str(upstream['error'])] if upstream.get('error') else [])
+    check['failures'].extend(t + ': ' + str(snapshot['tracks'][t]['error'])
+                            for t in value.binding.get('watch', []) if snapshot['tracks'].get(t, {}).get('error'))
     views = []
     if value.upgrading or value.relation == 'changed':
         views.append('updates')
@@ -242,7 +250,12 @@ def build(context):
     versions = {f['version'] for f in successes if f and f.get('version')}
     previous = (next(iter(versions)) if successes and all(f and f.get('version') for f in successes)
                 and len(versions) == 1 else None)
-    return dict(check=check_state(observations, now, ttl), dimensions=dimensions,
+    check = check_state(observations, now, ttl)
+    check['failures'] = list(dict.fromkeys(
+        f"{target['label']} / {entry['package']} / {label}: {entry[key]}"
+        for target in builds for entry in target['flavors']
+        for key, label in (('error', 'status'), ('history_error', 'history')) if entry.get(key)))
+    return dict(check=check, dimensions=dimensions,
                 data=dict(kind='build', targets=builds, source_version=context.version.source.get('version'),
                           source_success=combined_match(all_entries), last_successful_version=previous))
 

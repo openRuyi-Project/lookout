@@ -19,7 +19,7 @@ def build_reason(observation):
     return reason if reason and reason.rstrip('.:').casefold() not in labels else None
 
 
-def build_reason_line(build, detail_url, *, limit=120):
+def build_reason_line(build, detail_url):
     observations = build.get('flavors') or [build]
     reasons = []
     for observation in observations:
@@ -37,9 +37,7 @@ def build_reason_line(build, detail_url, *, limit=120):
     if not reasons:
         return []
     full = '; '.join(reasons)
-    visible = full if limit is None or len(full) <= limit else full[:limit - 1].rstrip() + '…'
-    return [text(visible, href=detail_url + '#build', tone='muted',
-                 title='Full OBS build details' if visible != full else 'OBS build details')]
+    return [text(full, href=detail_url + '#build', tone='muted', title='OBS build details')]
 
 
 def build_cell(build, current, detail_url, *, show_reason=False):
@@ -90,18 +88,13 @@ def build_cells(pkg, result, links):
 
 
 def build_note(pkg, result, column):
-    """One attributed reason below the status columns; distinct reasons stay linked."""
+    """Group identical reasons by target; preserve every distinct reason."""
     reasons = {}
     for build in result['data']['targets']:
-        line = build_reason_line(build, pkg['detail_url'], limit=None)
+        line = build_reason_line(build, pkg['detail_url'])
         if line:
             reasons.setdefault(line[0].text, []).append(build['label'])
-    if not reasons:
-        return []
-    reason, targets = next(iter(reasons.items()))
-    values = [text(', '.join(targets) + ':', kind='code', tone='muted'),
-              text(reason if len(reason) <= 120 else reason[:119].rstrip() + '…',
-                   href=pkg['detail_url'] + '#build', tone='muted')]
-    if len(reasons) > 1:
-        values.append(text(f'+{len(reasons) - 1}', href=pkg['detail_url'] + '#build', title='More OBS build details'))
-    return [RowNote(column=column, span=len(result['data']['targets']), values=values)]
+    return [RowNote(column=column, span=len(result['data']['targets']), values=[
+        text(', '.join(targets) + ':', kind='code', tone='muted'),
+        text(reason, href=pkg['detail_url'] + '#build', tone='muted')])
+        for reason, targets in reasons.items()]

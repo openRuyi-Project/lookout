@@ -132,7 +132,5 @@ def requires_preview(pkg, result, links):
     lines = [[text(DEPENDENCY_TITLES[item['kind']] + ':', tone='muted'),
               *requirement_values(item, compact=True),
               *([text('Optional', tone='muted')] if item.get('optional') is True else [])]
-             for item, _ in groups[:3]]
-    if len(groups) > 3:
-        lines.append([text(f'+{len(groups) - 3}', href=pkg['detail_url'] + '#requires', title='More dependencies')])
+             for item, _ in groups]
     return lines

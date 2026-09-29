@@ -201,7 +201,11 @@ def test_watch_is_observation_only_and_has_freshness(snapshot):
     changed = deepcopy(snapshot)
     changed['tracks']['widget@4'].update(version='999rc1', error='network error')
     row = next(r for r in view.project_monitors(changed)[0] if r['name'] == 'foo3')
-    assert (row['monitors']['version']['data']['latest'], row['monitors']['version']['data']['relation'], row['monitors']['version']['dimensions']) == (before['monitors']['version']['data']['latest'], before['monitors']['version']['data']['relation'], before['monitors']['version']['dimensions'])
+    current, previous = row['monitors']['version'], before['monitors']['version']
+    assert (current['data']['latest'], current['data']['relation'], current['dimensions']['view']) == (
+        previous['data']['latest'], previous['data']['relation'], previous['dimensions']['view'])
+    assert current['check']['failures'] == ['widget@4: network error']
+    assert 'CheckFailed' in current['dimensions']['maintenance']
     assert row['monitors']['version']['data']['watch'][0]['version'] == '999rc1' and row['monitors']['version']['data']['watch'][0]['error'] == 'network error'
     observed = datetime.fromisoformat(changed['tracks']['widget@4']['fetched_at'])
     assert not next(r for r in view.project_monitors(changed, observed)[0] if r['name'] == 'foo3')['monitors']['version']['data']['watch'][0]['stale']

@@ -14,7 +14,9 @@ import logos from '../assets/logos/catalog.json';
       <dt>Build confirmation</dt>
       <dd>Red means the current source has not succeeded on every active target. A check mark belongs to its OBS target, not a release guarantee. A previous successful version appears below a result only when it cannot be inferred from the current version.</dd>
       <dt>Untracked</dt>
-      <dd>The Version view separates packages without an upstream rule. Muted version text means tracking or build confirmation is unavailable; its tooltip distinguishes the two.</dd>
+      <dd>No upstream version track configured. Other monitors do not affect version coverage.</dd>
+      <dt>CheckFailed</dt>
+      <dd>At least one collection check failed, including partial results, watch tracks and build-history queries. Each package is counted once; its Checks section lists the failed monitor and reason. An OBS build failure is a build result, not a failed collection check.</dd>
       <dt>Labels</dt>
       <dd>Labels link to packages with the same signal. Open a package for the provider evidence and collection checks; a security match does not evaluate local patches.</dd>
       <dt>Observation time</dt>

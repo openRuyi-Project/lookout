@@ -222,7 +222,7 @@ const mock = createServer((req, res) => {
   const payload = url.pathname === '/api/ui/theme'
     ? {buildsystems: appearancePalette}
     : selected ? monitored(selected) : {
-      monitors: catalog, check_statuses: {ok: packages.length}, section,
+      monitors: catalog, check_statuses: {ok: packages.length}, check_groups: {failed: 0, uncovered: 0}, section,
       result_count: resultRows.length, coverage_count: packages.length, retained_count: retainedCount,
       presentation: {buildsystems: appearancePalette},
       buildsystems: {custom: 1}, maintenance_labels: {CheckFailed: 1, NewSignal: 1, LicenseDiff: 1, DepMismatch: 1},
@@ -324,6 +324,8 @@ try {
   const article = apiReference.match(/<article\b[^>]*>([^]*?)<\/article>/)[1];
   assert.match(article, /href="\/openapi\.json"/);
   assert.match(article, /GET \/api\/v2/);
+  assert.match(article, /href="\/api\/v2\/export"/);
+  assert.match(article, /href="\/api\/v2\/packages\/bash"/);
   const examples = [...article.matchAll(/<pre\b[^>]*><code\b[^>]*><a\b[^>]*href="([^"]+)"/g)]
     .map(([, href]) => new URL(href.replaceAll('&amp;', '&'), 'http://localhost'));
   assert.equal(examples.length, 2);
@@ -377,6 +379,11 @@ try {
   assert.match(untrackedRow, /label%3AUntracked[^>]*>Untracked/);
   assert.match(listing, /href="\/\?page=1&amp;maintenance=CheckFailed"/);
   const errorPage = await read('/packages/check-error');
+  for (const page of [listing, errorPage]) {
+    const dataLinks = [...page.matchAll(/<a\b[^>]*href="([^"]+)"/g)]
+      .map(([, href]) => href).filter(href => href.startsWith('/api/v2/'));
+    assert.deepEqual(dataLinks, [], 'data endpoints belong in the API reference, not page chrome');
+  }
   assert.match(errorPage, /id="check-version"/);
   assert.match(errorPage, /Fixture provider timeout/);
   assertCollapsedChecksLast(errorPage);

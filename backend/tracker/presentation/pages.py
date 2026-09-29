@@ -1,7 +1,7 @@
 """Pages for reading documents; no collection or persistence."""
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from tracker.monitors.model import CHECK_GROUPS
+from tracker.monitors.model import CHECK_GROUPS, check_failed
 from tracker.monitors.issues import Issue
 from tracker.presentation.evidence import evidence_labels
 from tracker.presentation.build import build_note
@@ -70,7 +70,7 @@ def identity_cell(pkg, links, *, labels=True):
 
 
 def check_failed_label(pkg, links=None):
-    errors = [result for result in pkg['monitors'].values() if result['check']['status'] == 'error']
+    errors = [result for result in pkg['monitors'].values() if check_failed(result['check'])]
     if not errors:
         return []
     anchor = 'check-' + errors[0]['id'] if len(errors) == 1 else 'checks'
@@ -168,7 +168,6 @@ def detail(pkg):
     shortcuts = [text('/' + data['source_path'], href=data.get('source_url'))] if data.get('source_path') else []
     if meta.get('url'):
         shortcuts.append(text('Upstream', href=meta['url']))
-    shortcuts.append(text('Raw data', href='/api/v2/packages/' + quote(pkg['name'], safe='')))
     # Composition order is a reader concern; collectors never encode it.
     results = sorted(pkg['monitors'].values(), key=lambda m: (m['id'] == 'eol', {'build': 0, 'evidence': 1, 'requires': 1, 'version': 2, 'source': 3}[m['data']['kind']]))
     sections, context = [], []
@@ -181,7 +180,10 @@ def detail(pkg):
     for result in pkg['monitors'].values():
         check = result['check']
         status_lines = [[check_value(check)]]
-        status_lines.extend([text(check[key], tone='muted')] for key in ('note', 'error') if check.get(key))
+        failures = check.get('failures') or [check.get('error')]
+        diagnostics = dict.fromkeys([*failures, check.get('note')])
+        status_lines.extend([text(message, tone='notice' if check_failed(check) else 'muted')]
+                            for message in diagnostics if message)
         timestamps = [[stamp(check.get('checked_at'))]]
         if check.get('attempted_at') and check['attempted_at'] != check.get('checked_at'):
             timestamps.append([text('Last attempted', tone='muted'), stamp(check['attempted_at'])])

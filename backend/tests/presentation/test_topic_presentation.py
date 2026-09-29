@@ -111,7 +111,7 @@ def test_navigation_deemphasizes_eol_and_omits_standalone_withdrawal():
 def test_all_related_option_is_not_an_active_filter():
     payload = dict(section='results', monitors=[dict(id='security', title='Advisory', kind='evidence')],
         version_signals={'security': 1}, maintenance_labels={}, targets=[], build_statuses={},
-        counts=dict(all=1, updates=0, untracked=0), check_statuses={})
+        counts=dict(all=1, updates=0, untracked=0), check_statuses={}, check_groups={'failed': 0, 'uncovered': 0})
     controls = presentation_navigation.listing_controls(payload, {'monitor':'version'},
         dict(id='version', title='Version', kind='version'), presentation_navigation.Links())
     assert not controls.active
