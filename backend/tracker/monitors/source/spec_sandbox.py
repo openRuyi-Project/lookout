@@ -139,6 +139,8 @@ def _seccomp():
         rule('clone3', 0x00050000 | errno.ENOSYS)
         for flags in (17, 0x4111, 0x1200011):
             rule('clone', comparisons=(ArgCompare(0, 4, flags, 0),))  # SCMP_CMP_EQ
+        # glibc implements getpgrp() with getpgid(0) on architectures without it.
+        rule('getpgid', comparisons=(ArgCompare(0, 4, 0, 0),))
         # A helper may inspect its own limits, never change another process's.
         rule('prlimit64', comparisons=(ArgCompare(0, 4, 0, 0), ArgCompare(2, 4, 0, 0)))
         if lib.seccomp_load(ctx):

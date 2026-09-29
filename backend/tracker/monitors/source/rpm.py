@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from tracker.state import usable_version
 
-RESOLVER = 8  # hash-checked local Source inputs join the same confined parse
+RESOLVER = 9  # invalidate parses affected by the getpgrp syscall portability bug
 _SIZE_LIMIT = 1024 * 1024
 _TIMEOUT = 5.0
 _MAX_OUTPUT = 256 * 1024

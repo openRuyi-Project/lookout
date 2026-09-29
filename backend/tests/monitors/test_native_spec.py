@@ -131,6 +131,13 @@ def test_shell_pipeline_remains_native():
     assert result['version'] == '1.2'
 
 
+def test_helper_can_read_its_own_process_group():
+    result = native_spec.query(python_expression(
+        "import os; print('own' if os.getpgrp() == os.getpgid(0) > 0 else 'wrong')"
+    ))
+    assert result['version'] == 'own', result
+
+
 def test_spec_cannot_read_or_overwrite_external_file(tmp_path):
     secret = tmp_path / 'operator-secret'
     secret.write_text('fixture-private')
@@ -167,6 +174,8 @@ def test_all_socket_families_denied(family):
     "libc.process_vm_readv(os.getppid(), None, 0, None, 0, 0)",
     "libc.process_vm_writev(os.getppid(), None, 0, None, 0, 0)",
     "libc.kill(os.getppid(), 0)",  # signal 0 cannot harm the parent even on failure
+    "libc.getpgid(os.getppid())",
+    "libc.setpgid(0, 0)",
 ])
 def test_process_interference_syscalls_denied(call):
     code = "import ctypes,errno,os\nlibc=ctypes.CDLL(None,use_errno=True)\nvalue=" + call + "\nprint('blocked' if value == -1 and ctypes.get_errno() == errno.EPERM else 'escaped')"
