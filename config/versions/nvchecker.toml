@@ -24083,7 +24083,8 @@ to_pattern = ""
 [linux-lts]
 source = "jq"
 url = "https://www.kernel.org/releases.json"
-filter = "first(.releases[] | select(.version | test(\"^6[.]18[.][0-9]+$\")) | .version)"
+# Follow the newest supported LTS line, not the newest stable kernel.
+filter = '[.releases[] | select(.moniker == "longterm" and .iseol == false)] | max_by(.version | split(".") | map(tonumber)) | .version // empty'
 
 [linux-lts-kmhv2]
 source = "jq"

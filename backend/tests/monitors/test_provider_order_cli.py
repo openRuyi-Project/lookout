@@ -18,6 +18,20 @@ NATIVE = rules.load((ROOT / 'config/versions/nvchecker.toml')).entries
 NOW = '2026-09-20T00:00:00+00:00'
 
 
+@pytest.mark.parametrize('releases,expected', [
+    ([('longterm', '10.4.101', False), ('longterm', '11.2.9', False),
+      ('stable', '12.1.2', False), ('mainline', '13.0-rc1', False)], '11.2.9'),
+    ([('longterm', '11.2.9', False), ('longterm', '11.2.10', False),
+      ('longterm', '12.0.2', True)], '11.2.10'),
+    ([('longterm', '12.0.1', False), ('longterm', '11.2.10', False)], '12.0.1'),
+    ([('stable', '13.0.1', False), ('longterm', '12.0.1', True)], None),
+    ([], None),
+])
+def test_linux_lts_follows_latest_supported_longterm_not_feed_order(native_check, releases, expected):
+    payload = {'releases': [dict(moniker=kind, version=version, iseol=eol) for kind, version, eol in releases]}
+    native_check(NATIVE['linux-lts'], payload, expected)
+
+
 
 def test_real_history_baseline_modified_and_rule_rollback(native_check):
     payload = json.loads((Path(__file__).parents[1] / 'fixtures/anitya-ordered-history.json').read_text())
