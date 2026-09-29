@@ -1,9 +1,11 @@
 """Transport boundaries use pooled clients and bounded decoded responses."""
 from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor
 import gzip
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import socket
 import threading
 from urllib.parse import parse_qs
 
@@ -180,21 +182,104 @@ def test_discovery_run_shares_one_client_and_closes_it(tmp_path, monkeypatch):
     assert native.read_bytes() == b''
 
 
-def test_monitor_pool_matches_worker_count_and_keeps_injected_client(monkeypatch):
+def test_monitor_reuses_owned_connections_and_keeps_injected_client(monkeypatch):
     constructor = httpx.Client
     seen = []
+    clients = []
     def pooled(**options):
         seen.append(options)
-        return constructor(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})), **options)
+        client = constructor(transport=httpx.MockTransport(lambda request: httpx.Response(200, json={})), **options)
+        clients.append(client)
+        return client
     monkeypatch.setattr(monitor_io.httpx, 'Client', pooled)
     owner = monitor_io.IO(workers=7)
-    assert seen[0]['limits'].max_connections == seen[0]['limits'].max_keepalive_connections == 7
+    owner.json('GET', 'https://example.org/first')
+    owner.json('GET', 'https://example.org/second')
+    assert len(clients) == 1
+    assert seen[0]['limits'].max_connections == seen[0]['limits'].max_keepalive_connections == 1
     assert seen[0]['timeout'].as_dict() == dict(connect=15, read=15, write=15, pool=15)
     owner.close()
-    assert owner.client.is_closed
+    assert clients[0].is_closed
     with constructor() as injected:
         monitor_io.IO(client=injected, workers=1).close()
         assert not injected.is_closed
+
+
+def test_failed_proxy_tls_does_not_exhaust_next_request(monkeypatch):
+    class Proxy(BaseHTTPRequestHandler):
+        protocol_version = 'HTTP/1.1'
+
+        def do_CONNECT(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.flush()
+            self.connection.shutdown(socket.SHUT_RDWR)
+            self.close_connection = True
+
+        def do_GET(self):
+            body = b'{"ok":true}'
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Proxy)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    monkeypatch.setenv('TRACKER_MONITOR_PROXY', f'http://127.0.0.1:{server.server_port}')
+    constructor = httpx.Client
+    def finite(**options):
+        options['timeout'] = 0.2
+        return constructor(**options)
+    monkeypatch.setattr(monitor_io.httpx, 'Client', finite)
+    owner = monitor_io.IO(workers=1)
+    try:
+        with pytest.raises(httpx.ConnectError):
+            owner.json('GET', 'https://broken.invalid/handshake')
+        assert owner.json('GET', 'http://healthy.invalid/fact') == {'ok': True}
+    finally:
+        owner.close()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_transport_failure_does_not_close_another_workers_request(monkeypatch):
+    entered, release = threading.Event(), threading.Event()
+    constructor = httpx.Client
+    clients = []
+    def handle(request):
+        if request.url.host == 'broken.invalid':
+            raise httpx.ConnectError('fixture failure', request=request)
+        entered.set()
+        assert release.wait(5)
+        return httpx.Response(200, json={'ok': True})
+    def pooled(**options):
+        client = constructor(transport=httpx.MockTransport(handle), **options)
+        clients.append(client)
+        return client
+    monkeypatch.delenv('TRACKER_MONITOR_PROXY', raising=False)
+    monkeypatch.setattr(monitor_io.httpx, 'Client', pooled)
+    owner = monitor_io.IO(workers=2)
+    try:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            successful = pool.submit(owner.json, 'GET', 'https://healthy.invalid/fact')
+            try:
+                assert entered.wait(5)
+                failed = pool.submit(owner.json, 'GET', 'https://broken.invalid/handshake')
+                with pytest.raises(httpx.ConnectError):
+                    failed.result(timeout=5)
+                assert len(clients) == 2
+                assert not clients[0].is_closed and clients[1].is_closed
+            finally:
+                release.set()
+            assert successful.result(timeout=5) == {'ok': True}
+    finally:
+        owner.close()
+    assert all(client.is_closed for client in clients)
 
 
 def test_obs_pool_matches_source_workers(config, monkeypatch):

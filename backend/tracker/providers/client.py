@@ -1,4 +1,5 @@
 """Bounded provider HTTP with shared, dated cache. Never used by the API."""
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 import hashlib
@@ -6,6 +7,7 @@ import json
 import math
 import os
 from pathlib import Path
+from queue import Empty, LifoQueue
 import threading
 import time
 from urllib.parse import urlsplit
@@ -20,16 +22,18 @@ class IO:
 
     Successful responses may survive in the disk cache; failures and Retry-After
     cooldowns live only in this instance. Injected clients remain caller-owned
-    and must disable redirects and configure finite transport timeouts.
+    and must disable redirects and configure finite transport timeouts. Close
+    this owner only after its worker requests have finished.
     """
     def __init__(self, cache=None, *, client=None, ttl=21600, workers=4):
         self.cache = Path(cache) if cache else None
-        self.client = client or httpx.Client(
-            timeout=httpx.Timeout(connect=15, read=15, write=15, pool=15),
-            limits=httpx.Limits(max_connections=workers, max_keepalive_connections=workers),
-            follow_redirects=False,
-            proxy=os.environ.get('TRACKER_MONITOR_PROXY') or None)
-        self.owns_client = client is None
+        if type(workers) is not int or workers < 1:
+            raise ValueError('workers must be a positive integer')
+        self.client = client
+        self.proxy = os.environ.get('TRACKER_MONITOR_PROXY') or None
+        self.clients = LifoQueue(workers)
+        for _ in range(workers):
+            self.clients.put(None)
         self.ttl = ttl
         self.today = datetime.now(timezone.utc).date()
         self.memory, self.locks = {}, {}
@@ -37,8 +41,37 @@ class IO:
         self.host_locks, self.next_request, self.cooldowns = {}, {}, {}
 
     def close(self):
-        if self.owns_client:
-            self.client.close()
+        while not self.clients.empty():
+            if client := self.clients.get_nowait():
+                client.close()
+
+    @contextmanager
+    def connection(self):
+        if self.client is not None:
+            yield self.client
+            return
+        try:
+            client = self.clients.get(timeout=15)
+        except Empty:
+            raise httpx.PoolTimeout('provider connections are busy') from None
+        try:
+            if client is None:
+                client = httpx.Client(
+                    timeout=httpx.Timeout(connect=15, read=15, write=15, pool=15),
+                    limits=httpx.Limits(max_connections=1, max_keepalive_connections=1),
+                    follow_redirects=False, proxy=self.proxy)
+            try:
+                yield client
+            except httpx.TransportError:
+                # A failed proxy TLS tunnel can remain active in HTTPX's pool.
+                # Exclusive leases let us discard it without closing another request.
+                try:
+                    client.close()
+                finally:
+                    client = None
+                raise
+        finally:
+            self.clients.put(client)
 
     def for_hosts(self, hosts, *, max_age=None):
         return ProviderIO(self, frozenset(hosts), max_age)
@@ -107,8 +140,9 @@ class IO:
                 host = urlsplit(url).hostname
                 self.wait_for_host(host, min_interval)
                 deadline = time.monotonic() + 30
-                with self.client.stream(method, url, json=body if method == 'POST' else None,
-                                        headers={'User-Agent': USER_AGENT}) as response:
+                with self.connection() as client, client.stream(
+                        method, url, json=body if method == 'POST' else None,
+                        headers={'User-Agent': USER_AGENT}) as response:
                     if response.status_code in (429, 503):
                         self.defer_host(host, response.headers.get('Retry-After'))
                     response.raise_for_status()
