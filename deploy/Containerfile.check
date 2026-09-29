@@ -3,6 +3,8 @@ ARG RUNTIME_IMAGE
 FROM ${RUNTIME_IMAGE}
 USER 0
 COPY backend/requirements-test.lock /tmp/requirements-test.lock
-RUN /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements-test.lock \
+RUN /opt/venv/bin/python -m ensurepip \
+    && /opt/venv/bin/python -m pip install --no-cache-dir --upgrade pip==26.2.1 \
+    && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements-test.lock \
     && rm /tmp/requirements-test.lock
 USER 10001:10001

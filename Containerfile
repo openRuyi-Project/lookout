@@ -32,8 +32,10 @@ RUN dnf install -y \
 
 COPY backend/requirements.lock /tmp/requirements.lock
 RUN python3 -m venv --system-site-packages /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip==26.2.1 \
     && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.lock \
-    && rm -f /tmp/requirements.lock
+    && rm -f /tmp/requirements.lock \
+    && /opt/venv/bin/python -m pip uninstall --yes pip
 
 # ---- runtime stage --------------------------------------------------------
 FROM registry.fedoraproject.org/fedora:43
