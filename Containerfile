@@ -12,7 +12,8 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 
 # ---- frontend build stage -------------------------------------------------
-FROM registry.fedoraproject.org/fedora:43 AS frontend
+ARG FEDORA_IMAGE=registry.fedoraproject.org/fedora:43@sha256:7bc1df1ba612dfd63f1eae89b6a91a7d75b2df994f4c35287e4165375c5ce1fd
+FROM ${FEDORA_IMAGE} AS frontend
 RUN dnf install -y nodejs npm && dnf clean all
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -22,7 +23,7 @@ ENV ASTRO_TELEMETRY_DISABLED=1
 RUN npm run check && npm run build && npm prune --omit=dev
 
 # ---- Python dependency build stage ----------------------------------------
-FROM registry.fedoraproject.org/fedora:43 AS python-builder
+FROM ${FEDORA_IMAGE} AS python-builder
 # Build native pip extensions on the same Fedora/Python ABI as the runtime.
 # Compilers and development headers never enter the final image.
 RUN dnf install -y \
@@ -38,7 +39,17 @@ RUN python3 -m venv --system-site-packages /opt/venv \
     && /opt/venv/bin/python -m pip uninstall --yes pip
 
 # ---- runtime stage --------------------------------------------------------
-FROM registry.fedoraproject.org/fedora:43
+FROM ${FEDORA_IMAGE}
+ARG SOURCE_REVISION=""
+ARG RELEASE_VERSION="development"
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION \
+      org.opencontainers.image.version=$RELEASE_VERSION \
+      org.opencontainers.image.title="openRuyi Tracker" \
+      org.opencontainers.image.name="openruyi-monitor" \
+      org.opencontainers.image.source="https://github.com/Jingwiw/openRuyi-monitor" \
+      org.opencontainers.image.url="https://github.com/Jingwiw/openRuyi-monitor" \
+      org.opencontainers.image.vendor="openRuyi Project" \
+      org.opencontainers.image.licenses="MulanPSL-2.0"
 # Keep native rpm and the existing Python RPM macro surface for SPEC parsing.
 # pycurl needs the shared curl/OpenSSL libraries, not their development headers.
 RUN dnf install -y \
@@ -55,6 +66,8 @@ WORKDIR /app
 COPY backend/ /app/backend/
 COPY config/ /app/config/
 COPY deploy/ /app/deploy/
+COPY LICENSE /app/LICENSE
+COPY LICENSES/ /app/LICENSES/
 COPY --from=frontend /build/frontend/dist/ /app/frontend/dist/
 COPY --from=frontend /build/frontend/node_modules/ /app/frontend/node_modules/
 COPY frontend/server.mjs /app/frontend/server.mjs
@@ -67,7 +80,7 @@ ENV PYTHONPATH=/app/backend \
     PORT=8080 \
     GIT_TERMINAL_PROMPT=0 \
     PATH=/opt/venv/bin:/usr/bin:/bin
-VOLUME /data
+# The deployment entrypoints mount explicit persistent storage; no anonymous volume.
 EXPOSE 8080
 
 # The web server has no built-in auth; put access control in front of it if exposed.

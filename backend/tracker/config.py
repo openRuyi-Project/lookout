@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import stat
 from pathlib import Path
 import re
 import tomllib
@@ -155,7 +156,11 @@ def load(path):
 def read_input(path):
     """Read a regular configuration file, rejecting symlinks at the input path."""
     path = Path(path)
-    if path.is_symlink() or not path.is_file():
+    try:
+        mode = path.lstat().st_mode
+    except FileNotFoundError as error:
+        raise ValueError('configuration input does not exist: ' + str(path)) from error
+    if not stat.S_ISREG(mode):
         raise ValueError('configuration input must be a regular file: ' + str(path))
     return path.read_bytes()
 

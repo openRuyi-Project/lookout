@@ -14,7 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Build frontend and native runtime
-        run: docker build -t openruyi-monitor:test -f Containerfile .
+        run: |
+          VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"])')
+          docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg RELEASE_VERSION="$VERSION" -t openruyi-monitor:test -f Containerfile .
       - name: Native RPM, confinement, backend, API contract and SSR
         env:
           CONTAINER_ENGINE: docker
@@ -23,3 +25,5 @@ jobs:
         env:
           CONTAINER_ENGINE: docker
         run: python3 deploy/smoke-image.py openruyi-monitor:test
+      - name: Installation, configuration, upgrade and restore
+        run: python3 deploy/smoke-release.py openruyi-monitor:test
