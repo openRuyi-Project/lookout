@@ -8,7 +8,7 @@ const name = Astro.params.name || '';
 const {data, status} = await api<DetailDocument>('/api/ui/packages/' + encodeURIComponent(name));
 if (!data) Astro.response.status = status === 404 ? 404 : 503;
 ---
-<Base title={`${name} · openRuyi Packages`}>
+<Base title={name}>
   <div class="package-detail"><a class="back" href="/">← Packages</a>
   {data ? <>
     {data.notices.map(notice => <p class="notice">{notice}</p>)}

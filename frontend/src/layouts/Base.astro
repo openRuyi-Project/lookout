@@ -2,7 +2,8 @@
 import '../styles/base.css';
 import '../styles/app.css';
 interface Props {title?: string}
-const {title = 'openRuyi Tracker'} = Astro.props;
+const siteName = 'openRuyi Lookout';
+const {title} = Astro.props;
 
 // Cookie-backed themes also work when scripting is disabled.
 // No cookie means follow the system preference, which the CSS handles on its own.
@@ -23,7 +24,7 @@ const themeHref = `/theme?to=${next}&from=${encodeURIComponent(back)}`;
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
     <meta name="color-scheme" content="light dark"/>
-    <title>{title}</title>
+    <title>{title ? `${title} · ${siteName}` : siteName}</title>
     <link rel="icon" type="image/svg+xml" href="/openruyi.svg"/>
     <link rel="stylesheet" href="/presentation.css"/>
   </head>
@@ -31,7 +32,7 @@ const themeHref = `/theme?to=${next}&from=${encodeURIComponent(back)}`;
     <a class="skip" href="#main">Skip to content</a>
     <div class="shell">
       <header class="masthead">
-        <a class="brand" href="/"><img src="/openruyi.svg" width="38" height="28" alt=""/><span>openRuyi Tracker</span></a>
+        <a class="brand" href="/"><img src="/openruyi.svg" width="38" height="28" alt=""/><span>{siteName}</span></a>
         <nav aria-label="Site links">
           <a class="theme-toggle" href={themeHref} aria-label={`Color theme: ${label[theme]}. Activate for ${label[next]}.`}>
             <span aria-hidden="true">{icon[theme]}</span>{label[theme]}
@@ -42,7 +43,7 @@ const themeHref = `/theme?to=${next}&from=${encodeURIComponent(back)}`;
       </header>
       <main id="main"><slot /></main>
       <footer class="footer">
-        <span class="count">openRuyi Tracker</span>
+        <span class="count">{siteName}</span>
         <a href="/LICENSE.txt">License</a>
       </footer>
     </div>

@@ -396,7 +396,7 @@ def create_app(db=None):
             cache.stop()
             worker.join(timeout=15)
 
-    app = FastAPI(title='openRuyi Package Monitor', version='0.1.0', docs_url=None, redoc_url=None,
+    app = FastAPI(title='openRuyi Lookout', version='0.1.0', docs_url=None, redoc_url=None,
                   lifespan=lifespan,
                   description='Read-only collected facts. succeeded is not a release or revision verification claim.')
     app.state.projection = cache

@@ -3,7 +3,7 @@ import Base from '../../layouts/Base.astro';
 const evidence = '/api/v2/packages?monitor=security&search=observations&q=CVE-&include=security&detail=full&per_page=20';
 const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=version&include=security';
 ---
-<Base title="API · openRuyi Packages">
+<Base title="API">
   <article class="prose">
     <h1>API</h1>
     <p>Read-only snapshots. <a href="/openapi.json">OpenAPI: parameters and response schemas</a>.</p>

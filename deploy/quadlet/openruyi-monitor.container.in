@@ -1,5 +1,5 @@
 [Unit]
-Description=openRuyi Package Monitor
+Description=openRuyi Lookout
 
 [Container]
 Image=@IMAGE@

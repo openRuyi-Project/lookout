@@ -1,4 +1,4 @@
-# openRuyi Package Monitor — single-container image.
+# openRuyi Lookout — single-container image.
 #
 # Fedora base: native `rpm` Python bindings, git, and node are first-class here, which
 # is why the SPEC source and version comparison need no extra tooling. The image runs
@@ -87,7 +87,7 @@ LABEL org.opencontainers.image.revision=$SOURCE_REVISION \
       org.opencontainers.image.source=$SOURCE_URL \
       org.opencontainers.image.base.name=$FEDORA_IMAGE \
       org.opencontainers.image.version=$RELEASE_VERSION \
-      org.opencontainers.image.title="openRuyi Tracker" \
+      org.opencontainers.image.title="openRuyi Lookout" \
       org.opencontainers.image.vendor="openRuyi Project" \
       org.opencontainers.image.licenses="MulanPSL-2.0"
 

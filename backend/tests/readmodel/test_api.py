@@ -45,7 +45,9 @@ def test_unknown_vs_absent_and_read_only(tmp_path,snapshot):
 
 def test_schema_export_and_no_secret_config(tmp_path,snapshot):
     c,_=client(tmp_path,snapshot)
-    assert '/api/v2/packages' in c.get('/openapi.json').json()['paths']
+    schema = c.get('/openapi.json').json()
+    assert '/api/v2/packages' in schema['paths']
+    assert schema['info']['title'] == 'openRuyi Lookout'
     export=c.get('/api/v2/export')
     assert len(export.json()['packages'])==5
     assert 'attachment;' in export.headers['content-disposition']

@@ -343,8 +343,13 @@ try {
   assert.equal(invalidSelection.status, 422);
   assert.match(invalidSelection.body.toString(), /Invalid filter selection/);
   const listing = await read('/');
-  assert.match(listing, /<title>openRuyi Tracker<\/title>/);
-  assert.match(listing, /class="brand"[^]*?<span>openRuyi Tracker<\/span>/);
+  assert.match(listing, /<title>openRuyi Lookout<\/title>/);
+  assert.match(listing, /class="brand"[^]*?<span>openRuyi Lookout<\/span>/);
+  for (const [path, heading] of [['/about', 'About'], ['/api', 'API'], ['/packages/failed', 'failed']]) {
+    const html = await read(path);
+    assert.ok(html.includes(`<title>${heading} · openRuyi Lookout</title>`));
+    assert.match(html, /class="count">openRuyi Lookout<\/span>/);
+  }
   assert.match(listing, /lang="en"/);
   const globalNavigation = listing.match(/<div class="global-navigation"[^]*?<\/section>\s*<\/div>/)?.[0];
   assert.ok(globalNavigation, 'global filters have a persistent sidebar location');

@@ -1,4 +1,4 @@
-# openRuyi Tracker
+# openRuyi Lookout
 
 Read-only package tracking for [openRuyi](https://openruyi.cn): RPM source versions,
 upstream releases, OBS builds and maintenance evidence. Collectors publish SQLite
