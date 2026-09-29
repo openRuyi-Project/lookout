@@ -15,6 +15,7 @@ from tracker.monitors.requires import (
 )
 from tracker.providers import cratesio as crates_metadata
 from tracker.providers.client import IO
+from tracker.providers.http import USER_AGENT
 
 
 SUBJECT = {"name": "rust-not-an-identity", "version": "1.0.0", "target_version": "2.0.0"}
@@ -64,7 +65,7 @@ def test_one_registry_response_serves_three_monitors_and_version_lines(tmp_path)
         assert len(calls) == 1
         assert [r['findings'][0]['label'] for r in results] == ['LicenseDiff', 'Yanked', 'Dependencies']
         assert all(r['status'] == 'ok' for r in results)
-        assert 'https://github.com/Jingwiw/openRuyi-monitor' in calls[0].headers['User-Agent']
+        assert calls[0].headers['User-Agent'] == USER_AGENT
         other_run = IO(tmp_path, client=client)
         assert monitor_yanked.check({**SUBJECT, 'version': '2.0.0'}, SETTINGS, other_run.for_hosts({'crates.io'}))['findings'] == []
         assert len(calls) == 1

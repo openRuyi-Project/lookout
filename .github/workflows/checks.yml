@@ -16,7 +16,8 @@ jobs:
       - name: Build frontend and native runtime
         run: |
           VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"])')
-          docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg RELEASE_VERSION="$VERSION" -t openruyi-monitor:test -f Containerfile .
+          docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --build-arg RELEASE_VERSION="$VERSION" -t openruyi-monitor:test -f Containerfile .
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-monitor:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
       - name: Native RPM, confinement, backend, API contract and SSR
         env:
           CONTAINER_ENGINE: docker

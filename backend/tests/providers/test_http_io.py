@@ -16,6 +16,24 @@ from tracker.monitors.version import discover
 from tracker.providers import client as monitor_io, http as http_io
 
 
+def test_obs_and_monitor_requests_share_product_identity(config):
+    observed = []
+    def handle(request):
+        observed.append(request.headers['User-Agent'])
+        return httpx.Response(200, json={})
+    client = obs.Client(config, attempts=1)
+    try:
+        headers = client.client.headers
+        with httpx.Client(transport=httpx.MockTransport(handle), headers=headers) as transport:
+            client.client.close()
+            client.client = transport
+            client.get('/metadata')
+            monitor_io.IO(client=transport).json('GET', 'https://example.org/metadata')
+        assert observed == [http_io.USER_AGENT, http_io.USER_AGENT]
+    finally:
+        client.close()
+
+
 def test_cached_inputs_keep_their_observation_time(tmp_path, monkeypatch):
     clock = [1000000000.0]
     requests = []

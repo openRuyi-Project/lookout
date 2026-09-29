@@ -16,11 +16,10 @@
 # SPDX-License-Identifier: MulanPSL-2.0
 set -eu
 
-# All inputs are overridable so the same script serves host and container deploys.
-BASE=${TRACKER_HOME:-"$HOME/apps/openruyi-tracker"}
-REPO_URL=${SPEC_REPO_URL:-"https://github.com/openRuyi-Project/openRuyi.git"}
-REPO_BRANCH=${SPEC_REPO_BRANCH:-"main"}
-REPO_DIR=${SPEC_REPO_DIR:-"$BASE/runtime/spec-full.git"}
+# The supervisor passes the validated [spec] configuration; no second defaults.
+REPO_URL=${SPEC_REPO_URL:?SPEC_REPO_URL is required}
+REPO_BRANCH=${SPEC_REPO_BRANCH:?SPEC_REPO_BRANCH is required}
+REPO_DIR=${SPEC_REPO_DIR:?SPEC_REPO_DIR is required}
 REFSPEC="+refs/heads/$REPO_BRANCH:refs/heads/$REPO_BRANCH"
 
 mkdir -p "$(dirname "$REPO_DIR")"

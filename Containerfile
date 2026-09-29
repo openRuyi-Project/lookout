@@ -40,16 +40,6 @@ RUN python3 -m venv --system-site-packages /opt/venv \
 
 # ---- runtime stage --------------------------------------------------------
 FROM ${FEDORA_IMAGE}
-ARG SOURCE_REVISION=""
-ARG RELEASE_VERSION="development"
-LABEL org.opencontainers.image.revision=$SOURCE_REVISION \
-      org.opencontainers.image.version=$RELEASE_VERSION \
-      org.opencontainers.image.title="openRuyi Tracker" \
-      org.opencontainers.image.name="openruyi-monitor" \
-      org.opencontainers.image.source="https://github.com/Jingwiw/openRuyi-monitor" \
-      org.opencontainers.image.url="https://github.com/Jingwiw/openRuyi-monitor" \
-      org.opencontainers.image.vendor="openRuyi Project" \
-      org.opencontainers.image.licenses="MulanPSL-2.0"
 # Keep native rpm and the existing Python RPM macro surface for SPEC parsing.
 # pycurl needs the shared curl/OpenSSL libraries, not their development headers.
 RUN dnf install -y \
@@ -82,6 +72,24 @@ ENV PYTHONPATH=/app/backend \
     PATH=/opt/venv/bin:/usr/bin:/bin
 # The deployment entrypoints mount explicit persistent storage; no anonymous volume.
 EXPOSE 8080
+
+ARG SOURCE_REVISION=""
+ARG SOURCE_URL=""
+ARG RELEASE_VERSION="development"
+ARG FEDORA_IMAGE
+# LABEL inherits Fedora's legacy application identity; omitting it would retain
+# Fedora's URL/name/version on this image. Empty values suppress that attribution.
+LABEL name="" vendor="" version="" license="" \
+      org.opencontainers.image.name="" \
+      org.opencontainers.image.url="" \
+      org.opencontainers.image.license=""
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION \
+      org.opencontainers.image.source=$SOURCE_URL \
+      org.opencontainers.image.base.name=$FEDORA_IMAGE \
+      org.opencontainers.image.version=$RELEASE_VERSION \
+      org.opencontainers.image.title="openRuyi Tracker" \
+      org.opencontainers.image.vendor="openRuyi Project" \
+      org.opencontainers.image.licenses="MulanPSL-2.0"
 
 # The web server has no built-in auth; put access control in front of it if exposed.
 # Health check uses python (always present) rather than adding curl to the image.

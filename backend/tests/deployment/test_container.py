@@ -195,6 +195,20 @@ class ContainerTests(unittest.TestCase):
             self.assertIn('retaining the existing SPEC clone', second.stderr)
             self.assertIn('SPEC clone ready:', second.stdout)
 
+    def test_clone_requires_complete_configuration_before_writing(self):
+        for missing in ('SPEC_REPO_URL', 'SPEC_REPO_BRANCH', 'SPEC_REPO_DIR'):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                env = {**os.environ, 'SPEC_REPO_URL': 'https://example.invalid/spec.git',
+                       'SPEC_REPO_BRANCH': 'devel', 'SPEC_REPO_DIR': str(root / 'clone'),
+                       'HOME': str(root / 'home')}
+                del env[missing]
+                result = subprocess.run(['sh', str(ROOT / 'deploy/init-spec-repo.sh')],
+                                        env=env, text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(missing, result.stderr)
+                self.assertEqual(list(root.iterdir()), [])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

@@ -3,6 +3,8 @@ import time
 
 import httpx
 
+USER_AGENT = 'openRuyi-monitor'
+
 
 def read_response(response, *, max_bytes, deadline):
     """Reject late headers, slow bodies and oversized decoded responses.

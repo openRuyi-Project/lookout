@@ -86,7 +86,24 @@ def test_spec_repo_env_override_enables_source(configured_path, monkeypatch):
     assert cfg.load(configured_path)['spec']['repo'] is None
     # The container image sets TRACKER_SPEC_REPO to the clone path on its data volume.
     monkeypatch.setenv('TRACKER_SPEC_REPO', '/data/spec-full.git')
-    assert cfg.load(configured_path)['spec']['repo'] == '/data/spec-full.git'
+    with pytest.raises(ValueError, match='spec.url'):
+        cfg.load(configured_path)
+    document = tomlkit.parse(configured_path.read_text())
+    document['spec'] = {'url': 'https://example.invalid/team/packages.git', 'branch': 'devel'}
+    configured_path.write_text(tomlkit.dumps(document))
+    loaded = cfg.load(configured_path)['spec']
+    assert (loaded['repo'], loaded['url'], loaded['branch']) == (
+        '/data/spec-full.git', 'https://example.invalid/team/packages.git', 'devel')
+
+
+@pytest.mark.parametrize('missing', ['url', 'branch'])
+def test_managed_clone_requires_explicit_source(configured_path, missing):
+    document = tomlkit.parse(configured_path.read_text())
+    document['spec'] = {'repo': '/data/spec.git', 'url': 'https://example.invalid/packages.git', 'branch': 'devel'}
+    del document['spec'][missing]
+    configured_path.write_text(tomlkit.dumps(document))
+    with pytest.raises(ValueError, match='spec.' + missing):
+        cfg.load(configured_path)
 
 
 def test_unchanged_configuration_is_checked_without_parsing(config, configured_path, monkeypatch):

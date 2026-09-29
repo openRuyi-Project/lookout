@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from tracker.providers.http import read_response
+from tracker.providers.http import USER_AGENT, read_response
 
 
 class IO:
@@ -108,7 +108,7 @@ class IO:
                 self.wait_for_host(host, min_interval)
                 deadline = time.monotonic() + 30
                 with self.client.stream(method, url, json=body if method == 'POST' else None,
-                                        headers={'User-Agent': 'openRuyi-monitor (https://github.com/Jingwiw/openRuyi-monitor)'}) as response:
+                                        headers={'User-Agent': USER_AGENT}) as response:
                     if response.status_code in (429, 503):
                         self.defer_host(host, response.headers.get('Retry-After'))
                     response.raise_for_status()

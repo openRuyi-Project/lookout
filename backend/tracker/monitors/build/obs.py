@@ -8,7 +8,7 @@ from defusedxml import ElementTree as ET
 import httpx
 
 from tracker.monitors.schedule import Schedule
-from tracker.providers.http import read_response
+from tracker.providers.http import USER_AGENT, read_response
 from tracker.state import usable_version
 
 MAX_XML = 20 * 1024 * 1024
@@ -217,7 +217,7 @@ class Client:
         self.client = httpx.Client(
             timeout=httpx.Timeout(connect=self.timeout, read=self.timeout, write=self.timeout, pool=self.timeout),
             limits=httpx.Limits(max_connections=workers, max_keepalive_connections=workers),
-            follow_redirects=False, headers={'User-Agent': 'openruyi-tracker/0.1'})
+            follow_redirects=False, headers={'User-Agent': USER_AGENT})
     def close(self):
         self.client.close()
     def get(self, path):

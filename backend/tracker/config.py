@@ -104,8 +104,8 @@ def load(path):
         # The image sets TRACKER_SPEC_REPO: it enables SPEC collection even
         # without a [spec] table. An empty environment value does not override repo.
         'repo': os.environ.get('TRACKER_SPEC_REPO') or spec.get('repo'),
-        'url': spec.get('url', 'https://github.com/openRuyi-Project/openRuyi.git'),
-        'branch': spec.get('branch', 'main'),
+        'url': spec.get('url'),
+        'branch': spec.get('branch'),
         'source_url_template': spec.get('source_url_template'),
         'macro_package': spec.get('macro_package', config['collector'].get('spec_macro_package')),
         'extra_macro_packages': spec.get('extra_macro_packages', []),
@@ -137,8 +137,10 @@ def load(path):
     config['spec']['interval_seconds'] = interval
     for key in ('url', 'branch'):
         value = config['spec'][key]
+        if value is None and not config['spec']['repo']:
+            continue
         if not isinstance(value, str) or not value or value.startswith('-') or any(c in value for c in '\r\n\x00'):
-            raise ValueError(f'spec.{key} must be a non-empty safe string')
+            raise ValueError(f'spec.{key} must be configured as a non-empty safe string')
     repo = config['spec']['repo']
     if repo is not None and (not isinstance(repo, str) or not repo):
         raise ValueError('spec.repo must be a non-empty path or omitted')

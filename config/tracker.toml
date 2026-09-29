@@ -116,6 +116,8 @@ background = "#475569"
 foreground = "#ffffff"
 
 [spec]
+url = "https://github.com/openRuyi-Project/openRuyi.git"
+branch = "main"
 extra_macro_packages = ["openruyi-linux-build"]
 
 [spec.local_sources]

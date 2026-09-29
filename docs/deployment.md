@@ -60,6 +60,7 @@ installation; upgrading never reinitializes config or data.
 | Processes | `--pids-limit 512`; `docker update --pids-limit 512 NAME` | `PidsLimit=512` | includes collector child processes |
 | Outbound proxy | `--env TRACKER_MONITOR_PROXY=URL` | `Environment=TRACKER_MONITOR_PROXY=URL` | absent; configure Git's proxy separately if needed |
 | SPEC clone | `--env TRACKER_SPEC_REPO=/data/spec-full.git` | `Environment=TRACKER_SPEC_REPO=/data/spec-full.git` | overrides `[spec].repo`; an empty value falls back to TOML |
+| SPEC source | `tracker.toml`: `[spec].url`, `[spec].branch` | same | required for a managed clone; no source is inferred by the executable |
 | OBS project and targets | mounted `tracker.toml`: `[obs]`, `[[targets]]` | same | release defaults |
 | Collection budget | `tracker.toml`: `[collector]`, `[monitors]` | same | existing intervals/workers/timeouts; restart after editing |
 | Package identities and rules | `packages.toml`, `versions/nvchecker.toml` | same | see [configuration](../config/README.md) |
@@ -195,6 +196,10 @@ The first row-storage release migrates legacy snapshots once. Later compatible
 upgrades do not rewrite the dataset. Do not run two full instances against one
 SQLite directory, even during testing or rollback.
 
+Before upgrading a legacy config that enabled a managed SPEC clone without
+`[spec].url` and `branch`, record its existing Git origin and branch in those
+fields. Preflight rejects missing identity rather than selecting another source.
+
 ## Build and release checks
 
 From a clean explicit commit, run on the target architecture:
@@ -203,7 +208,7 @@ From a clean explicit commit, run on the target architecture:
 VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"])')
 IMAGE="openruyi-monitor:$(git rev-parse --short=12 HEAD)"
 docker build --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
-  --build-arg RELEASE_VERSION="$VERSION" -t "$IMAGE" -f Containerfile .
+  --build-arg RELEASE_VERSION="$VERSION" --build-arg SOURCE_URL="${SOURCE_URL:-}" -t "$IMAGE" -f Containerfile .
 CONTAINER_ENGINE=docker deploy/check-image.sh "$IMAGE"
 CONTAINER_ENGINE=docker python3 deploy/smoke-image.py "$IMAGE"
 python3 deploy/smoke-release.py "$IMAGE"
@@ -216,6 +221,10 @@ exercises Docker installation/upgrade; Quadlet additionally needs generator and
 isolated systemd service tests. The packager rejects dirty source or mismatching
 revision/version. Scan the saved image with a current vulnerability database;
 record findings and database age rather than treating build success as a scan.
+
+`SOURCE_URL` is optional source-provenance metadata supplied by the publisher;
+CI uses its repository context. It is not the deployed website URL and is never
+read by the service. The monitored SPEC repository is a separate `[spec]` setting.
 
 Deploy the exact tested artifact, not a rebuild of moving `main`. Keep immutable
 release versions. Target-host acceptance still includes native isolation, SELinux,

@@ -15,7 +15,6 @@ from deployment import LABEL, PROTECTION, PYTHON, Docker, healthy, image_command
 
 PREPARE = '''import os, shutil, sys, tarfile
 from pathlib import Path
-from tracker.config import load
 roots = [Path(p) for p in sys.argv[2:]]
 if any(list(p.iterdir()) for p in roots):
     raise SystemExit('refusing nonempty installation volumes')
@@ -24,7 +23,6 @@ if sys.argv[1] == 'image':
 else:
     with tarfile.open(fileobj=sys.stdin.buffer, mode='r|') as archive:
         archive.extractall('/config', filter='data')
-load(Path('/config/tracker.toml'))
 for root in roots:
     for path in reversed([root, *root.rglob('*')]):
         path.chmod(0o700 if path.is_dir() else 0o600)
