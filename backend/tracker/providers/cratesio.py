@@ -3,6 +3,7 @@ import re
 from urllib.parse import quote
 
 from tracker.identity import from_package
+from tracker.monitors.source.release import semver
 from tracker.providers.model import Release
 
 HOSTS = {"crates.io"}
@@ -28,7 +29,7 @@ def inputs(package, configured):
     return None
 
 
-def release(name, version, io):
+def release(name, version, io, *, normalized=False):
     """One project fetch serves all its versions and all three domain monitors."""
     if not isinstance(version, str) or not 1 <= len(version) <= 512:
         raise ValueError("monitor requires an observed release version")
@@ -43,14 +44,20 @@ def release(name, version, io):
         raise ValueError("crates.io response identity does not match the query")
     matches = [item for item in data["versions"]
                if isinstance(item, dict) and item.get("num") == version]
+    if normalized and not matches and semver(version) and '+' not in version:
+        # nvchecker may normalize SemVer build metadata. Recover it only from
+        # one registry-owned release; never erase prereleases or choose between
+        # several artifacts with the same normalized version.
+        matches = [item for item in data['versions'] if isinstance(item, dict)
+                   and semver(item.get('num')) and item['num'].split('+', 1)[0] == version]
     if len(matches) != 1 or str(matches[0].get("crate", "")).lower() != name.lower():
         raise ValueError("crates.io did not return the exact release identity")
     return matches[0], url
 
 
-def metadata(settings, version, io):
+def metadata(settings, version, io, *, normalized=True):
     name = project(settings)
-    info, url = release(name, version, io)
+    info, url = release(name, version, io, normalized=normalized)
     declaration = info.get("license")
     # Cargo's deprecated slash means OR. Keep the original declaration as evidence.
     expression = declaration.replace("/", " OR ") if isinstance(declaration, str) else declaration
@@ -58,4 +65,9 @@ def metadata(settings, version, io):
         name=name, source="crates.io", url=url,
         license_expression=expression, license_declaration=declaration,
         yanked=info.get("yanked"), yanked_reason=None,
+        version=info['num'],
     )
+
+
+def withdrawal(settings, version, io):
+    return metadata(settings, version, io, normalized=False)

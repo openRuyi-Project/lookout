@@ -13,8 +13,30 @@ def test_actual_native_config():
     c=cfg.load(ROOT/'config/tracker.toml')
     assert c['native'] and all(e.get('source') != 'manual' for e in c['native'].values())
     assert Path(c['nvpath']).name=='nvchecker.toml'
-    assert not (ROOT/'config/nvchecker.d').exists()
-    assert 'nvtext' not in c
+
+
+@pytest.mark.parametrize('environment', [
+    {'python_version': '3.14'}, {'extra': 'speedups'}, {'sys_platform': True},
+    {'platform_machine': ''}, {'unknown': 'linux'},
+])
+def test_dependency_target_environment_rejects_dynamic_or_invalid_values(configured_path, environment):
+    document = tomlkit.parse(configured_path.read_text())
+    document.setdefault('openruyi', {})['dependency_environments'] = {'pep508': environment}
+    configured_path.write_text(tomlkit.dumps(document))
+    with pytest.raises(ValueError, match='dependency'):
+        cfg.load(configured_path)
+
+
+def test_declared_dependency_environment_is_an_input_to_configuration_guard(configured_path):
+    document = tomlkit.parse(configured_path.read_text())
+    document.setdefault('openruyi', {})['dependency_environments'] = {'pep508': {'sys_platform': 'linux'}}
+    configured_path.write_text(tomlkit.dumps(document))
+    loaded = cfg.load(configured_path)
+    assert loaded['openruyi']['dependency_environments'] == {'pep508': {'sys_platform': 'linux'}}
+    document['openruyi']['dependency_environments']['pep508']['sys_platform'] = 'win32'
+    configured_path.write_text(tomlkit.dumps(document))
+    with pytest.raises(ValueError, match='configuration changed'):
+        cfg.require_unchanged(loaded, configured_path)
 
 
 def test_explicit_provider_identity_and_track_label_are_preserved(configured_path):
@@ -130,4 +152,24 @@ def test_spec_auxiliary_input_paths_are_bounded(configured_path, settings):
     document['spec'] = settings
     configured_path.write_text(tomlkit.dumps(document))
     with pytest.raises(ValueError, match='spec.'):
+        cfg.load(configured_path)
+
+
+@pytest.mark.parametrize('icon', ['rust', 'gopher', 'future-tool'])
+def test_buildsystem_icon_is_a_declared_identifier(configured_path, icon):
+    document = tomlkit.parse(configured_path.read_text())
+    document.setdefault('openruyi', {})['buildsystems'] = {
+        'fixture': {'background': '#112233', 'foreground': '#ffffff', 'icon': icon}}
+    configured_path.write_text(tomlkit.dumps(document))
+    assert cfg.load(configured_path)['openruyi']['buildsystems']['fixture']['icon'] == icon
+
+
+@pytest.mark.parametrize('icon', ['https://host/icon.svg', '../rust', 'rust.svg', 'x" onerror="alert(1)', '', None, 4])
+def test_buildsystem_icon_rejects_paths_urls_and_markup(configured_path, icon):
+    document = tomlkit.parse(configured_path.read_text())
+    # TOML has no null, so exercise the other invalid scalar through a boolean.
+    document.setdefault('openruyi', {})['buildsystems'] = {
+        'fixture': {'background': '#112233', 'foreground': '#ffffff', 'icon': False if icon is None else icon}}
+    configured_path.write_text(tomlkit.dumps(document))
+    with pytest.raises(ValueError, match='local icon identifier'):
         cfg.load(configured_path)

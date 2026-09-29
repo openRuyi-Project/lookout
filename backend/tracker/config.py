@@ -71,12 +71,25 @@ def load(path):
             or not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_+.-]{1,200}', value)
             for key, value in dependencies.items())):
         raise ValueError('openruyi.dependencies maps dependency identities to source package names')
+    environments = config['openruyi'].setdefault('dependency_environments', {})
+    allowed_environment = {'sys_platform', 'os_name', 'platform_system', 'platform_machine',
+                           'implementation_name', 'platform_python_implementation'}
+    if (not isinstance(environments, dict) or set(environments) - {'pep508'}
+            or not isinstance(environments.get('pep508', {}), dict)
+            or set(environments.get('pep508', {})) - allowed_environment
+            or any(not isinstance(value, str) or not 1 <= len(value) <= 100
+                   for value in environments.get('pep508', {}).values())):
+        raise ValueError('openruyi.dependency_environments.pep508 requires explicit target facts')
     for name, appearance in config['openruyi']['buildsystems'].items():
         if (not isinstance(name, str) or not name or len(name) > 100
-                or not isinstance(appearance, dict) or set(appearance) != {'background', 'foreground'}
+                or not isinstance(appearance, dict)
+                or not {'background', 'foreground'} <= appearance.keys()
+                or set(appearance) - {'background', 'foreground', 'icon'}
                 or any(not isinstance(v, str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', v)
-                       for v in appearance.values())):
-            raise ValueError('openruyi.buildsystems requires category names and background/foreground hex colors')
+                       for k, v in appearance.items() if k != 'icon')
+                or ('icon' in appearance and (not isinstance(appearance['icon'], str)
+                    or not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', appearance['icon'])))):
+            raise ValueError('openruyi.buildsystems requires hex colors and an optional local icon identifier')
     ids = [t['id'] for t in config['targets']]
     identities = [(t['repository'], t['architecture']) for t in config['targets']]
     if len(ids) != 3 or len(set(ids)) != 3 or len(set(identities)) != 3:

@@ -10,10 +10,11 @@ def requirement_status(requirement, *, target=False):
     status = requirement['target_satisfaction'] if target else requirement['satisfaction']
     reason = requirement.get('target_reason') if target else requirement.get('reason')
     mark, tone = {'satisfied': ('✓', 'positive'), 'unsatisfied': ('✗', 'negative'),
-                  'unknown': ('?', 'muted')}[status]
-    title = {'satisfied': 'Current source version satisfies the upstream declaration',
-             'unsatisfied': 'Current source version does not satisfy the upstream declaration',
-             'unknown': 'Cannot determine: ' + (reason or 'unknown').replace('_', ' ')}[status]
+                  'unknown': ('?', 'muted'), 'not_applicable': ('—', 'muted')}[status]
+    title = {'satisfied': 'Observed dependency version satisfies the upstream declaration',
+             'unsatisfied': 'Observed dependency version does not satisfy the upstream declaration',
+             'unknown': 'Cannot determine: ' + (reason or 'unknown').replace('_', ' '),
+             'not_applicable': 'Dependency condition does not apply to the configured target'}[status]
     return text(mark, tone=tone, title=title)
 
 
@@ -78,7 +79,8 @@ def requires_sections(result, links):
             values = requirement_values(requirement)
             observed = requirement['observed'] or {}
             rows.append(Row(key=str(number) + ':' + requirement['dependency'], cells=[
-                cell([values[0]]), cell(values[1:]), cell([text(observed.get('version'), kind='code')])]))
+                cell([values[0]]), cell(values[1:]), cell([text(observed.get('version'), kind='code',
+                    href=observed.get('evidence_url'), title=observed.get('origin'))])]))
             if clauses:
                 condition_fields = [field('Applies when (any)', *[text(clause, kind='code') for clause in clauses])]
                 if requirement.get('optional') is None:

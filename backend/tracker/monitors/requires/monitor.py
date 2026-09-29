@@ -2,9 +2,10 @@
 from typing import Protocol
 
 from tracker.monitors.model import finding, fingerprint
-from tracker.monitors.requires import cratesio as requires_cratesio, pypi as requires_pypi
+from tracker.monitors.requires import cpan as requires_cpan, cratesio as requires_cratesio, pypi as requires_pypi
 from tracker.monitors.requires.model import Requirement, UnsupportedRequirements, key
 from tracker.monitors.schedule import Schedule
+from tracker.providers.model import UnsupportedRelease
 
 
 class Backend(Protocol):
@@ -15,10 +16,10 @@ class Backend(Protocol):
     def read(self, version: str, settings: dict, io) -> list[Requirement]: ...
 
 
-TITLE = 'Requires'
-VERSION = 3
+TITLE = 'Dependencies'
+VERSION = 5
 SCOPE = 'current_and_upgrade'
-BACKENDS: dict[str, Backend] = {'pypi': requires_pypi, 'cratesio': requires_cratesio}
+BACKENDS: dict[str, Backend] = {'pypi': requires_pypi, 'cratesio': requires_cratesio, 'cpan': requires_cpan}
 HOSTS = set().union(*(backend.HOSTS for backend in BACKENDS.values()))
 
 
@@ -62,13 +63,16 @@ def check(subject, settings, io):
                     raise ValueError('duplicate dependency declaration')
                 seen.add(identity)
                 release_findings.append(finding(
-                    scope + ':' + fingerprint(identity), 'Requires',
+                    scope + ':' + fingerprint(identity), TITLE,
                     declaration.name + ' ' + (declaration.declaration.strip() or 'any version'),
                     [], declaration.url, scope=scope,
                     target_version=version if scope == 'upgrade' else None, requirement=fact))
-            findings.extend(release_findings)
             checks[scope] = {'status': 'ok', 'note': None}
-        except UnsupportedRequirements as error:
+            provides = getattr(backend, 'provides', None)
+            if provides:
+                checks[scope]['provides'] = provides(version, settings, io)
+            findings.extend(release_findings)
+        except (UnsupportedRequirements, UnsupportedRelease) as error:
             checks[scope] = {'status': 'unsupported', 'note': str(error)}
         except Exception:
             checks[scope] = {'status': 'error', 'note': 'Upstream release requirements could not be read.'}

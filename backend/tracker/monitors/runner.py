@@ -7,9 +7,11 @@ from pathlib import Path
 import time
 
 from tracker import config as cfg, identity as package_identity, state
-from tracker.monitors.model import CORE_IDS, fingerprint, validate_findings
+from tracker.monitors.model import CORE_IDS, fingerprint, validate_findings, validate_url
+from tracker.monitors.requires.model import validate_provides
 from tracker.monitors.registry import REGISTRY
 from tracker.monitors.schedule import Schedule
+from tracker.monitors.source.release import pinned_revision
 from tracker.monitors.version import compare as version_status
 from tracker.providers.client import IO
 
@@ -75,7 +77,10 @@ def plan(config, snapshot, name, provider, *, version=None):
     configured = config.get('packages', {}).get(name, {}).get('monitors', {}).get(provider)
     # Adapters only see their package context, not snapshot/config/storage handles.
     try:
+        revision = pinned_revision(version.source)
         inputs = adapter.inputs({**current, 'identity': identity,
+                                 'source_commit': {'repository': revision.repository, 'commit': revision.current}
+                                                  if revision else None,
                                  'source_release': version.release.public() if version.release else None}, configured)
         if inputs is not None and not isinstance(inputs, dict):
             raise ValueError('monitor inputs must be a mapping or None')
@@ -162,13 +167,21 @@ def retain_scopes(output, proposed, previous, at):
         raise ValueError('monitor release checks mismatch')
     checks, findings = {}, list(output['findings'])
     for scope, check in output['scope_checks'].items():
-        if set(check) != {'status', 'note'} or check['status'] not in ('ok', 'error', 'unsupported'):
+        if (set(check) - {'status', 'note', 'provides'} or not {'status', 'note'} <= set(check)
+                or check['status'] not in ('ok', 'error', 'unsupported')):
             raise ValueError('invalid monitor release check')
+        validate_provides(check.get('provides', []))
+        for component in check.get('provides', []):
+            validate_url(component['url'])
+        if check.get('provides') and check['status'] != 'ok':
+            raise ValueError('provided components require a successful release check')
         old = previous.get('scope_checks', {}).get(scope, {}) if same_scope(proposed, previous, scope) else {}
         checks[scope] = {**check, 'attempted_at': at,
                          'checked_at': at if check['status'] == 'ok' else old.get('checked_at')}
         if check['status'] != 'ok' and old:
             findings.extend(f for f in previous.get('findings', []) if f['scope'] == scope)
+            if 'provides' in old:
+                checks[scope]['provides'] = old['provides']
     return {**output, 'scope_checks': checks, 'findings': findings}
 
 
@@ -225,8 +238,12 @@ def execute(provider, proposed, io, previous=None, *, schedule=None):
                 raise ValueError('monitor finding target mismatch')
         if combined:
             output = retain_scopes(output, proposed, previous, at)
-        revision = evidence_revision(
-            {'input_fingerprint': proposed['fingerprint']}, output['findings'])
+        revision_input = {'input_fingerprint': proposed['fingerprint']}
+        provides = {scope: sorted(check['provides'], key=fingerprint)
+                    for scope, check in output.get('scope_checks', {}).items() if check.get('provides')}
+        if provides:
+            revision_input['provides'] = provides
+        revision = evidence_revision(revision_input, output['findings'])
         unchanged = old.get('evidence_revision') == revision
         if unchanged:
             output['findings'] = old['findings']
@@ -293,6 +310,7 @@ def collect(config, config_path, db, *, io=None):
                         del queues[provider]
             catalog = {mid: {'title': getattr(REGISTRY[mid], 'TITLE', mid)} for mid in options['enabled']}
             dependency_packages = config.get('openruyi', {}).get('dependencies', {})
+            dependency_environments = config.get('openruyi', {}).get('dependency_environments', {})
             def publish():
                 with state.writer_lock(db, timeout=60):
                     cfg.require_unchanged(config, config_path)
@@ -318,10 +336,12 @@ def collect(config, config_path, db, *, io=None):
                                                         'input_status': 'pending', 'input_note': None}
                     if (latest.get('monitors') == valid and latest.get('monitor_catalog') == catalog and
                             latest.get('dependency_packages', {}) == dependency_packages and
+                            latest.get('dependency_environments', {}) == dependency_environments and
                             latest.get('monitor_stale_after_seconds') == options['stale_after_seconds']):
                         return latest
                     result = state.merge(latest, 'monitors', {'monitors': valid, 'monitor_catalog': catalog,
                         'dependency_packages': dependency_packages,
+                        'dependency_environments': dependency_environments,
                         'monitor_stale_after_seconds': options['stale_after_seconds']})
                     state.commit(db, result)
                 return result

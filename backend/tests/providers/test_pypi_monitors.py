@@ -94,7 +94,7 @@ def test_python_requirements_are_independent_attributed_release_facts_not_assess
     assert target['requirement']['constraint'] == {
         'expression': '>=3.10', 'source': 'PyPI', 'url': 'https://pypi.org/pypi/upstream-fixture/2.0/json'}
     for finding in (current, target):
-        assert finding["label"] == "Requires" and finding['facts'] == []
+        assert finding["label"] == "Dependencies" and finding['facts'] == []
         fact = finding['requirement']
         assert (fact['dependency'], fact['name'], fact['kind'], fact['scheme']) == ('python', 'Python', 'runtime', 'pep440')
         assert not {"severity", "resolution", "action"} & finding.keys()
@@ -163,7 +163,7 @@ def test_pypi_monitors_share_http_cache_without_coupling_to_license_availability
         assert {url.split("/")[-2] for url in calls} == {"1.0", "2.0"}
         assert results[0]["status"] == "unsupported"  # No SPDX metadata does not gate other checks.
         assert results[1]["findings"][0]["label"] == "Yanked"
-        assert results[2]["findings"][0]["label"] == "Requires"
+        assert results[2]["findings"][0]["label"] == "Dependencies"
         # A later runner instance uses the same dated transport cache.
         later_io = IO(tmp_path / "cache", client=client)
         assert monitor_yanked.check(SUBJECT, SETTINGS, later_io.for_hosts(monitor_yanked.HOSTS)) == results[1]

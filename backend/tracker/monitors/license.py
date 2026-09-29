@@ -1,15 +1,17 @@
-"""Upgrade-only declared-license metadata comparison, not legal classification."""
+"""Upgrade-only same-provider license metadata comparison, not legal classification."""
 
 from license_expression import ExpressionError, Licensing
 from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
 
 from tracker.monitors.model import evidence, finding, version_query as query_subject
+from tracker.monitors.issues import Issue
 from tracker.monitors.schedule import Schedule
 from tracker.providers.release import HOSTS, inputs, read
+from tracker.providers.model import UnsupportedRelease
 
 
-TITLE = 'License'
-VERSION = 5
+TITLE = Issue.LICENSE_DIFF
+VERSION = 6
 SCOPE = "upgrade"
 _LICENSING = Licensing()
 
@@ -38,7 +40,10 @@ def check(subject, settings, io):
     originals = []
     releases = []
     for version in (subject["version"], subject["target_version"]):
-        release = read(settings, version, io)
+        try:
+            release = read(settings, version, io)
+        except UnsupportedRelease as error:
+            return {'status': 'unsupported', 'findings': [], 'note': str(error)}
         expression = release.license_expression
         if not expression:
             return {
@@ -69,14 +74,15 @@ def check(subject, settings, io):
     if not equivalent:
         facts = [
             evidence(
-                "Declared license · " + version, expression, release.source, release.url
+                "License · " + (release.version or version) + (' · ' + release.license_field if release.license_field else ''),
+                expression, release.source, release.url
             )
             for version, expression, release in zip((subject["version"], subject["target_version"]), originals, releases)
         ]
         findings.append(
             finding(
                 "declared-license",
-                "License",
+                Issue.LICENSE_DIFF,
                 f"{old} → {new}",
                 facts,
                 releases[-1].url,

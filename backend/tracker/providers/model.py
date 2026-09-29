@@ -2,6 +2,10 @@
 from dataclasses import dataclass
 
 
+class UnsupportedRelease(ValueError):
+    """The provider input cannot establish a comparable release assertion."""
+
+
 @dataclass(frozen=True)
 class Release:
     """Registry metadata, before domain validation or comparison.
@@ -17,3 +21,6 @@ class Release:
     license_declaration: str | None
     yanked: bool | None
     yanked_reason: str | None
+    license_field: str | None = None
+    version: str | None = None
+    withdrawal_field: str = 'yanked'

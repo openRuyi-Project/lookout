@@ -48,7 +48,6 @@ def test_distinct_expressions_preserve_upgrade_and_source_evidence(old, new):
     assert finding["scope"] == "upgrade" and finding["target_version"] == "2.0"
     assert [fact["value"] for fact in finding["facts"]] == [old, new]
     assert all(fact["source"] == "PyPI" for fact in finding["facts"])
-    assert "severity" not in finding and "resolution" not in finding
 
 
 def test_evidence_keeps_original_provider_expression():

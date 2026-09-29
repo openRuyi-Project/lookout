@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from tracker import state
+from tracker.monitors.issues import observation_label
 from tracker.monitors.requires.model import RequirementDeclaration
 from tracker.monitors.version import compare as version_status
 
@@ -202,7 +203,8 @@ def project(snapshot, name, now, *, version=None):
                 findings.append(
                     {
                         **f,
-                        "tags": list(dict.fromkeys(f["tags"])),
+                        "label": observation_label(provider, f['label']),
+                        "tags": list(dict.fromkeys(observation_label(provider, tag) for tag in f["tags"])),
                         "id": provider + ":" + f["id"],
                         "monitor": provider,
                         "stale": unavailable

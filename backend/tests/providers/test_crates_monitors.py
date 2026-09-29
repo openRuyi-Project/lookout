@@ -62,7 +62,7 @@ def test_one_registry_response_serves_three_monitors_and_version_lines(tmp_path)
         with ThreadPoolExecutor(max_workers=3) as pool:
             results = list(pool.map(lambda a: a.check(SUBJECT, SETTINGS, owner.for_hosts(a.HOSTS)), adapters))
         assert len(calls) == 1
-        assert [r['findings'][0]['label'] for r in results] == ['License', 'Yanked', 'Requires']
+        assert [r['findings'][0]['label'] for r in results] == ['LicenseDiff', 'Yanked', 'Dependencies']
         assert all(r['status'] == 'ok' for r in results)
         assert 'https://github.com/Jingwiw/openRuyi-monitor' in calls[0].headers['User-Agent']
         other_run = IO(tmp_path, client=client)

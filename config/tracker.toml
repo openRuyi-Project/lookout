@@ -51,38 +51,68 @@ batch_size = 256
 workers = 4
 
 [openruyi.dependencies]
+perl = "perl"
 python = "python"
 rust = "rust"
+# Registry identities for source packages tracked through their upstream forge.
+# SPEC Source0 repositories: pytorch/{pytorch,vision,audio}, pypa/wheel, jcrist/msgspec.
+"pypi.torch" = "python-torch"
+"pypi.torchvision" = "python-torchvision"
+"pypi.torchaudio" = "python-torchaudio"
+"pypi.wheel" = "python-wheel"
+"pypi.msgspec" = "python-msgspec"
+
+[openruyi.dependency_environments.pep508]
+sys_platform = "linux"
+os_name = "posix"
+platform_system = "Linux"
+implementation_name = "cpython"
+platform_python_implementation = "CPython"
 
 [openruyi.buildsystems.rustcrates]
+icon = "rust"
 background = "#8c3d19"
 foreground = "#ffffff"
 [openruyi.buildsystems.golangmodules]
+icon = "gopher"
 background = "#075f72"
 foreground = "#ffffff"
 [openruyi.buildsystems.pyproject]
+icon = "python"
 background = "#2856a0"
 foreground = "#ffffff"
 [openruyi.buildsystems.autotools]
+icon = "gnu"
 background = "#555b24"
 foreground = "#ffffff"
 [openruyi.buildsystems.cmake]
+icon = "cmake"
 background = "#6b3c91"
 foreground = "#ffffff"
 [openruyi.buildsystems.perlmaker]
+icon = "perl"
 background = "#8d365e"
 foreground = "#ffffff"
 [openruyi.buildsystems.meson]
+icon = "meson"
 background = "#276544"
 foreground = "#ffffff"
 [openruyi.buildsystems.perlbuild]
+icon = "perl"
 background = "#664e87"
 foreground = "#ffffff"
 [openruyi.buildsystems.golang]
+icon = "gopher"
 background = "#36617c"
 foreground = "#ffffff"
 [openruyi.buildsystems.rust]
+icon = "rust"
 background = "#785329"
+foreground = "#ffffff"
+
+[openruyi.buildsystems.linux]
+icon = "linux"
+background = "#475569"
 foreground = "#ffffff"
 
 [spec]

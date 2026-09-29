@@ -56,8 +56,17 @@ def metadata(settings, version, io):
     name = project(settings)
     info, url = release(name, version, io)
     expression = info.get("license_expression")
+    field = 'license_expression'
+    if expression is None or expression == '':
+        # Legacy License is free text. The license monitor still requires exact
+        # valid SPDX; no classifier guessing or natural-language conversion.
+        expression, field = info.get('license'), 'license'
     return Release(
         name=name, source="PyPI", url=url,
         license_expression=expression, license_declaration=expression,
         yanked=info.get("yanked"), yanked_reason=info.get("yanked_reason"),
+        license_field=field,
     )
+
+
+withdrawal = metadata

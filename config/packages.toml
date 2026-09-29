@@ -249,6 +249,10 @@ cycle_parts = 2
 [libiberty]
 track_label = "16.x"
 
+[kubernetes.monitors.eol]
+product = "kubernetes"
+cycle_parts = 2
+
 [libxml2]
 
 [libxml2.monitors.security]
@@ -287,6 +291,10 @@ cycle_parts = 2
 [openssl.monitors.security]
 vendor = "openssl"
 product = "openssl"
+
+[perl.monitors.eol]
+product = "perl"
+cycle_parts = 2
 
 [php]
 
@@ -352,3 +360,11 @@ watch = ["shim"]
 # TODO(drop): openRuyi SPECS/go-github-dmarkham-enumer has Name=enumer.
 # TODO(drop): openRuyi SPECS/python-annotated-types has Name=python-annotated_types.
 # TODO(drop): openRuyi SPECS/python-discord has Name=python-discord.py.
+
+[sqlite.monitors.eol]
+product = "sqlite"
+cycle_parts = 1
+
+[valkey.monitors.eol]
+product = "valkey"
+cycle_parts = 2

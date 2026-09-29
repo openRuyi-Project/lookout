@@ -7,11 +7,13 @@ import re
 from urllib.parse import quote, urlsplit
 
 from tracker.monitors.model import evidence, finding, version_query as query_subject
+from tracker.monitors.issues import Issue
 from tracker.monitors.schedule import Schedule
+from tracker.monitors.source.release import commit_hash
 
 
-TITLE = 'Security'
-VERSION = 6
+TITLE = Issue.ADVISORY
+VERSION = 7
 HOSTS = {"api.osv.dev", "www.cisa.gov", "api.first.org"}
 CVE = re.compile(r"CVE-\d{4}-\d{4,}")
 
@@ -22,29 +24,51 @@ def refresh(subject, inputs, previous):
 
 
 def inputs(package, configured):
-    if configured is not None:
+    if configured is not None and 'vendor' in configured:
         return configured
     from tracker.identity import from_package
-    return from_package(package)
+    identity = configured if configured is not None else from_package(package)
+    if identity and 'commit' in identity:
+        return identity
+    if identity and identity.get('ecosystem') in ('PyPI', 'crates.io', 'Go', 'npm'):
+        if query_version(package.get('version'), identity['ecosystem']):
+            return identity
+        return package.get('source_commit') or identity
+    return configured if configured is not None else package.get('source_commit')
+
+
+def query_version(version, ecosystem):
+    if ecosystem == 'PyPI':
+        from packaging.version import Version, InvalidVersion
+        try:
+            Version(version)
+        except (InvalidVersion, TypeError):
+            return False
+    if ecosystem in ('Go', 'crates.io'):
+        return isinstance(version, str) and bool(re.fullmatch(
+            r'v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?', version))
+    return isinstance(version, str) and bool(version)
+
+
+def query(subject, settings):
+    if set(settings) == {'repository', 'commit'}:
+        if not commit_hash(settings['commit']) or not public_reference(settings['repository']):
+            raise ValueError('security requires a corroborated full commit and public repository')
+        return {'commit': settings['commit']}
+    if set(settings) != {'ecosystem', 'name'} or settings['ecosystem'] not in ('PyPI', 'crates.io', 'Go', 'npm'):
+        raise ValueError('security requires an explicit supported ecosystem/name')
+    if not query_version(subject['version'], settings['ecosystem']):
+        return None
+    return {'package': settings, 'version': subject['version']}
 
 
 def osv(subject, settings, io):
-    if set(settings) != {'ecosystem', 'name'} or settings['ecosystem'] not in ('PyPI', 'crates.io', 'Go', 'npm'):
-        raise ValueError('security requires an explicit supported ecosystem/name')
-    version = subject['version']
-    if settings['ecosystem'] == 'PyPI':
-        from packaging.version import Version
-        from packaging.version import InvalidVersion
-        try:
-            Version(version)
-        except InvalidVersion:
-            return None
-    if settings['ecosystem'] in ('Go', 'crates.io') and not re.fullmatch(r'v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?', version):
+    request = query(subject, settings)
+    if request is None:
         return None
-    query = {'package': {'ecosystem': settings['ecosystem'], 'name': settings['name']}, 'version': version}
     entries, token, seen = [], None, set()
     for _ in range(20):
-        response = io.json('POST', 'https://api.osv.dev/v1/query', {**query, **({'page_token': token} if token else {})})
+        response = io.json('POST', 'https://api.osv.dev/v1/query', {**request, **({'page_token': token} if token else {})})
         for item in response.get('vulns', []):
             if 'affected' not in item:
                 item = io.json('GET', 'https://api.osv.dev/v1/vulns/' + quote(item['id'], safe=''))
@@ -70,6 +94,17 @@ def group_aliases(entries):
             aliases |= old[0]; members += old[1]; groups.remove(old)
         groups.append((aliases, members))
     return groups
+
+
+def matching_ranges(affected, settings):
+    ranges = affected.get('ranges', [])
+    if 'commit' in settings:
+        repository = settings['repository'].removesuffix('.git').rstrip('/')
+        return [item for item in ranges if item.get('type') == 'GIT'
+                and str(item.get('repo', '')).removesuffix('.git').rstrip('/') == repository]
+    package = affected.get('package', {})
+    return ranges if (package.get('name'), package.get('ecosystem')) == (
+        settings.get('name'), settings.get('ecosystem')) else []
 
 
 def public_reference(value):
@@ -113,7 +148,9 @@ def attributed_context(member, settings, member_url):
     severities = list(member.get('severity') or []) if isinstance(member.get('severity'), list) else []
     for affected in member.get('affected', []):
         package = affected.get('package', {})
-        if (package.get('name'), package.get('ecosystem')) == (settings.get('name'), settings.get('ecosystem')):
+        matches = (bool(matching_ranges(affected, settings)) if 'commit' in settings else
+                   (package.get('name'), package.get('ecosystem')) == (settings.get('name'), settings.get('ecosystem')))
+        if matches:
             if isinstance(affected.get('severity'), list):
                 severities.extend(affected['severity'])
     prefixes = {'CVSS_V2': r'(?:CVSS:2\.0/)?', 'CVSS_V3': r'CVSS:3\.[01]/',
@@ -216,10 +253,14 @@ def check(subject, settings, io):
         source_url = (
             "https://cve-bin-tool.readthedocs.io/en/latest/" if "vendor" in settings else "https://api.osv.dev/v1/query"
         )
+        queried = {'commit': settings['commit']} if 'commit' in settings else {**settings, 'version': subject['version']}
         facts = [
             evidence("Query " + key, value, provider, source_url, code="query")
-            for key, value in {**settings, "version": subject["version"]}.items()
+            for key, value in queried.items()
         ]
+        if 'commit' in settings:
+            facts.append(evidence('Source repository', settings['repository'], 'RPM Source0',
+                                  settings['repository'], code='query'))
         aliases_url = (
             link if provider == "cve-bin-tool" else "https://osv.dev/vulnerability/" + quote(members[0]["id"], safe="")
         )
@@ -233,10 +274,7 @@ def check(subject, settings, io):
             facts.append(evidence("Returned advisory", member["id"], provider, member_url))
             fixed = set()
             for affected in member.get("affected", []):
-                package = affected.get("package", {})
-                if (package.get("name"), package.get("ecosystem")) != (settings.get("name"), settings.get("ecosystem")):
-                    continue
-                for affected_range in affected.get("ranges", []):
+                for affected_range in matching_ranges(affected, settings):
                     for event in affected_range.get("events", []):
                         if event.get("fixed"):
                             fixed.add(str(event["fixed"]))
@@ -280,11 +318,12 @@ def check(subject, settings, io):
                 facts.append(evidence("EPSS model date · " + cve, day, "FIRST", epss_url))
             else:
                 facts.append(evidence("EPSS · " + cve, None, "FIRST", epss_url, status="unavailable"))
-        findings.append(finding(identity, "Security", identity, bounded_facts(facts, provider, aliases_url),
+        findings.append(finding(identity, Issue.ADVISORY, identity, bounded_facts(facts, provider, aliases_url),
                                 link, tags=["KEV"] if active else []))
     return {
         "status": "partial" if errors else "ok",
         "findings": findings,
-        "note": "Current source component only; bundled dependencies and binary artifacts are not covered."
+        "note": ("Repository commit query; subpackage applicability is not evaluated."
+                 if 'commit' in settings else "Current source component only; bundled dependencies and binary artifacts are not covered.")
         + (" Enrichment incomplete: " + "; ".join(errors) if errors else ""),
     }

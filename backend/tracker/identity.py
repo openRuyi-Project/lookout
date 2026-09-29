@@ -49,6 +49,9 @@ def package_context(package):
 
 
 def from_native(entry):
+    if entry.get('source') == 'cpan' and entry.get('cpan'):
+        name = entry['cpan']
+        return {'ecosystem': 'CPANModule' if '::' in name else 'CPAN', 'name': name}
     if entry.get('source') == 'pypi' and entry.get('pypi'):
         return {'ecosystem': 'PyPI', 'name': entry['pypi']}
     if entry.get('source') == 'cratesio' and entry.get('cratesio'):

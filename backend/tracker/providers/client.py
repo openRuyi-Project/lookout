@@ -71,7 +71,14 @@ class IO:
             self.cooldowns[host] = time.monotonic() + max(60, delay)
 
     def json(self, method, url, body=None, *, max_age=None, min_interval=0):
-        key = hashlib.sha256(json.dumps([method, url, body], sort_keys=True).encode()).hexdigest()
+        return self._read(method, url, body, max_age=max_age, min_interval=min_interval)
+
+    def text(self, url, *, max_age=None, min_interval=0):
+        return self._read('GET', url, None, max_age=max_age, min_interval=min_interval, text=True)
+
+    def _read(self, method, url, body, *, max_age, min_interval, text=False):
+        identity = [method, url, body] + (['text'] if text else [])
+        key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         with self.guard:
             lock = self.locks.setdefault(key, threading.Lock())
         with lock:
@@ -103,8 +110,8 @@ class IO:
                     if response.status_code in (429, 503):
                         self.defer_host(host, response.headers.get('Retry-After'))
                     response.raise_for_status()
-                    body_bytes = read_response(response, max_bytes=16 * 1024 * 1024, deadline=deadline)
-                data = json.loads(body_bytes)
+                    body_bytes = read_response(response, max_bytes=512 * 1024 if text else 16 * 1024 * 1024, deadline=deadline)
+                data = body_bytes.decode('utf-8') if text else json.loads(body_bytes)
                 cached = {'time': now, 'data': data}
                 if path:
                     path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,9 +138,16 @@ class ProviderIO:
         self.today = owner.today
 
     def json(self, method, url, body=None, *, min_interval=0):
+        self.validate(method, url)
+        return self.owner.json(method, url, body, max_age=self.max_age, min_interval=min_interval)
+
+    def text(self, url, *, min_interval=0):
+        self.validate('GET', url)
+        return self.owner.text(url, max_age=self.max_age, min_interval=min_interval)
+
+    def validate(self, method, url):
         parsed = urlsplit(url)
         if (method not in ('GET', 'POST') or parsed.scheme != 'https'
                 or parsed.hostname not in self.hosts or parsed.port not in (None, 443)
                 or parsed.username or parsed.password or parsed.fragment):
             raise ValueError('provider URL outside declared HTTPS hosts')
-        return self.owner.json(method, url, body, max_age=self.max_age, min_interval=min_interval)
