@@ -11,7 +11,7 @@ from tracker.monitors import model as monitor_model
 
 def item(value=False):
     return monitor_model.finding(
-        "advisory", "Security", "Advisory",
+        "advisory", "Advisory", "Advisory",
         [monitor_model.evidence("KEV", value, "CISA", "https://www.cisa.gov/")],
         "https://example.org/advisory",
     )
@@ -30,7 +30,7 @@ def api_finding(raw):
     {"facts": ()}, {"facts": [item()["facts"][0]] * 257},
     {"scope": "review"}, {"scope": "upgrade", "target_version": None},
     {"scope": "upgrade", "target_version": "MACRO_VERSION"},
-    {"target_version": True}, {"resolution": "review this"},
+    {"target_version": True}, {"unexpected": "value"},
 ])
 def test_finding_constraints_agree_at_both_boundaries(patch):
     raw = {**item(), **patch}
@@ -47,7 +47,7 @@ def test_finding_constraints_agree_at_both_boundaries(patch):
     {"value": float("nan")}, {"value": float("inf")},
     {"value": b"false"}, {"value": [1]}, {"value": ("CVE-1",)},
     {"value": {"kev": False}}, {"value": "x" * 16385},
-    {"severity": "urgent"},
+    {"unexpected": "value"},
 ])
 def test_evidence_constraints_agree_at_both_boundaries(patch):
     raw = item()

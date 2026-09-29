@@ -7,7 +7,7 @@
 | 上游版本身份、发布筛选、版本线、前缀 | [`versions/nvchecker.toml`](versions/nvchecker.toml)，按 track 名查找 |
 | 包的 compare/watch/comparable 策略、monitor 身份例外 | [`packages.toml`](packages.toml)，按包名查找 |
 | 目标、周期、路径、启用的 monitors | [`tracker.toml`](tracker.toml) |
-| BuildSystem 配色 | `tracker.toml` 的 `[openruyi.buildsystems]` |
+| BuildSystem 配色、图标 | `tracker.toml` 的 `[openruyi.buildsystems]`；`icon` 引用 `frontend/src/assets/logos/catalog.json` 的本地资产 |
 | 依赖身份到 openRuyi 源包的映射 | `tracker.toml` 的 `[openruyi.dependencies]` |
 
 `collector.nvchecker_config` 和 `packages_config` 是显式文件引用，相对于
@@ -128,6 +128,19 @@ pypi = "upstream-widget"
 用 `tracker.monitors explain` 检查实际输入；缺少 License 表不等于未覆盖。
 声明的依赖找不到源包映射时保留未知，不按包名猜测。各 adapter 的字段和检查
 入口见[monitor 接入指南](../docs/monitor-porting.md)。
+
+| 上游身份 | 自动复用的观察 |
+|---|---|
+| PyPI | Security、LicenseDiff、RuntimeDeps、Yanked |
+| crates.io | Security、LicenseDiff、Yanked；工具链要求不作为运行依赖 |
+| Go module | Security、deps.dev 许可证、Go proxy 撤回声明；模块构建图不作为运行依赖 |
+| CPAN distribution | 许可证、静态 runtime prerequisites；module 版本不等同于 distribution 版本 |
+| Source0 完整 commit | OSV commit 查询；仓库命中不等于子包适用 |
+
+运行依赖映射在 `[openruyi.dependencies]`；PEP 508 的目标平台在
+`[openruyi.dependency_environments.pep508]`。Python 版本取映射源包的有效观察，
+不取采集机版本。未配置的架构或可选 feature 条件保持未知。CPAN 的
+`dynamic_config`、无可靠 SPDX 声明和不支持的 go.mod 语法不会被记为正常结果。
 
 ## 新增软件包
 

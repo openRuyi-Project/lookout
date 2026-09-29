@@ -43,7 +43,7 @@ def test_anitya_url_keeps_public_identity_without_secrets(source):
     'https://release-monitoring.org:invalid/api/v2/versions/?project_id=37',
 ])
 def test_untrusted_endpoint_is_not_a_project_identity(url):
-    assert 'project_id' not in cfg.public_source(dict(source='anitya_stable', url=url))
+    assert 'project_id' not in cfg.public_source(dict(source='unknown_provider', url=url))
 
 
 def test_compact_identity_survives_explain_and_event_import(tmp_path):

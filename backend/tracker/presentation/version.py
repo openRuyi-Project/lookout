@@ -2,7 +2,12 @@
 from urllib.parse import quote
 
 from tracker.presentation.model import Entry, Section
+from tracker.presentation.labels import appearance, caption
 from tracker.presentation.values import cell, field, module, retained_marker, stamp, text, version_value
+
+
+def signal_title(monitor):
+    return 'DepChanges' if monitor['kind'] == 'requires' else monitor['title']
 
 
 def version_sections(result, links):
@@ -12,7 +17,7 @@ def version_sections(result, links):
         stale = watch.get('error') or watch['stale']
         fields = [field('Last observed' if stale else 'Observed', text(watch.get('version'), kind='code'))]
         if stale:
-            fields.append(field('Check', text(watch.get('error') or 'Out of date', tone='notice')))
+            fields.append(field('Check', text(watch.get('error') or 'Stale', tone='notice')))
         entries.append(Entry(
             heading=[text(watch['id'], href='/api/v2/tracks/' + quote(watch['id'], safe=''))], fields=fields))
     fields = []
@@ -29,8 +34,8 @@ def version_sections(result, links):
     label = data.get('track_label')
     if label and label not in ('stable', data.get('track')):
         fields.append(field('Release line', text(label)))
-    if data['relation'] in ('untracked', 'ahead', 'unknown', 'not_applicable'):
-        fields.append(field('Comparison', text({'untracked': 'Untracked', 'ahead': 'Ahead of tracked release',
+    if data['relation'] in ('ahead', 'unknown', 'not_applicable'):
+        fields.append(field('Comparison', text({'ahead': 'Ahead of tracked release',
             'unknown': 'Cannot compare current observations', 'not_applicable': 'Not applicable'}[data['relation']])))
     return [Section(id=result['id'], title=result['title'], fields=fields, entries=entries)] if fields or entries else []
 
@@ -43,7 +48,7 @@ def version_annotations(pkg, links=None):
     data = result['data']
     values = []
     for annotation in data.get('annotations', []):
-        label = annotation['label']
+        label = caption(annotation['label'])
         if annotation['count'] > 1:
             label += f" {annotation['count']}"
         # A withdrawn current release does not mean the update is withdrawn.
@@ -56,13 +61,13 @@ def version_annotations(pkg, links=None):
             title += '; upstream advisory matches, local patches not evaluated'
         href = (links.to(monitor='version', signal=annotation['monitor'], check='', section='results')
                 if links else '#' + annotation['monitor'])
-        values.append(text(label, kind='tag', href=href, title=title,
+        values.append(text(label, kind='tag', href=href, title=title, appearance=appearance(annotation['label']),
                            tone='notice' if annotation['stale'] else 'normal'))
     return values
 
 
 def version_cells(pkg, result, links):
-    values = version_value(pkg) + version_annotations(pkg, links)
+    values = version_value(pkg, links=links) + version_annotations(pkg, links)
     if any(a['stale'] for a in result['data'].get('annotations', [])):
         values.append(retained_marker(links.to(monitor=result['id'], freshness='retained', check='', section='results')))
     return [cell(values)]

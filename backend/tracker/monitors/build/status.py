@@ -14,19 +14,22 @@ class Status:
     issue: bool = False
 
 
+# Display order follows the OBS project monitor; rank selects the worst flavor.
 STATES = {
     'succeeded': Status('✓', 'ok', 80),
     'failed': Status('Failed', 'error', 0, issue=True),
     'unresolvable': Status('Unresolvable', 'error', 1, issue=True),
     'broken': Status('Broken', 'error', 2, issue=True),
     'blocked': Status('Blocked', 'working', 20, issue=True),
-    'building': Status('Building', 'working', 30),
-    'scheduled': Status('Scheduled', 'working', 40),
-    'signing': Status('Signing', 'working', 45),
-    'finished': Status('Finishing', 'working', 46),
     'dispatching': Status('Dispatching', 'working', 47),
+    'scheduled': Status('Scheduled', 'working', 40),
+    'building': Status('Building', 'working', 30),
+    'finished': Status('Finishing', 'working', 46),
+    'signing': Status('Signing', 'working', 45),
     'disabled': Status('Disabled', 'muted', 90),
     'excluded': Status('Excluded', 'muted', 91),
+    'locked': Status('Locked', 'muted', 10),
+    'deleting': Status('Deleting', 'muted', 10),
     'unknown': Status('No result', 'muted', 10),
 }
 
@@ -37,3 +40,7 @@ def describe(code):
 
 def label(code):
     return 'Succeeded' if code == 'succeeded' else describe(code).text
+
+
+def ordered(codes):
+    return [code for code in STATES if code in codes] + sorted(set(codes) - STATES.keys())

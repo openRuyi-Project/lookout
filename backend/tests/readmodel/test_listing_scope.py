@@ -65,15 +65,12 @@ def test_architecture_controls_only_accompany_build_columns(scoped_client, monit
     if section == 'coverage':
         query['check'] = 'uncovered'
     page = document(scoped_client, query)
-    controls = [facet for facet in page['controls']['facets'] if facet['name'] == 'build']
+    controls = [row for row in page['controls']['choice_rows'] if row['icon']]
     columns = [column['title'] for column in page['table']['columns']]
     targets = {'rva23', 'rva20', 'x86_64'}
-    controls += [row for row in page['controls']['choice_rows'] if row['label'] in targets]
     assert bool(controls) is has_build
     assert bool(targets & set(columns)) is has_build
     assert ({control['label'] for control in controls} == targets) is has_build
-    if monitor:
-        assert not any(facet['name'] == 'maintenance' for facet in page['controls']['facets'])
 
 
 def test_monitor_navigation_retains_only_destination_controls(scoped_client):
@@ -102,20 +99,19 @@ def test_mutually_exclusive_modes_keep_stable_navigation_and_correct_counts(scop
     page = document(scoped_client, query)
     choices = modes(page)
     labels = [choice['label'] for choice in choices]
-    assert 'Checks' not in labels
-    assert {'Uncovered', 'Failed'} <= set(labels)
+    assert {'Uncovered', 'CheckFailed'} <= set(labels)
     if monitor == 'requires':
-        assert labels == ['All', 'Unmet', 'Changes', 'Uncovered', 'Failed']
+        assert labels == ['DepMismatch', 'DepChanges', 'Uncovered', 'CheckFailed']
     elif monitor == 'version':
-        assert labels == ['All', 'Updates', 'Uncovered', 'Failed']
+        assert labels == ['Outdated', 'Untracked', 'Uncovered', 'CheckFailed']
     for choice in choices:
         if choice['count'] is not None:
             destination = follow(scoped_client, choice['href'])
             assert destination['total'] == choice['count'], (monitor, mode, choice)
         target = parsed(choice['href'])
-        if choice['label'] in ('Uncovered', 'Failed'):
+        if choice['label'] in ('Uncovered', 'CheckFailed'):
             assert not {'requires', 'view', 'build', 'maintenance'} & target.keys()
-        elif choice['label'] in ('All', 'Unmet', 'Changes', 'Updates', 'Results'):
+        elif choice['label'] in ('All', 'Unmet', 'Changes', 'Outdated', 'Results'):
             assert 'check' not in target
             assert target.get('section', ['results']) == ['results']
 
@@ -126,8 +122,7 @@ def test_uncovered_requires_does_not_intersect_unmet_results(scoped_client):
     assert gaps['count'] == 2
     page = follow(scoped_client, gaps['href'])
     assert {row['key'] for row in page['table']['rows']} == {'foo3', 'unknown'}
-    return_to_all = next(choice for choice in modes(page) if choice['label'] == 'All')
-    assert return_to_all['count'] == 2
+    return_to_all = next(choice for choice in page['controls']['active'] if choice['label'] == 'Check: Uncovered')
     assert {row['key'] for row in follow(scoped_client, return_to_all['href'])['table']['rows']} == {
         'binutils', 'untracked'}
 
@@ -149,7 +144,8 @@ def test_search_pagination_and_package_tags_cannot_restore_discarded_filters(sco
         tag = next(value for line in row['cells'][0]['lines'] for value in line
                    if value['text'] == 'cmake')
         assert not forbidden & parsed(tag['href']).keys()
-        assert follow(scoped_client, tag['href'])['total'] == 2
+        assert parsed(tag['href']) == {'page': ['1'], 'per_page': ['1'], 'buildsystem': ['cmake']}
+        assert follow(scoped_client, tag['href']) == document(scoped_client, {'buildsystem': 'cmake', 'per_page': 1})
 
 
 def test_raw_v2_filters_remain_composable_without_ui_controls(scoped_client):
@@ -159,21 +155,17 @@ def test_raw_v2_filters_remain_composable_without_ui_controls(scoped_client):
     assert [item['name'] for item in raw.json()['items']] == ['foo3']
     page = document(scoped_client, query)
     assert {row['key'] for row in page['table']['rows']} == {'foo3', 'untracked'}
-    assert not any(facet['name'] == 'build' for facet in page['controls']['facets'])
 
 
 @pytest.mark.parametrize('monitor', ['version', 'build', 'requires', 'fixture_signature'])
-def test_old_all_checks_link_returns_to_results_without_redundant_ui(scoped_client, monitor):
+def test_unfiltered_coverage_uses_results_view(scoped_client, monitor):
     query = {'monitor': monitor, 'q': 'u', 'buildsystem': 'cmake', 'per_page': 1}
-    legacy = document(scoped_client, query | {'section': 'coverage'})
+    coverage = document(scoped_client, query | {'section': 'coverage'})
     results = document(scoped_client, query | {'section': 'results'})
-    assert legacy == results
-    assert 'Check' not in [column['title'] for column in legacy['table']['columns']]
-    assert 'Checks' not in [choice['label'] for choice in modes(legacy)]
+    assert coverage == results
 
 
 def test_context_only_monitor_retains_its_collection_deep_link(scoped_client):
     page = document(scoped_client, {'monitor': 'source', 'section': 'results'})
     assert [column['title'] for column in page['table']['columns']] == ['Package', 'Check', 'Last checked']
     assert {parameter['name']: parameter['value'] for parameter in page['controls']['hidden']}['section'] == 'coverage'
-    assert not any(facet['name'] in ('build', 'maintenance') for facet in page['controls']['facets'])

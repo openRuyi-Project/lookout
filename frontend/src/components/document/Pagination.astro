@@ -1,12 +1,17 @@
 ---
-import {safeHref, type ListingDocument} from '../../lib/document';
+import {safeHref, type Controls, type ListingDocument} from '../../lib/document';
+import Search from './Search.astro';
 interface Props {
   page: Pick<ListingDocument, 'total' | 'page' | 'pages' | 'pagination'>;
   label: string;
+  controls?: Controls;
 }
-const {page, label} = Astro.props;
+const {page, label, controls} = Astro.props;
 ---
-<nav class="pagination" aria-label={label}>
-  <span>{page.total} {page.total === 1 ? 'package' : 'packages'} · page {page.page} / {page.pages}</span>
-  {page.pagination.map(choice => <a href={safeHref(choice.href)}>{choice.label}</a>)}
-</nav>
+<div class="results-toolbar">
+  <span class="result-count">{page.total} {page.total === 1 ? 'package' : 'packages'} · page {page.page} / {page.pages}</span>
+  {controls && <Search controls={controls}/>}
+  {page.pagination.length > 0 && <nav class="pagination" aria-label={label}>
+    {page.pagination.map(choice => <a href={safeHref(choice.href)}>{choice.label}</a>)}
+  </nav>}
+</div>

@@ -89,7 +89,7 @@ def test_constraint_changes_share_a_domain_across_backends(monkeypatch):
     inputs = monitor_requires.inputs({}, {'registry': 'widget'})
     result = monitor_requires.check({'version': '1', 'target_version': '2'}, inputs, None)
     item = result['findings'][0]
-    assert item['label'] == 'Requires'
+    assert item['label'] == 'Dependencies'
     assert item['requirement']['dependency'] == 'rust'
     assert item['requirement']['kind'] == 'build'
     assert item['requirement']['constraint']['expression'] == '>=1.80'
@@ -214,11 +214,11 @@ def add_requires(snapshot):
     subject = {**monitor_model.subject(snapshot, 'binutils'), 'target_version': '3.10.0'}
     comparison = change()
     identity = {key: value for key, value in comparison.items() if key not in {'current', 'target'}}
-    findings = [monitor_model.finding('requires:python:' + scope, 'Requires', 'display text may change', [],
+    findings = [monitor_model.finding('requires:python:' + scope, 'RuntimeDeps', 'display text may change', [],
         comparison[key]['url'], scope=scope, target_version='3.10.0' if scope == 'upgrade' else None,
         requirement={**identity, 'constraint': comparison[key]})
         for scope, key in [('current', 'current'), ('upgrade', 'target')]]
-    snapshot['monitor_catalog'] = {'requires': {'title': 'Requires'}}
+    snapshot['monitor_catalog'] = {'requires': {'title': 'RuntimeDeps'}}
     snapshot['monitors'] = {'binutils': {'requires': {
         'subject': subject, 'scope': 'current_and_upgrade', 'status': 'ok', 'checked_at': state.utcnow(),
         'scope_checks': {scope: {'status': 'ok', 'checked_at': state.utcnow()} for scope in ('current', 'upgrade')},
@@ -247,12 +247,12 @@ def test_dependency_changes_reproject_without_rechecking_upstream(snapshot, tmp_
     returned = client.get(route).json()['monitors']['requires']['data']['findings']
     assert [f['requirement']['constraint']['expression'] for f in returned] == ['>=3.8', '>=3.10']
     listing = client.get('/api/v2/packages?monitor=requires&section=results').json()
-    assert listing['total'] == listing['maintenance_labels']['Requires'] == 1
+    assert listing['total'] == listing['maintenance_labels']['DepMismatch'] == 1
     assert listing['items'][0]['monitors']['requires']['data']['requirements'][0]['satisfaction'] == 'unsatisfied'
 
 
 @pytest.mark.parametrize('status,mark,tone', [('satisfied', '✓', 'positive'), ('unsatisfied', '✗', 'negative'),
-                                            ('unknown', 'Not mapped', 'muted')])
+                                            ('unknown', 'Unmapped', 'muted')])
 def test_requires_document_is_small_and_status_has_text_meaning(snapshot, tmp_path, monkeypatch, status, mark, tone):
     monkeypatch.setattr(state, 'compare', lambda *args: 'outdated')
     add_requires(snapshot)
@@ -265,7 +265,7 @@ def test_requires_document_is_small_and_status_has_text_meaning(snapshot, tmp_pa
     client = ProjectedClient(create_app(db))
     page = client.get('/api/ui/packages/binutils').json()
     section = next(s for s in page['sections'] if s['id'] == 'requires')
-    assert section['title'] == 'Requires' and not section['collapsible']
+    assert section['title'] == 'RuntimeDeps' and not section['collapsible']
     assert section['fields'] == section['entries'] == section['notes'] == []
     row = section['table']['rows'][0]['cells']
     assert row[0]['lines'][0][0]['text'] == 'Python'
@@ -280,7 +280,9 @@ def test_requires_document_is_small_and_status_has_text_meaning(snapshot, tmp_pa
     assert focused['total'] == 1
     lines = focused['table']['rows'][0]['cells'][1]['lines']
     assert [v['text'] for v in lines[0]] == ['3.9.0', '→', '3.10.0']
-    assert lines[1][-1]['text'] == mark
+    assert lines[1][0]['text'] == 'RuntimeDeps'
+    dependency = next(line for line in lines if line[0]['text'] == 'Python')
+    assert dependency[-1]['text'] == mark
 
 
 @pytest.mark.parametrize('mapping', [{'python': '../path'}, {'Upper': 'python'}, {'python': True}, []])
@@ -323,5 +325,5 @@ def test_requirement_contract_rejects_unattributed_links():
     declaration = {key: value for key, value in comparison.items() if key not in {'current', 'target'}}
     declaration['constraint'] = {**comparison['target'], 'url': 'javascript:alert(1)'}
     with pytest.raises(ValueError, match='HTTPS'):
-        monitor_model.finding('requires', 'Requires', 'test', [], 'https://example.org/',
+        monitor_model.finding('requires', 'RuntimeDeps', 'test', [], 'https://example.org/',
                               scope='upgrade', target_version='2', requirement=declaration)

@@ -43,9 +43,10 @@ def test_all_facets_match_an_independent_row_scan(snapshot):
     oracle = [{'name': row['name'], 'builds': deepcopy(row['monitors']['build']['data']['targets'])} for row in rows]
     for index, (row, expected) in enumerate(zip(rows, oracle)):
         system = ['cmake', 'meson', None][index % 3]
-        labels = ['Security', 'EOL'] if index % 2 else ['Security']
+        labels = ['Advisory', 'EOL'] if index % 2 else ['Advisory']
         expected['buildsystem'] = system
-        expected['maintenance'] = [{'label': label} for label in labels]
+        expected['maintenance'] = [{'label': label} for label in
+                                   [*labels, *row['monitors']['version']['dimensions']['maintenance']]]
         row['monitors']['source']['dimensions']['buildsystem'] = [system or '_not_detected']
         row['monitors']['fixture'] = {'id': 'fixture', 'dimensions': {'maintenance': labels}}
         for offset, build in enumerate(expected['builds']):
@@ -61,7 +62,7 @@ def test_all_facets_match_an_independent_row_scan(snapshot):
                 and (not second or row['builds'][1]['raw_status'] == second))
 
     for system, maintenance, first, second in product(
-        ['', 'cmake', 'meson', '_not_detected'], ['', 'Security', 'EOL'],
+        ['', 'cmake', 'meson', '_not_detected'], ['', 'Advisory', 'EOL'],
         ['', 'blocked', 'failed'], ['', 'failed', 'building'],
     ):
         result = index.select(view='all', buildsystem=system, maintenance=maintenance,
@@ -72,7 +73,8 @@ def test_all_facets_match_an_independent_row_scan(snapshot):
         for value, count in result['buildsystems'].items():
             assert count == sum(matches(r, value, maintenance, first, second) for r in oracle)
         for value, count in result['maintenance_labels'].items():
-            assert count == sum(matches(r, system, value, first, second) for r in oracle)
+            assert count == sum(matches(r, system, maintenance, first, second)
+                                and matches(r, system, value, first, second) for r in oracle)
         for option in result['build_statuses']['rva23']:
             context = [r for r in oracle if matches(r, system, maintenance, '', second)]
             expected_count = sum(r['builds'][0]['raw_status'] == option['value'] for r in context)
@@ -89,3 +91,17 @@ def test_search_view_and_empty_selected_option(snapshot):
     assert {'value': 'failed', 'label': 'Failed', 'count': 0} in result['build_statuses']['rva23']
     assert {'value': 'blocked', 'label': 'Blocked', 'count': 1} in result['build_statuses']['rva23']
     assert all(count == 0 for count in result['counts'].values())
+
+
+def test_build_choices_follow_obs_order_without_changing_aggregation_rank():
+    codes = ['succeeded', 'failed', 'unresolvable', 'broken', 'blocked', 'dispatching',
+             'scheduled', 'building', 'finished', 'signing', 'disabled', 'excluded', 'locked', 'deleting', 'unknown']
+    rows = [{'name': code, 'monitors': {'fixture': {'dimensions': {'build:target': [code]}}}}
+            for code in [*reversed(codes), 'future-state']]
+    index = PackageList(rows, [{'id': 'target'}])
+    for selected in ('', 'failed'):
+        result = index.select(view='all', buildsystem='', maintenance=[], builds={'target': selected},
+                              page=1, per_page=100)
+        assert [item['value'] for item in result['build_statuses']['target']] == [*codes, 'future-state']
+        assert all(item['count'] == 1 for item in result['build_statuses']['target'])
+    assert build_status.describe('failed').rank < build_status.describe('succeeded').rank

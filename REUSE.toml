@@ -12,3 +12,48 @@ path = [
 ]
 SPDX-FileCopyrightText = "(C) 2026 openRuyi Project Contributors"
 SPDX-License-Identifier = "MulanPSL-2.0"
+
+[[annotations]]
+path = "frontend/public/openruyi.svg"
+SPDX-FileCopyrightText = ["(C) 2026 Institute of Software, Chinese Academy of Sciences (ISCAS)", "(C) 2026 openRuyi Project Contributors"]
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+[[annotations]]
+path = "frontend/src/assets/logos/cmake.svg"
+SPDX-FileCopyrightText = "Kitware; Simple Icons contributors"
+SPDX-License-Identifier = "CC0-1.0"
+
+[[annotations]]
+path = "frontend/src/assets/logos/gnu.svg"
+SPDX-FileCopyrightText = "Aurélio A. Heckert; Simple Icons contributors"
+SPDX-License-Identifier = "CC-BY-SA-2.0"
+
+[[annotations]]
+path = "frontend/src/assets/logos/linux.svg"
+SPDX-FileCopyrightText = "Larry Ewing and The GIMP; Simple Icons contributors"
+SPDX-License-Identifier = "LicenseRef-Tux"
+
+[[annotations]]
+path = "frontend/src/assets/logos/perl.svg"
+SPDX-FileCopyrightText = "Olaf Alders; Zach Roszczewski; Sébastien Feugère; Simple Icons contributors"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "frontend/src/assets/logos/python.svg"
+SPDX-FileCopyrightText = "Python Software Foundation; Simple Icons contributors"
+SPDX-License-Identifier = "LicenseRef-Python-Logo"
+
+[[annotations]]
+path = "frontend/src/assets/logos/rust.svg"
+SPDX-FileCopyrightText = "Rust project; Simple Icons contributors"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+[[annotations]]
+path = "frontend/src/assets/logos/gopher.svg"
+SPDX-FileCopyrightText = "Renee French; Devicon contributors"
+SPDX-License-Identifier = "CC-BY-4.0 AND LicenseRef-Devicon-MIT"
+
+[[annotations]]
+path = "frontend/src/assets/logos/meson.svg"
+SPDX-FileCopyrightText = "The Meson development team"
+SPDX-License-Identifier = "Apache-2.0"

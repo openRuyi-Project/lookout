@@ -1,10 +1,15 @@
 """Pages for reading documents; no collection or persistence."""
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit, urlunsplit
 
 from tracker.monitors.model import CHECK_GROUPS
+from tracker.monitors.issues import Issue
 from tracker.presentation.evidence import evidence_labels
-from tracker.presentation.model import Choice, Column, DetailDocument, ListingDocument, Navigation, Row, Section, Table
-from tracker.presentation.navigation import Links, global_navigation, listing_controls, listing_query
+from tracker.presentation.build import build_note
+from tracker.presentation.labels import appearance, caption, palettes, priority
+from tracker.presentation.model import Choice, Column, DetailDocument, Field, ListingDocument, Navigation, Row, Section, Table
+from tracker.presentation.navigation import (
+    Links, global_navigation, listing_controls, listing_query,
+)
 from tracker.presentation.registry import PRESENTERS, presenter
 from tracker.presentation.source import changelog_section
 from tracker.presentation.values import (
@@ -21,20 +26,57 @@ from tracker.presentation.values import (
 from tracker.presentation.version import version_annotations
 
 
+def collection_meta(collection):
+    result = [Field(label='BuildService', href=collection.get('build_service_url'),
+                    values=[stamp(collection['obs_updated_at'])])]
+    source = collection.get('source_repository')
+    if not source:
+        return result
+    branch_url = commit_url = None
+    try:
+        url = urlsplit(source['url'])
+        if (url.scheme in ('http', 'https') and url.hostname and not url.username
+                and not url.password and not url.query and not url.fragment):
+            base = urlunsplit((url.scheme, url.netloc, url.path.rstrip('/').removesuffix('.git'), '', ''))
+            routes = ('tree', 'commit') if url.hostname == 'github.com' else (
+                ('-/tree', '-/commit') if url.hostname.startswith('gitlab.') else None)
+            if routes:
+                branch_url = base + '/' + routes[0] + '/' + quote(source['branch'], safe='')
+                commit_url = base + '/' + routes[1] + '/' + quote(source['revision'], safe='')
+    except ValueError:
+        pass
+    result.append(Field(label=source['branch'], href=branch_url,
+        values=[text(source['revision'][:6], kind='code', href=commit_url, title=source['revision'])]))
+    return result
+
+
 def identity_cell(pkg, links, *, labels=True):
     identity = [text(pkg['name'], href=pkg['detail_url'], kind='code')]
-    source = module(pkg, 'source')
-    if source and source['data'].get('buildsystem'):
-        identity.append(buildsystem(source['data']['buildsystem'], links))
     signals = []
     if labels:
         version = module(pkg, 'version')
-        annotations = version['data'].get('annotations', []) if version else []
-        related = {annotation['monitor'] for annotation in annotations}
+        if version and Issue.OUTDATED in version['dimensions'].get('maintenance', []):
+            signals.append(text(Issue.OUTDATED, kind='tag', appearance=appearance(Issue.OUTDATED),
+                                href=links.only_filter(maintenance=[Issue.OUTDATED])))
+        signals.extend(check_failed_label(pkg, links))
         for result in pkg['monitors'].values():
-            if result['data']['kind'] in ('evidence', 'requires') and result['id'] not in related:
-                signals.extend(evidence_labels(result, links))
-    return cell(identity, signals)
+            if result['data']['kind'] in ('evidence', 'requires'):
+                signals.extend(evidence_labels(result, links, counts=False))
+    source = module(pkg, 'source')
+    if source and source['data'].get('buildsystem'):
+        identity.append(buildsystem(source['data']['buildsystem'], links))
+    identity.extend(sorted(signals, key=lambda value: priority(value.appearance)))
+    return cell(identity)
+
+
+def check_failed_label(pkg, links=None):
+    errors = [result for result in pkg['monitors'].values() if result['check']['status'] == 'error']
+    if not errors:
+        return []
+    anchor = 'check-' + errors[0]['id'] if len(errors) == 1 else 'checks'
+    return [text(Issue.CHECK_FAILED, kind='tag', appearance=appearance(Issue.CHECK_FAILED),
+                 title=', '.join(caption(result['title']) for result in errors),
+                 href=links.only_filter(maintenance=[Issue.CHECK_FAILED]) if links else pkg['detail_url'] + '#' + anchor)]
 
 
 def listing(payload, query):
@@ -58,10 +100,12 @@ def listing(payload, query):
         columns += [Column(title='Check'), Column(title='Last checked')]
     else:
         for descriptor in descriptors:
-            columns.extend(presenter(descriptor).columns(descriptor['title'], payload['targets']))
+            projected = presenter(descriptor).columns(caption(descriptor['title']), payload['targets'])
+            columns.extend(projected)
     rows = []
     for pkg in payload['items']:
         cells = [identity_cell(pkg, links, labels=not focus)]
+        notes = []
         if filtered_checks:
             source = module(pkg, 'source')
             cells.append(cell([text(source['data'].get('version') if source else None, kind='code')]))
@@ -73,14 +117,24 @@ def listing(payload, query):
         else:
             for descriptor in descriptors:
                 result = pkg['monitors'][descriptor['id']]
-                cells.extend(presenter(descriptor).cells(pkg, result, links))
-        rows.append(Row(key=pkg['name'], cells=cells))
-    title = focus['title'] if focus else 'Packages'
+                column = len(cells)
+                if not focus and descriptor['kind'] == 'version':
+                    cells.append(cell(version_value(pkg, links=links)))
+                    for related in sorted(pkg['monitors'].values(), key=lambda m: m['id'] == 'eol'):
+                        preview = presenter({'kind': related['data']['kind']}).preview
+                        if preview:
+                            cells[column].lines.extend(preview(pkg, related, links))
+                else:
+                    cells.extend(presenter(descriptor).cells(pkg, result, links))
+                if not focus and descriptor['kind'] == 'build':
+                    notes.extend(build_note(pkg, result, column))
+        rows.append(Row(key=pkg['name'], cells=cells, notes=notes))
+    title = caption(focus['title']) if focus else 'Packages'
     if filtered_checks and query['check'] not in CHECK_GROUPS:
         title += ' · ' + CHECK_LABELS.get(query['check'], query['check'].replace('_', ' '))
     navigation = Navigation(label='Monitors', choices=[
-        Choice(label='Overview', href=links.to(monitor='', check='', section=''), selected=not focus),
-        *[Choice(label=m['title'], href=links.to(monitor=m['id'], check='', section='results'),
+        Choice(label='Packages', href=links.to(monitor='', check='', section=''), selected=not focus),
+        *[Choice(label=caption(m['title']), href=links.to(monitor=m['id'], check='', section='results'),
                  selected=m == focus) for m in sorted(payload['monitors'], key=lambda m: m['id'] == 'eol')
           if presenter(m).has_results and m['id'] != 'yanked']])
     controls = listing_controls(payload, query, focus, links)
@@ -89,8 +143,7 @@ def listing(payload, query):
         pagination.append(Choice(label='Previous', href=links.to(page=payload['page'] - 1)))
     if payload['page'] < payload['pages']:
         pagination.append(Choice(label='Next', href=links.to(page=payload['page'] + 1)))
-    meta = ([] if focus else [field('OBS', stamp(payload['collection']['obs_updated_at'])),
-                             field('Upstream', stamp(payload['collection']['upstream_updated_at']))])
+    meta = [] if focus else collection_meta(payload['collection'])
     notices = ['Test fixture — not live openRuyi data.'] if payload['collection']['mode'] == 'fixture' else []
     if notice := payload['collection'].get('projection_notice'):
         notices.append(notice)
@@ -105,9 +158,13 @@ def detail(pkg):
     source = module(pkg, 'source')
     data = source['data'] if source else {}
     meta = data.get('metadata') or {}
-    identity = version_value(pkg, compact=False) + version_annotations(pkg)
-    if data.get('buildsystem'):
-        identity.append(buildsystem(data['buildsystem'], links))
+    identity = [buildsystem(data['buildsystem'], links)] if data.get('buildsystem') else []
+    identity.extend(version_value(pkg, compact=False))
+    signals = version_annotations(pkg) + check_failed_label(pkg)
+    requirements = module(pkg, 'requires')
+    if requirements:
+        signals.extend(evidence_labels(requirements, links, counts=False))
+    identity.extend(sorted(signals, key=lambda value: priority(value.appearance)))
     shortcuts = [text('/' + data['source_path'], href=data.get('source_url'))] if data.get('source_path') else []
     if meta.get('url'):
         shortcuts.append(text('Upstream', href=meta['url']))
@@ -128,7 +185,7 @@ def detail(pkg):
         timestamps = [[stamp(check.get('checked_at'))]]
         if check.get('attempted_at') and check['attempted_at'] != check.get('checked_at'):
             timestamps.append([text('Last attempted', tone='muted'), stamp(check['attempted_at'])])
-        checks.append(Row(key=result['id'], cells=[cell([text(result['title'],
+        checks.append(Row(key=result['id'], id='check-' + result['id'], cells=[cell([text(caption(result['title']),
             href=links.to(monitor=result['id'], section='coverage', check=check['status']))]),
             cell(*status_lines), cell(*timestamps)]))
     if source:
@@ -140,4 +197,5 @@ def detail(pkg):
 
 
 def theme(presentation):
-    return {'appearances': {'buildsystem:' + key: value for key, value in presentation.get('buildsystems', {}).items()}}
+    return {'appearances': {**palettes(), **{'buildsystem:' + key: {k: value[k] for k in ('background', 'foreground')}
+            for key, value in presentation.get('buildsystems', {}).items()}}}

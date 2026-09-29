@@ -1,0 +1,90 @@
+{
+  "cmake": {
+    "title": "CMake",
+    "credit": "Kitware; Simple Icons contributors",
+    "source": "https://www.kitware.com/platforms/",
+    "license": "CC0-1.0 (icon adaptation)",
+    "license_url": "https://github.com/simple-icons/simple-icons/blob/16.15.0/LICENSE.md",
+    "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/cmake.svg",
+    "monochrome": true,
+    "changes": "None; vendored SVG.",
+    "sha256": "06757bccadf0459aca0a4c6a3898bd58e2dd71ea552bf7058cd406adc32fefa9"
+  },
+  "gnu": {
+    "title": "GNU",
+    "credit": "Aurélio A. Heckert; Simple Icons contributors",
+    "source": "https://www.gnu.org/graphics/heckert_gnu.html",
+    "license": "CC-BY-SA-2.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
+    "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/gnu.svg",
+    "monochrome": true,
+    "changes": "None; vendored SVG.",
+    "sha256": "24a8ccdc9e076463d3162309ddf6db5ded394c109ca9d8ece9709a339894f21e"
+  },
+  "linux": {
+    "title": "Linux / Tux",
+    "credit": "Larry Ewing and The GIMP; Simple Icons contributors",
+    "source": "https://isc.tamu.edu/~lewing/linux/",
+    "license": "Tux usage permission",
+    "license_url": "https://isc.tamu.edu/~lewing/linux/",
+    "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/linux.svg",
+    "monochrome": true,
+    "changes": "None; vendored SVG.",
+    "sha256": "7e55f2779ae11a83c9dad2d0414a65d8ca7867d0716ce58bfe41ed299ae1447f"
+  },
+  "perl": {
+    "title": "Perl",
+    "credit": "Olaf Alders; Zach Roszczewski; Sébastien Feugère; Simple Icons contributors",
+    "source": "https://github.com/metacpan/perl-assets",
+    "license": "CC-BY-4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/perl.svg",
+    "monochrome": true,
+    "changes": "None; vendored SVG.",
+    "sha256": "6f1d3f3ac779079b0306437550cf1bc7532e1aa161ddf5934e8f109d006a7fca"
+  },
+  "python": {
+    "title": "Python",
+    "credit": "Python Software Foundation; Simple Icons contributors",
+    "source": "https://www.python.org/community/logos/",
+    "license": "PSF logo usage policy",
+    "license_url": "https://www.python.org/psf/trademarks/",
+    "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/python.svg",
+    "monochrome": true,
+    "changes": "None; vendored SVG.",
+    "sha256": "ad9468e1c4903f73ae7eebfbe980f0f727a10db695be3d914e7d8bd25356a862"
+  },
+  "rust": {
+    "title": "Rust",
+    "credit": "Rust project; Simple Icons contributors",
+    "source": "https://github.com/rust-lang/rust-artwork",
+    "license": "CC-BY-SA-4.0",
+    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/rust.svg",
+    "monochrome": true,
+    "changes": "None; vendored SVG.",
+    "sha256": "95a291d8887610d103704adcc5c5f2cbfa4c80a96f8e72b00531d5691beb67a8"
+  },
+  "gopher": {
+    "title": "Go Gopher",
+    "credit": "Renee French; Devicon contributors",
+    "source": "https://go.dev/blog/gopher",
+    "license": "CC-BY-4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "asset_source": "https://raw.githubusercontent.com/devicons/devicon/v2.17.0/icons/go/go-original.svg",
+    "monochrome": false,
+    "changes": "None; vendored SVG.",
+    "sha256": "2d4558b96d3ec71d0d922a62668cb2ea5a5d83ed7d4caf6b0479b3266f795a2f"
+  },
+  "meson": {
+    "title": "Meson",
+    "credit": "The Meson development team",
+    "source": "https://github.com/mesonbuild/meson/blob/1.9.1/graphics/meson_logo.svg",
+    "license": "Apache-2.0",
+    "license_url": "https://github.com/mesonbuild/meson/blob/1.9.1/COPYING",
+    "asset_source": "https://github.com/mesonbuild/meson/blob/1.9.1/graphics/meson_logo.svg",
+    "monochrome": true,
+    "changes": "Emblem extracted from the upstream logo sheet; geometry unchanged.",
+    "sha256": "787022282bbe299ebea5c36e2cb317beb6b67a5e8162bdb5b48266facc3ec0b1"
+  }
+}

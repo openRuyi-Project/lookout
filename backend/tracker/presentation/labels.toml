@@ -1,0 +1,81 @@
+# Visual emphasis is presentation policy, not provider severity.
+
+[styles.important]
+order = 0
+background = "#b42318"
+foreground = "#ffffff"
+
+[styles.warning]
+order = 1
+background = "#865b05"
+foreground = "#ffffff"
+
+[styles.neutral]
+order = 2
+background = "#626b75"
+foreground = "#ffffff"
+
+[labels."Outdated"]
+facet = true
+style = "important"
+
+[labels."Untracked"]
+facet = true
+style = "neutral"
+
+[labels."CheckFailed"]
+facet = true
+style = "neutral"
+
+[labels."DepMismatch"]
+facet = true
+style = "important"
+
+[labels."Advisory"]
+facet = true
+style = "important"
+
+[labels."KEV"]
+style = "important"
+
+[labels."LicenseDiff"]
+facet = true
+style = "warning"
+
+[labels."Yanked"]
+facet = true
+style = "important"
+
+[labels."EOL"]
+facet = true
+style = "important"
+
+[labels."Out of date"]
+text = "Stale"
+
+[labels."Build system"]
+text = "BuildSystem"
+
+[labels."Not detected"]
+text = "Undetected"
+
+[labels."Not mapped"]
+text = "Unmapped"
+
+[labels."Not packaged"]
+text = "NotPackaged"
+
+[labels."Ambiguous mapping"]
+text = "Ambiguous"
+
+[labels."DepChanges"]
+style = "warning"
+
+[labels."Failed"]
+style = "important"
+
+[labels."Unresolvable"]
+style = "important"
+
+[labels."Broken"]
+style = "important"

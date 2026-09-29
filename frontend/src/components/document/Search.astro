@@ -1,0 +1,11 @@
+---
+import {safeHref, type Controls} from '../../lib/document';
+interface Props {controls: Controls}
+const {controls} = Astro.props;
+---
+<form method="get" action={safeHref(controls.action)} class="search-form" role="search">
+  {controls.hidden.map(parameter => <input type="hidden" name={parameter.name} value={parameter.value}/>)}
+  <label class="sr-only" for="search">Search packages</label>
+  <input id="search" type="search" name="q" value={controls.query} placeholder="Search packages" maxlength="100"/>
+  <button type="submit">Search</button>
+</form>

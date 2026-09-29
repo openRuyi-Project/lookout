@@ -42,6 +42,14 @@ catalog, evidence presenter and generic renderer supply its title, findings,
 coverage and detail sections. A new *kind of data*, such as a matrix, has a
 separate [presentation path](#change-presentation).
 
+Issue names live in `monitors/issues.py`; their palette is in
+`presentation/labels.toml`. Reuse the same issue in findings, filters and labels.
+`DepMismatch` covers runtime and build dependency conflicts. `RuntimeDeps` and
+`BuildDeps` identify the declaration kind, not separate issues. An upgrade's
+changed declarations are `DepChanges`, even when the new constraint is satisfied.
+Unknown assessments are neither mismatches nor failed checks. Presentation tags
+use `outline` for issues and `solid` for build-system identities.
+
 ### Module contract
 
 | Member | Meaning |
@@ -56,7 +64,8 @@ separate [presentation path](#change-presentation).
 | `refresh(subject, inputs, previous)` | Optional pure function returning a `Schedule`; the default recheck interval is six hours. |
 
 `package` supplies the source name and revision, the configured native rule's
-public `identity`, and saved `source_release` evidence when available. Its version
+public `identity`, and saved `source_release` evidence when available. A corroborated
+full Source0 revision also supplies `source_commit` (repository and commit). Its version
 is the upstream release identified by Source0 when established, otherwise the
 current source version. `configured` is this monitor's value, not the entire
 configuration. `subject` contains the same name/version/revision and, for upgrade
@@ -104,7 +113,8 @@ different results.
 
 ### IO and refresh
 
-Use `io.json(method, url, body=None)` and `io.today`. Shared IO owns bounded HTTP,
+Use `io.json(method, url, body=None)`, `io.text(url)` and `io.today`. Text responses
+are limited to 512 KiB. Shared IO owns bounded HTTP,
 cache, request deduplication and the operator proxy. Adapters neither create HTTP
 clients nor read/write snapshots. `min_interval=1.0` can space requests to a host
 across workers sharing that IO; cache hits do not consume the interval. HTTP
@@ -195,7 +205,7 @@ for upstream evidence.
    `backend/tracker/monitors/requires/`. Register the module in `monitor.BACKENDS`.
 2. Return `Requirement` values carrying a stable dependency ID, `runtime` or
    `build` kind, comparison scheme, declaration, source URL, and identity,
-   conditions and extras where supplied. Keep provider parsing separate from the
+   conditions, extras and prerequisite relationship where supplied. Keep provider parsing separate from the
    read-side assessment.
 3. Reuse a comparator in `requires.compare.COMPARATORS`, or add an isolated one
    with tests for supported and rejected syntax. Comparators must not branch on
@@ -206,7 +216,8 @@ for upstream evidence.
 The [PyPI backend](../backend/tracker/monitors/requires/pypi.py) reads
 `Requires-Python` and `Requires-Dist`. Markers/extras are preserved, not evaluated
 against the collector host. `optional` classifies feature selection, not platform
-applicability. Conditional assessments therefore stay unknown. The
+applicability. Conditions use declared target context; unknown variables stay
+unknown, and false conditions are `not_applicable`. The
 [crates.io backend](../backend/tracker/monitors/requires/cratesio.py) records
 `rust-version` as a **build** requirement, not a runtime dependency.
 
@@ -220,8 +231,31 @@ compatibility.
 Current and target requirements are assessed independently. A missing side is
 not proof of addition/removal. Only two fresh, observed, unequal declarations
 establish a change. A local dependency version change can reassess saved
-requirements without querying the upstream provider again. The runtime list and
-Unmet filter exclude build requirements; the raw findings retain their kind.
+requirements without querying the upstream provider again. Runtime constraints
+apply to both releases. Build declarations remain raw evidence and do not enter
+the list or `DepMismatch` counts until a reliable build-dependency monitor is
+available. SPEC dependencies are not upstream declarations.
+
+CPAN requires static `dynamic_config=false` metadata. Its runtime `requires`,
+`recommends` and `suggests` remain distinct clauses. CPAN module identities are
+not distribution identities; an archive version cannot stand in for a module
+version. A backend may additionally implement `provides(version, settings, io)`
+to return component identities, versions and evidence URLs for that exact release.
+These are retained with the successful release check, not emitted as alerts.
+Declarations with `version_scope="component"` use this evidence; missing or ambiguous
+components never fall back to the distribution version. CPAN reads indexed modules
+from `metadata.provides`; dynamic prerequisites remain unsupported.
+
+## Add a registry metadata backend
+
+Implement `HOSTS`, `inputs()` and `metadata()` in `providers/`, then register the
+module in `providers.release.BACKENDS`. Return `Release` with attributed license
+metadata and its original declaration. License comparison remains in the monitor.
+An optional `withdrawal()` enables Yanked; omit it when the registry offers no
+such assertion. Go uses a separate proxy query, not deps.dev's deprecated flag.
+Missing or ambiguous release assertions raise `UnsupportedRelease`; transport
+failures remain errors. Neither case is a negative finding. Both paths share IO
+and the existing presenter; no frontend provider branch is needed.
 
 ## Add a version source
 
@@ -247,6 +281,13 @@ find the plugin beside nvchecker's built-in namespace. Release plugin rules with
 the corresponding installed code, not as standalone built-in nvchecker rules.
 
 ## Change presentation
+
+The aggregate list composes each presenter's `preview` beneath the version.
+`RuntimeDeps:` previews show resolved mismatches, or declaration changes when
+selected from Version. Conditions and evidence stay in the detail. Dependency
+kind controls the prefix; build assessments are not currently projected. Build notes span the
+status columns. `presentation/labels.toml` owns compact display names and category
+colors. Query IDs and saved provider assertions are not renamed for display.
 
 The collection and reading paths meet only at saved facts:
 

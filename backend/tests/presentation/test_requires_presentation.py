@@ -40,7 +40,7 @@ def test_list_groups_runtime_and_optional_without_marker_programs():
     before = deepcopy(items)
     cells = presentation_requires.requires_cells({}, items, presentation_navigation.Links())
     lines = texts(cells[0])
-    assert lines[0] == ['Runtime'] and lines[2] == ['Optional']
+    assert lines[0] == ['RuntimeDeps'] and lines[2] == ['Optional RuntimeDeps']
     assert 'Fixture dependency' in lines[1] and 'Optional library' in lines[3]
     assert not any('platform' in value or 'speedups' in value for line in lines for value in line)
     assert items == before
@@ -70,7 +70,7 @@ def test_condition_variants_share_a_summary_but_keep_each_clause():
     {'current': {'expression': '>=2', 'source': 'Fixture', 'url': 'https://example.org/current'}},
     {'current': {'expression': '>=1', 'source': 'Fixture', 'url': 'https://example.org/other'}},
     {'observed': {'version': '3'}}, {'reason': 'dependency_unavailable'},
-    {'mapping': 'ambiguous'}, {'optional': None},
+    {'mapping': 'ambiguous'}, {'optional': None}, {'kind': 'build'},
 ])
 def test_semantically_different_assessments_are_not_merged(different):
     first = changed(optional=True, condition='feature == "one"')
@@ -87,9 +87,9 @@ def test_unconditional_and_unknown_legacy_conditions_are_not_reclassified():
     assert sections[-1].entries[0].fields[-1].values[0].text == 'Not observed'
 
 
-@pytest.mark.parametrize('mapping,label', [('not_mapped', 'Not mapped'),
-                                         ('not_packaged', 'Not packaged'),
-                                         ('ambiguous', 'Ambiguous mapping')])
+@pytest.mark.parametrize('mapping,label', [('not_mapped', 'Unmapped'),
+                                         ('not_packaged', 'NotPackaged'),
+                                         ('ambiguous', 'Ambiguous')])
 def test_missing_package_evidence_is_explicit_not_an_unmet_mark(mapping, label):
     item = changed(package=None, observed=None, mapping=mapping, satisfaction='unknown',
                    reason='condition_not_evaluated', condition='platform == "one"')
@@ -106,10 +106,31 @@ def test_explicit_but_absent_package_does_not_link_to_a_missing_detail():
     item = changed(package='missing-package', mapping='not_packaged', satisfaction='unknown', observed=None)
     values = presentation_requires.requirement_values(item)
     assert values[0].href is None
-    assert values[-1].text == 'Not packaged'
+    assert values[-1].text == 'NotPackaged'
 
 
 def test_unspecified_version_is_omitted_only_from_unchanged_list_summary():
     item = changed(current=dict(expression='', source='Fixture', url='https://example.org/current'))
     assert 'any version' not in [value.text for value in presentation_requires.requirement_values(item, compact=True)]
     assert 'any version' in [value.text for value in presentation_requires.requirement_values(item)]
+
+
+def test_mixed_dependency_preview_orders_runtime_before_build_and_keeps_detail_evidence():
+    target = dict(expression='>=3', source='Registry', url='https://example.org/target')
+    items = result(changed(kind='build', name='Compiler', target=target, changed=True,
+                           target_satisfaction='unsatisfied'),
+                   changed(name='Library', target=target, changed=True, target_satisfaction='unsatisfied'))
+    links = presentation_navigation.Links()
+    lines = presentation_requires.requires_preview({'detail_url': '/packages/fixture'}, items, links)
+    assert [[v.text for v in line] for line in lines] == [
+        ['RuntimeDeps:', 'Library', '>=1', '✓', '→', '>=3', '✗'],
+        ['BuildDeps:', 'Compiler', '>=1', '✓', '→', '>=3', '✗']]
+    sections = presentation_requires.requires_sections(items, links)
+    assert [(s.id, s.title) for s in sections] == [('requires', 'RuntimeDeps'), ('requires-build', 'BuildDeps')]
+    for section in sections:
+        assert not section.collapsible
+        values = section.table.rows[0].cells[1].lines[0]
+        assert values[0].href == 'https://example.org/current'
+        assert values[3].href == 'https://example.org/target'
+    build_only = presentation_requires.requires_sections(result(items['data']['requirements'][0]), links)
+    assert build_only[0].id == 'requires' and build_only[0].title == 'BuildDeps'

@@ -132,7 +132,7 @@ def test_counted_navigation_links_select_the_advertised_packages(snapshot, tmp_p
     snapshot['monitor_catalog'] = {
         'alpha': {'title': 'First observation'},
         'beta': {'title': 'Second observation'},
-        'requires': {'title': 'Requires'},
+        'requires': {'title': 'RuntimeDeps'},
     }
     states = ('not_configured', 'error', 'unsupported', 'ok', 'not_applicable')
     for number, name in enumerate(names):
@@ -150,21 +150,22 @@ def test_counted_navigation_links_select_the_advertised_packages(snapshot, tmp_p
     choices = [choice for navigation in document['controls']['navigation']
                for choice in navigation['choices']]
     by_label = {choice['label']: choice for choice in choices}
-    assert {'Uncovered', 'Failed'} <= by_label.keys()
-    assert 'Checks' not in by_label
-    assert not {'Not configured', 'Metadata unavailable', 'Partial evidence', 'Not applicable'} & by_label.keys()
+    assert {'Uncovered', 'CheckFailed'} <= by_label.keys()
+    check_filters = {value for choice in choices
+                     for value in parse_qs(urlsplit(choice['href']).query).get('check', [])}
+    assert check_filters == {'uncovered', 'failed'}
     if monitor == 'version':
-        assert 'Untracked' not in by_label
+        assert parse_qs(urlsplit(by_label['Untracked']['href']).query)['view'] == ['untracked']
     for choice in choices:
         if choice['count'] is None:
             continue
         destination = client.get('/api/ui/packages?' + urlsplit(choice['href']).query)
         assert destination.status_code == 200
         assert destination.json()['total'] == choice['count'], choice
-        if choice['label'] in {'Uncovered', 'Failed'}:
+        if choice['label'] in {'Uncovered', 'CheckFailed'}:
             query = parse_qs(urlsplit(choice['href']).query)
             assert query['monitor'] == [monitor]
-            assert query['check'] == [choice['label'].lower()]
+            assert query['check'] == [{'Uncovered': 'uncovered', 'CheckFailed': 'failed'}[choice['label']]]
 
 
 def test_checks_keep_exact_status_in_rows_and_detail(snapshot, tmp_path):
@@ -178,7 +179,7 @@ def test_checks_keep_exact_status_in_rows_and_detail(snapshot, tmp_path):
     assert 'Partial evidence' in page['title']
     assert 'Partial evidence' not in str(page['table']['rows'])
     assert page['table']['rows'][0]['cells'][1]['lines'][0][0]['text'] == snapshot['sources']['binutils']['version']
-    status_chip, = page['controls']['active']
+    status_chip, = [chip for chip in page['controls']['active'] if chip['label'].startswith('Check:')]
     assert status_chip['label'] == 'Check: Partial evidence'
     destination = parse_qs(urlsplit(status_chip['href']).query)
     assert 'check' not in destination and destination['monitor'] == ['fixture']

@@ -1,0 +1,5 @@
+Python logo: Python Software Foundation.
+Logo usage terms: https://www.python.org/community/logos/
+Trademark policy: https://www.python.org/psf/trademarks/
+The logo identifies Python-compatible software; it does not imply PSF endorsement.
+Local vector adaptation: Simple Icons 16.15.0 (CC0-1.0).

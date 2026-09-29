@@ -32,7 +32,8 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         (default: all). IDs come from the list response's <code>monitors</code>.</li>
       <li><code>q</code> searches names; <code>search=observations</code> adds fact values,
         restricted by <code>monitor</code> when set. Matching is case-insensitive substring.</li>
-      <li>Filters intersect. Evidence views default to findings; <code>section=coverage</code>
+      <li>Filters intersect. Repeat <code>maintenance</code> to require multiple issue labels;
+        each <code>build</code> target takes one state. Evidence views default to findings; <code>section=coverage</code>
         includes packages without findings.</li>
     </ul>
     <p>Find advisory evidence:</p>

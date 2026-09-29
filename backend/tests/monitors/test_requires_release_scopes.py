@@ -63,7 +63,7 @@ def release_setup(config, snapshot, monkeypatch):
     snapshot['dependency_packages'] = {'python': 'runtime-package'}
     snapshot['sources']['runtime-package'] = state.success({},
         {'version': '3.11.8', 'srcmd5': 'runtime-source'}, NOW.isoformat())
-    snapshot['monitor_catalog'] = {'requires': {'title': 'Requires'}}
+    snapshot['monitor_catalog'] = {'requires': {'title': 'RuntimeDeps'}}
     return backend, calls
 
 
@@ -81,6 +81,21 @@ def assessment(snapshot, observation=None, now=NOW):
         save_observation(snapshot, observation)
     rows, _ = view.project_monitors(snapshot, now)
     return next(row for row in rows if row['name'] == 'binutils')['monitors']['requires']
+
+
+def test_maintenance_filters_proven_conflicts_not_satisfied_changes(config, snapshot, release_setup):
+    observed = execute(config, snapshot)
+    result = assessment(snapshot, observed)
+    assert result['dimensions']['requires'] == ['changes']
+    assert result['dimensions']['maintenance'] == []
+    assert result['data']['labels'] == []
+    snapshot['sources']['runtime-package']['version'] = '3.9'
+    result = assessment(snapshot)
+    requirement, = result['data']['requirements']
+    assert requirement['satisfaction'] == 'satisfied'
+    assert requirement['target_satisfaction'] == 'unsatisfied'
+    assert result['dimensions']['requires'] == ['unmet', 'changes']
+    assert result['data']['labels'] == [{'label': 'DepMismatch', 'count': 1, 'stale': False}]
 
 
 @pytest.mark.parametrize('relation', ['current', 'ahead', 'unknown'])
@@ -223,7 +238,7 @@ def test_dependency_only_change_reprojects_unmet_and_preserves_upstream_facts(co
     assert release_setup[1] == ['3.9.0', '3.10.0']
     document = client.get('/api/ui/packages?monitor=requires&q=binutils').json()
     unmet = next(choice for navigation in document['controls']['navigation']
-                 for choice in navigation['choices'] if choice['label'] == 'Unmet')
+                 for choice in navigation['choices'] if choice['label'] == 'DepMismatch')
     query = parse_qs(urlsplit(unmet['href']).query)
     assert query['requires'] == ['unmet'] and query['monitor'] == ['requires']
     assert query['q'] == ['binutils'] and unmet['count'] == 1
@@ -296,10 +311,10 @@ def test_condition_and_upstream_identity_changes_do_not_overwrite_clauses(config
     identities = {r['identity']['name']: r for r in rows}
     assert identities['first']['target'] is None
     assert identities['second']['current'] is None
-    assert identities['optional']['reason'] == 'condition_not_evaluated'
+    assert identities['optional']['satisfaction'] == 'satisfied'
+    assert identities['optional']['reason'] is None
     assert identities['first']['changed'] is identities['second']['changed'] is False
-    # A declaration change is observable even when its environmental condition
-    # prevents a local satisfaction verdict.
+    # A declaration change is independent of its satisfied target condition.
     assert identities['optional']['changed'] is True
 
 
@@ -396,8 +411,8 @@ def test_unavailable_new_source_version_never_inherits_old_current_declarations(
 
 def test_stored_requirements_accept_release_declarations_not_derived_comparisons():
     current = declaration('3.9.0').fact()
-    monitor_model.finding('current', 'Requires', 'Runtime', [], current['constraint']['url'], requirement=current)
+    monitor_model.finding('current', 'RuntimeDeps', 'Runtime', [], current['constraint']['url'], requirement=current)
     comparison = {key: value for key, value in current.items() if key != 'constraint'}
     comparison.update(current=current['constraint'], target=current['constraint'])
     with pytest.raises(ValueError):
-        monitor_model.finding('derived', 'Requires', 'Runtime', [], current['constraint']['url'], requirement=comparison)
+        monitor_model.finding('derived', 'RuntimeDeps', 'Runtime', [], current['constraint']['url'], requirement=comparison)

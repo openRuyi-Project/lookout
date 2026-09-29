@@ -61,6 +61,12 @@ class BuildFlavor(BaseModel):
 class BuildDetail(Build):
     flavors: list[BuildFlavor]
 
+class SourceRepository(BaseModel):
+    url: str
+    branch: str
+    revision: str
+
+
 class Collection(BaseModel):
     obs_updated_at: str | None
     upstream_updated_at: str | None
@@ -71,6 +77,8 @@ class Collection(BaseModel):
     packages: int
     tracked_packages: int
     projection_notice: str | None = None
+    build_service_url: str | None = None
+    source_repository: SourceRepository | None = None
 
 class SpecMetadata(BaseModel):
     name: str | None
@@ -84,6 +92,7 @@ class SpecMetadata(BaseModel):
 class Appearance(BaseModel):
     background: str
     foreground: str
+    icon: str | None = None
 
 class Presentation(BaseModel):
     buildsystems: dict[str, Appearance] = {}
@@ -322,7 +331,9 @@ class ListingQuery(BaseModel):
     page: int = Field(1, ge=1, le=1000000)
     per_page: int = Field(100, ge=1, le=200)
     buildsystem: str = Field('', max_length=100)
-    maintenance: str = Field('', max_length=40)
+    maintenance: list[Annotated[str, Field(min_length=1, max_length=40)]] = Field(
+        default_factory=list, max_length=16,
+        description='Repeated issue labels; all must match. Counts retain selected labels when adding another.')
     requires: Literal['', 'unmet', 'changes'] = ''
     signal: str = Field('', max_length=64, description='Owning monitor ID of a Version annotation.')
     freshness: Literal['', 'retained'] = ''

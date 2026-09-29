@@ -10,7 +10,7 @@
   --green: light-dark(#176b35, #8cdda4);
   --amber: light-dark(#865b05, #e6bd76);
   --blue: light-dark(#245fc2, #9bbdff);
-  --focus: light-dark(#276bd0, #9bbdff);
+  --focus: var(--blue);
   --control: light-dark(#d1d7df, #45505f);
   --mono: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", monospace;
 }
@@ -26,7 +26,7 @@
   box-sizing: border-box;
 }
 html {
-  font-size: 14px;
+  font-size: 15px;
 }
 body {
   margin: 0;

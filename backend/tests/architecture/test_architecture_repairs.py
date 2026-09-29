@@ -153,9 +153,9 @@ def test_native_policy_roundtrip_preserves_monitors_and_operator_settings(tmp_pa
     candidate = paths[1]
     policies = candidate.parent / 'packages.toml'
     policies.write_text(config_change.edit_tables(policies.read_text(), {'widget': policy}))
-    # Historical files beside the actual input cannot override reviewed policy.
+    # Only configured paths may affect reviewed policy.
     for path in paths:
-        (path.parent / 'groups.toml').write_text('schema=1\n[binding.widget]\ntrack_label="hidden"\n')
+        (path.parent / 'unrelated.toml').write_text('[widget]\ntrack_label="unconfigured"\n')
     review = tmp_path / 'review'
     config_change.plan(*paths, review)
     config_change.apply(review, paths[2], tmp_path / 'prepared')

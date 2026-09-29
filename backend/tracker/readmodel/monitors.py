@@ -11,6 +11,7 @@ from urllib.parse import quote
 
 from tracker import config as cfg, state
 from tracker.monitors import model as monitor_model
+from tracker.monitors.issues import Issue, VERSION_ISSUES, observation_label
 from tracker.monitors.build import status as build_status
 from tracker.monitors.requires import model as requirements
 from tracker.monitors.source import release as source_release
@@ -139,6 +140,8 @@ class Monitor:
     def read(self, context):
         result = self.project(context)
         result['dimensions']['check:' + self.id] = [result['check']['status']]
+        if result['check']['status'] == 'error':
+            result['dimensions'].setdefault('maintenance', []).append(Issue.CHECK_FAILED)
         result['id'] = self.id
         result['title'] = self.title
         return result
@@ -177,7 +180,7 @@ def version(context):
     views = []
     if value.upgrading or value.relation == 'changed':
         views.append('updates')
-    if not value.track and value.relation != 'not_applicable':
+    if not value.track and not value.binding.get('not_applicable'):
         views.append('untracked')
     if value.relation in ('unknown', 'untracked') or value.stale:
         views.append('attention')
@@ -192,7 +195,9 @@ def version(context):
                 watch=[dict(id=t, **snapshot['tracks'].get(t, {}),
                             stale=state.stale(snapshot['tracks'].get(t, {}), context.now, ttl))
                        for t in value.binding.get('watch', [])])
-    return dict(check=check, data=data, dimensions={'view': views})
+    return dict(check=check, data=data, dimensions={
+        'view': views, 'maintenance': [VERSION_ISSUES[view] for view in views if view in VERSION_ISSUES],
+    })
 
 
 def build(context):
@@ -258,15 +263,14 @@ def requires(context):
     result = evidence(context, 'requires')
     assessments = requirements.project(result['data']['findings'], context.snapshot, context.now,
                                        context.dependency_resolver)
-    unmet = sum(r['satisfaction'] == 'unsatisfied' for r in assessments)
+    unmet = sum(requirements.unsatisfied(r) for r in assessments)
     changed = sum(r['changed'] for r in assessments)
-    labels = [{'label': 'Requires', 'count': sum(r['satisfaction'] == 'unsatisfied' or r['changed']
-                                               for r in assessments), 'stale': False}] if unmet or changed else []
+    labels = [{'label': Issue.DEP_MISMATCH, 'count': unmet, 'stale': False}] if unmet else []
     result['data'].update(
         kind='requires', current_version=context.version.source.get('version'),
         target_version=context.version.upstream.get('version') if context.version.upgrading else None,
         labels=labels, finding_count=len(assessments), requirements=assessments)
-    result['dimensions'].update(maintenance=['Requires'] if labels else [],
+    result['dimensions'].update(maintenance=[Issue.DEP_MISMATCH] if labels else [],
                                **{'findings:requires': ['yes'] if assessments else []},
                                requires=(['unmet'] if unmet else []) + (['changes'] if changed else [])
                                + (['unknown'] if any(r['satisfaction'] == 'unknown' for r in assessments) else []))
@@ -294,7 +298,7 @@ def compose_version(results, value):
                         if finding.get('requirement')
                         and requirements.key(finding['requirement']) in keys]
             annotations.append(dict(
-                monitor=monitor, label=result['title'], scope='upgrade',
+                monitor=monitor, label='DepChanges', scope='upgrade',
                 target_version=target, stale=False, count=len(changes),
                 finding_ids=sorted({finding['id'] for finding in findings})))
             continue
@@ -313,7 +317,7 @@ def compose_version(results, value):
             group[finding['id']] = finding
         for scope, findings in sorted(groups.items()):
             annotations.append(dict(
-                monitor=monitor, label=result['title'], scope=scope,
+                monitor=monitor, label=observation_label(monitor, result['title']), scope=scope,
                 target_version=target if scope == 'upgrade' else None,
                 stale=any(finding['stale'] for finding in findings.values())
                       or scope == 'upgrade' and not value.upgrading,
@@ -358,7 +362,7 @@ def registry(snapshot):
     saved = snapshot.get('monitor_catalog', {})
     ids = set(saved)
     ids.difference_update(monitor_model.CORE_IDS)
-    return (*CORE, *(Monitor(mid, saved[mid]['title'],
+    return (*CORE, *(Monitor(mid, observation_label(mid, saved[mid]['title']),
                             'requires' if mid == 'requires' else 'evidence',
                             requires if mid == 'requires' else partial(evidence, monitor_id=mid))
                     for mid in sorted(ids)))

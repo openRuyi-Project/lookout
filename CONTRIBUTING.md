@@ -15,11 +15,16 @@ monitor, follow [Monitor porting](docs/monitor-porting.md).
 | Derive package state, filters and counts | `backend/tracker/readmodel/` |
 | Select and group visible facts | `backend/tracker/presentation/` |
 | Render documents and controls | `frontend/src/components/document/`, `pages/`, `styles/` |
+| Local brand assets and provenance | `frontend/src/assets/logos/catalog.json`; BuildSystem mapping in `config/tracker.toml` |
 | Persist state or change HTTP contracts | `backend/tracker/state.py`, `api.py` |
 
 Tests follow these responsibilities under `backend/tests/`. Shared fixtures belong
 in `conftest.py` or `helpers/`, not in another test module. See [Design](docs/design.md)
 for write ownership and trust boundaries.
+
+SVGs are vendored at fixed upstream revisions. Add attribution, usage terms and a
+checksum to the asset catalog; About reads the same catalog. Use explicit identity
+mappings, not name guessing or remote icon services. Unknown icons remain text.
 
 ## Run checks
 

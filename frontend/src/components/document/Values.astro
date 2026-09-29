@@ -9,5 +9,7 @@ const {values} = Astro.props;
   return <Tag href={href} title={value.title || undefined}
     class:list={['value', `value-${value.kind}`, `tone-${value.tone}`]}
     datetime={value.datetime || undefined}
+    data-variant={value.kind === 'tag' ? value.variant : undefined}
+    data-decoration={value.decoration || undefined}
     data-appearance={value.appearance ? encodeURIComponent(value.appearance) : undefined}>{value.text}</Tag>;
 })}

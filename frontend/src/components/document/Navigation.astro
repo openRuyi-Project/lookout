@@ -1,11 +1,14 @@
 ---
 import {safeHref, type Navigation} from '../../lib/document';
+import {logo} from '../../lib/logos';
 interface Props {navigation: Navigation; rail?: boolean}
 const {navigation, rail = false} = Astro.props;
 ---
 <nav class:list={['document-nav', {rail}]} aria-label={navigation.label}>
-  {navigation.choices.map(choice => <a href={safeHref(choice.href)} aria-current={choice.selected ? 'page' : undefined}
+  {navigation.choices.map(choice => {
+    const image = logo(choice.icon);
+    return <a href={safeHref(choice.href)} aria-current={choice.selected ? 'page' : undefined}
     data-appearance={choice.appearance ? encodeURIComponent(choice.appearance) : undefined}>
-    <span>{choice.label}</span>{choice.count != null && <b>{choice.count}</b>}
-  </a>)}
+    <span class="choice-label">{image && <img src={image.src} width="18" height="18" alt="" class:list={['brand-icon', {monochrome: image.monochrome}]}/>}<span>{choice.label}</span></span>{choice.count != null && <b>{choice.count}</b>}
+  </a>})}
 </nav>

@@ -2,8 +2,13 @@
 import json
 from urllib.parse import quote
 
+from tracker.monitors.requires.model import unsatisfied
 from tracker.presentation.model import Column, Entry, Row, Section, Table
+from tracker.presentation.labels import caption
 from tracker.presentation.values import cell, field, retained_marker, text, version_value
+
+
+DEPENDENCY_TITLES = {'runtime': 'RuntimeDeps', 'build': 'BuildDeps'}
 
 
 def requirement_status(requirement, *, target=False):
@@ -43,8 +48,8 @@ def requirement_values(requirement, *, compact=False):
     mapping = requirement.get('mapping')
     if mapping in ('not_mapped', 'ambiguous', 'not_packaged'):
         values = [value for value in values if value.text != '?']
-        values.append(text({'not_mapped': 'Not mapped', 'ambiguous': 'Ambiguous mapping',
-                            'not_packaged': 'Not packaged'}[mapping], tone='muted'))
+        values.append(text(caption({'not_mapped': 'Not mapped', 'ambiguous': 'Ambiguous mapping',
+                            'not_packaged': 'Not packaged'}[mapping]), tone='muted'))
     if compact and not requirement['changed']:
         values = [value for value in values if value.text != 'any version']
     return values
@@ -72,8 +77,7 @@ def requires_sections(result, links):
     if not requirements:
         return []
     sections, conditions = [], []
-    for optional, title, suffix in [(False, 'Requires', ''), (True, 'Optional dependencies', '-optional')]:
-        groups = requirement_groups([item for item in requirements if (item.get('optional') is True) == optional])
+    for title, suffix, groups in dependency_groups(requirements):
         rows = []
         for number, (requirement, clauses) in enumerate(groups):
             values = requirement_values(requirement)
@@ -87,8 +91,8 @@ def requires_sections(result, links):
                     condition_fields.append(field('Optionality', text('Not observed', tone='muted')))
                 conditions.append(Entry(heading=values, fields=condition_fields))
         if rows:
-            sections.append(Section(id=result['id'] + suffix, title=title, table=Table(
-                label='Upstream runtime requirements compared with current source versions',
+            sections.append(Section(id=result['id'] + suffix if sections else result['id'], title=title, table=Table(
+                label=title + ' compared with current source versions',
                 columns=[Column(title='Dependency'), Column(title='Required'), Column(title='Current source')], rows=rows)))
     if conditions:
         sections.append(Section(id=result['id'] + '-conditions', title='Dependency conditions',
@@ -96,19 +100,39 @@ def requires_sections(result, links):
     return sections
 
 
+def dependency_groups(requirements):
+    for kind, title in DEPENDENCY_TITLES.items():
+        for optional in (False, True):
+            groups = requirement_groups([item for item in requirements
+                                         if item['kind'] == kind and (item.get('optional') is True) == optional])
+            if groups:
+                suffix = ('-build' if kind == 'build' else '') + ('-optional' if optional else '')
+                yield ('Optional ' if optional else '') + title, suffix, groups
+
+
 def requires_cells(pkg, result, links):
     data = result['data']
     lines = []
-    has_optional = any(item.get('optional') is True for item in data['requirements'])
-    for optional, label in [(False, 'Runtime'), (True, 'Optional')]:
-        groups = requirement_groups([item for item in data['requirements'] if (item.get('optional') is True) == optional])
-        if not groups:
-            continue
-        if has_optional:
-            lines.append([text(label, tone='muted')])
+    for title, _, groups in dependency_groups(data['requirements']):
+        lines.append([text(title, tone='muted')])
         lines.extend(requirement_values(item, compact=True) for item, _ in groups)
     if result.get('dimensions', {}).get('retained:' + result['id']):
         lines.insert(0, [retained_marker(links.to(monitor=result['id'], freshness='retained', check='', section='results'))])
     if any(requirement['changed'] or requirement['current'] is None for requirement in data['requirements']):
         lines.insert(0, version_value(pkg))
     return [cell(*lines)]
+
+
+def requires_preview(pkg, result, links):
+    """Expand changes when requested; otherwise show only resolved conflicts."""
+    changes = links.query.get('signal') == result['id']
+    visible = [item for item in result['data']['requirements']
+               if unsatisfied(item) or changes and item['changed']]
+    groups = [group for _, _, members in dependency_groups(visible) for group in members]
+    lines = [[text(DEPENDENCY_TITLES[item['kind']] + ':', tone='muted'),
+              *requirement_values(item, compact=True),
+              *([text('Optional', tone='muted')] if item.get('optional') is True else [])]
+             for item, _ in groups[:3]]
+    if len(groups) > 3:
+        lines.append([text(f'+{len(groups) - 3}', href=pkg['detail_url'] + '#requires', title='More dependencies')])
+    return lines

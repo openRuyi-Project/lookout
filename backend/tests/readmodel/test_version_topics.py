@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 import pytest
 
+from tests.helpers.listing import facet_destination
 from tracker import state
 from tracker.api import create_app
 from tracker.monitors import model as monitor_model
@@ -50,7 +51,7 @@ def test_current_security_and_yanked_do_not_depend_on_upgrade(version):
                      eol=[finding('eol', scope='current')], license=[])
     assert output['dimensions'] == {'version_signal': ['security', 'yanked']}
     annotations = output['data']['annotations']
-    assert [(item['label'], item['count']) for item in annotations] == [('Security', 2), ('Yanked', 1)]
+    assert [(item['label'], item['count']) for item in annotations] == [('Advisory', 2), ('Yanked', 1)]
     assert all(item['scope'] == 'current' and item['target_version'] is None for item in annotations)
 
 
@@ -66,7 +67,7 @@ def test_generic_upgrade_facts_join_by_scope_and_target_not_display_text(version
                      unrelated=[finding('unrelated', scope='current')],
                      wrong_target=[finding('wrong_target', target='3.0')])
     assert output['dimensions']['version_signal'] == ['abi', 'license']
-    assert [item['label'] for item in output['data']['annotations']] == ['Abi', 'License']
+    assert [item['label'] for item in output['data']['annotations']] == ['Abi', 'LicenseDiff']
     assert all(item['scope'] == 'upgrade' and item['target_version'] == '2.0'
                for item in output['data']['annotations'])
 
@@ -90,11 +91,11 @@ def test_requires_joins_changed_declarations_not_current_unmet(version):
     items = [requirement('interpreter', True), requirement('library', True),
              requirement('unmet', False, 'unsatisfied')]
     findings = [dict(**finding('requires', item['dependency']), requirement=item) for item in items]
-    projected['requires'] = dict(title='Requires', data=dict(
+    projected['requires'] = dict(title='RuntimeDeps', data=dict(
         kind='requires', requirements=items, findings=findings))
     monitor_views.compose_version(projected, version)
     assert projected['version']['data']['annotations'] == [dict(
-        monitor='requires', label='Requires', count=2, scope='upgrade', target_version='2.0',
+        monitor='requires', label='DepChanges', count=2, scope='upgrade', target_version='2.0',
         stale=False, finding_ids=['requires:interpreter', 'requires:library'])]
     for item in items:
         item['changed'] = False
@@ -104,7 +105,7 @@ def test_requires_joins_changed_declarations_not_current_unmet(version):
 
 def test_requires_has_no_upgrade_label_when_version_is_not_fresh(version):
     projected = results()
-    projected['requires'] = dict(title='Requires', data=dict(
+    projected['requires'] = dict(title='RuntimeDeps', data=dict(
         kind='requires', requirements=[requirement('library', True)], findings=[]))
     monitor_views.compose_version(projected, replace(version, relation='unknown', upstream_stale=True))
     assert projected['version']['data']['annotations'] == []
@@ -124,11 +125,11 @@ def test_projection_rejects_changed_subject_and_target_before_topic_join(snapsho
     monkeypatch.setattr(state, 'compare', lambda *args: 'outdated')
     now = datetime.now(timezone.utc)
     subject = version_status.evaluate(snapshot, 'binutils', now).subject
-    snapshot['monitor_catalog'] = {'license': {'title': 'License'}}
+    snapshot['monitor_catalog'] = {'license': {'title': 'LicenseDiff'}}
     snapshot['monitors'] = {'binutils': {'license': dict(
         scope='upgrade', subject={**subject, 'target_version': '3.9.9'}, status='ok',
         checked_at=state.utcnow(), findings=[monitor_model.finding(
-            'license', 'License', 'Fixture license', [], 'https://example.org/',
+            'license', 'LicenseDiff', 'Fixture license', [], 'https://example.org/',
             scope='upgrade', target_version='3.9.9')])}}
     rows, _ = view.project_monitors(snapshot, now)
     row = next(row for row in rows if row['name'] == 'binutils')
@@ -151,12 +152,38 @@ def test_signal_counts_are_disjunctive_package_counts_and_filter_by_stable_id():
         assert index.select(signal=signal, **filters)['total'] == count
 
 
+def test_home_exposes_dependency_changes_as_an_independent_filter(snapshot, tmp_path, monkeypatch):
+    snapshot['monitor_catalog'] = {'requires': {'title': 'RuntimeDeps'}}
+    rows, collection = view.project_monitors(snapshot)
+    for row in rows:
+        dimensions = row['monitors']['version']['dimensions']
+        dimensions['version_signal'] = ['requires'] if row['name'] in ('binutils', 'foo3') else []
+        dimensions['maintenance'] = ['DepMismatch'] if row['name'] == 'binutils' else []
+    index = PackageList(rows, snapshot['targets'])
+    app = create_app(tmp_path / 'unused.db')
+    monkeypatch.setattr(app.state.projection, 'read', lambda: (snapshot, index, collection))
+    client = TestClient(app)
+    for query in ('', '?q=bin', '?maintenance=DepMismatch', '?signal=requires', '?q=missing&signal=requires'):
+        page = client.get('/api/ui/packages' + query).json()
+        choices = page['controls']['choice_rows'][0]['choices']
+        labels = [choice['label'] for choice in choices]
+        if 'DepMismatch' in labels:
+            assert labels.index('DepChanges') > labels.index('DepMismatch')
+        for choice in choices:
+            facet_destination(client, page, choice)
+        if 'signal=requires' in query:
+            selected = next(c for c in choices if c['label'] == 'DepChanges')
+            assert selected['selected']
+            assert any(c['label'] == 'DepChanges' for c in page['controls']['active'])
+            assert {'name': 'signal', 'value': 'requires'} in page['controls']['hidden']
+
+
 def test_v2_filter_and_schema_expose_the_join_without_repeating_evidence(snapshot, tmp_path, monkeypatch):
     rows, collection = view.project_monitors(snapshot)
     for row in rows:
         if row['name'] == 'binutils':
             row['monitors']['version']['data']['annotations'] = [dict(
-                monitor='security', label='Security', count=2, scope='current', target_version=None,
+                monitor='security', label='Advisory', count=2, scope='current', target_version=None,
                 stale=False, finding_ids=['security:one', 'security:two'])]
             row['monitors']['version']['dimensions']['version_signal'] = ['security']
     index = PackageList(rows, snapshot['targets'])
@@ -177,16 +204,16 @@ def test_current_security_reaches_version_even_when_latest_and_disappears_on_sub
     monkeypatch.setattr(state, 'compare', lambda *args: 'current')
     now = datetime.now(timezone.utc)
     subject = version_status.evaluate(snapshot, 'binutils', now).subject
-    snapshot['monitor_catalog'] = {'security': {'title': 'Security'}}
+    snapshot['monitor_catalog'] = {'security': {'title': 'Advisory'}}
     snapshot['monitors'] = {'binutils': {'security': dict(
         scope='current', subject=subject, status='ok', checked_at=state.utcnow(),
-        findings=[monitor_model.finding('CVE-fixture', 'Security', 'CVE-fixture', [],
+        findings=[monitor_model.finding('CVE-fixture', 'Advisory', 'CVE-fixture', [],
                                         'https://example.org/advisory')])}}
     rows, _ = view.project_monitors(snapshot, now)
     row = next(row for row in rows if row['name'] == 'binutils')
     assert row['monitors']['version']['data']['relation'] == 'current'
     assert row['monitors']['version']['data']['annotations'] == [dict(
-        monitor='security', label='Security', count=1, scope='current', target_version=None,
+        monitor='security', label='Advisory', count=1, scope='current', target_version=None,
         stale=False, finding_ids=['security:CVE-fixture'])]
     snapshot['sources']['binutils']['srcmd5'] = 'new-source-revision'
     rows, _ = view.project_monitors(snapshot, now)

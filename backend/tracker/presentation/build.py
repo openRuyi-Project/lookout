@@ -1,5 +1,5 @@
 """Build for reading documents; no collection or persistence."""
-from tracker.presentation.model import Column, Row, Section, Table
+from tracker.presentation.model import Column, Row, RowNote, Section, Table
 from tracker.presentation.values import cell, stamp, text
 
 
@@ -19,7 +19,7 @@ def build_reason(observation):
     return reason if reason and reason.rstrip('.:').casefold() not in labels else None
 
 
-def build_reason_line(build, detail_url):
+def build_reason_line(build, detail_url, *, limit=120):
     observations = build.get('flavors') or [build]
     reasons = []
     for observation in observations:
@@ -37,7 +37,7 @@ def build_reason_line(build, detail_url):
     if not reasons:
         return []
     full = '; '.join(reasons)
-    visible = full if len(full) <= 120 else full[:119].rstrip() + '…'
+    visible = full if limit is None or len(full) <= limit else full[:limit - 1].rstrip() + '…'
     return [text(visible, href=detail_url + '#build', tone='muted',
                  title='Full OBS build details' if visible != full else 'OBS build details')]
 
@@ -87,3 +87,21 @@ def build_cells(pkg, result, links):
     return [build_cell(build, result['data']['source_version'], pkg['detail_url'],
                        show_reason=links.query.get('monitor') == result['id'])
             for build in result['data']['targets']]
+
+
+def build_note(pkg, result, column):
+    """One attributed reason below the status columns; distinct reasons stay linked."""
+    reasons = {}
+    for build in result['data']['targets']:
+        line = build_reason_line(build, pkg['detail_url'], limit=None)
+        if line:
+            reasons.setdefault(line[0].text, []).append(build['label'])
+    if not reasons:
+        return []
+    reason, targets = next(iter(reasons.items()))
+    values = [text(', '.join(targets) + ':', kind='code', tone='muted'),
+              text(reason if len(reason) <= 120 else reason[:119].rstrip() + '…',
+                   href=pkg['detail_url'] + '#build', tone='muted')]
+    if len(reasons) > 1:
+        values.append(text(f'+{len(reasons) - 1}', href=pkg['detail_url'] + '#build', title='More OBS build details'))
+    return [RowNote(column=column, span=len(result['data']['targets']), values=values)]

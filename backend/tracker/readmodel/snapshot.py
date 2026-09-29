@@ -1,5 +1,6 @@
 """Read-only package composition from current monitor observations."""
 from datetime import datetime, timezone
+import re
 from urllib.parse import quote
 
 from tracker import state
@@ -76,8 +77,29 @@ def collection(snapshot, rows, now):
                                                 ('targets', 'inventory', 'source_index', 'builds')]),
                       upstream_updated_at=observed_at([components.get('nvchecker', {})]),
                       last_attempt=snapshot['last_attempt'], mode=snapshot['mode'], errors=errors,
+                      build_service_url=snapshot.get('obs', {}).get('web_url'),
+                      source_repository=source_repository(snapshot),
                       generation=snapshot['generation'], packages=len(rows),
                       tracked_packages=sum(bool(r['monitors']['version']['data']['track']) for r in rows))
+
+
+def source_repository(snapshot):
+    """Use the repository checkpoint, not a package's last changed commit.
+
+    Incremental parsing retains older package heads. Origins must agree before
+    attributing the global checkpoint to one repository and branch.
+    """
+    head = snapshot['components'].get('spec_git', {}).get('head')
+    if not isinstance(head, str) or not re.fullmatch(r'[0-9a-fA-F]{40}|[0-9a-fA-F]{64}', head):
+        return None
+    origins = {(origin.get('url'), origin.get('branch')) for spec in snapshot.get('specs', {}).values()
+               if (origin := spec.get('source_origin'))}
+    if len(origins) != 1:
+        return None
+    url, branch = origins.pop()
+    if not url or not branch:
+        return None
+    return dict(url=url, branch=branch, revision=head)
 
 
 def refresh_build_clock(snapshot, rows, now):
@@ -101,11 +123,6 @@ def refresh_build_clock(snapshot, rows, now):
                  'data': {**build['data'], 'targets': targets}}
         updated.append({**row, 'monitors': {**row['monitors'], 'build': build}})
     return updated, collection(snapshot, updated, now)
-
-
-
-
-
 
 
 

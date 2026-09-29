@@ -1,7 +1,9 @@
 """One set intersection defines rows, counts and linked filter choices.
 
-A facet's choices apply every selection except its own. Counts describe packages,
-not build flavors or findings. Pagination happens only after this calculation.
+Single-valued facets count alternatives with their own selection removed.
+Independent issue labels count intersections with the current selection.
+Counts describe packages, not build flavors or findings. Pagination happens
+only after this calculation.
 """
 from collections import defaultdict
 from types import MappingProxyType
@@ -34,7 +36,8 @@ class _Selection:
     def __init__(self, index, scope, filters):
         self.index = index
         self.scope = scope
-        self.filters = {key: value for key, value in filters.items() if value}
+        self.filters = {key: (value if isinstance(value, str) else tuple(value))
+                        for key, value in filters.items() if value}
         self._contexts = {}
 
     def matching(self, *, without=None):
@@ -43,18 +46,21 @@ class _Selection:
             members = set(self.scope)
             for dimension, value in self.filters.items():
                 if dimension != key:
-                    members.intersection_update(self.index.get(dimension, {}).get(value, ()))
+                    values = (value,) if isinstance(value, str) else value
+                    for item in values:
+                        members.intersection_update(self.index.get(dimension, {}).get(item, ()))
             self._contexts[key] = frozenset(members)
         return self._contexts[key]
 
-    def counts(self, dimension, required=()):
-        context = self.matching(without=dimension)
+    def counts(self, dimension, required=(), *, within_selection=False):
+        context = self.matching() if within_selection else self.matching(without=dimension)
         options = self.index.get(dimension, {})
-        selected = self.filters.get(dimension)
-        values = options.keys() | set(required) | ({selected} if selected else set())
+        selected = self.filters.get(dimension, ())
+        selected = {selected} if isinstance(selected, str) else set(selected)
+        values = options.keys() | set(required) | selected
         counts = {value: len(context.intersection(options.get(value, ()))) for value in sorted(values)}
         return {value: count for value, count in counts.items()
-                if count or value in required or value == selected}
+                if count or value in required or value in selected or (within_selection and selected)}
 
 
 class PackageList:
@@ -126,15 +132,15 @@ class PackageList:
             if dimension.startswith('build:'):
                 counts = selection.counts(dimension)
                 statuses[dimension.removeprefix('build:')] = [
-                    {'value': value, 'label': build_status.label(value), 'count': count}
-                    for value, count in counts.items()
+                    {'value': value, 'label': build_status.label(value), 'count': counts[value]}
+                    for value in build_status.ordered(counts)
                 ]
         return {
             'items': [self.rows[number] for number in selected[(page - 1) * per_page:page * per_page]],
             'total': total, 'page': page, 'per_page': per_page, 'pages': pages,
             'counts': selection.counts('view', required=VIEWS),
             'buildsystems': selection.counts('buildsystem'),
-            'maintenance_labels': selection.counts('maintenance'),
+            'maintenance_labels': selection.counts('maintenance', within_selection=True),
             'version_signals': selection.counts('version_signal'),
             'requires_counts': {
                 'all': len(selection.matching(without='requires')),

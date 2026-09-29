@@ -1,7 +1,0 @@
-// Selection submits the complete GET form; the server owns results and counts.
-for (const form of document.querySelectorAll('form[data-auto-submit]')) {
-  form.addEventListener('change', event => {
-    if (!(event.target instanceof HTMLSelectElement)) return;
-    form.requestSubmit();
-  });
-}

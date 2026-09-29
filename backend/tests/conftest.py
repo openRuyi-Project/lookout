@@ -83,7 +83,7 @@ def scoped_client(snapshot, tmp_path, monkeypatch):
                         'unknown' if not current or not latest else
                         'current' if current == latest else 'outdated')
     snapshot['monitor_catalog'] = {
-        'requires': {'title': 'Requires'},
+        'requires': {'title': 'RuntimeDeps'},
         'fixture_signature': {'title': 'Artifact signatures'},
     }
     rows, collection = view.project_monitors(snapshot)
@@ -102,7 +102,7 @@ def scoped_client(snapshot, tmp_path, monkeypatch):
             'requires': requirement_choices.get(name, []),
             'check:requires': [checks[name]],
             'findings:requires': ['yes'] if name in requirement_choices else [],
-            'maintenance': ['Requires'] if name in requirement_choices else [],
+            'maintenance': ['DepMismatch'] if name in requirement_choices else [],
         })
         signature = row['monitors']['fixture_signature']
         signature['check']['status'] = checks[name]

@@ -124,10 +124,10 @@ def test_v2_port_catalog_checks_and_facets_share_the_same_observation(config, sn
         assert monitor.collect(config, 'unused', db, io=IO(client=client))['generation'] == generation
     api = ProjectedClient(create_app(db))
     listing = api.get('/api/v2/packages?monitor=yanked&section=coverage').json()
-    assert {'id': 'yanked', 'title': 'Release files', 'kind': 'evidence'} in listing['monitors']
+    assert {'id': 'yanked', 'title': 'Yanked', 'kind': 'evidence'} in listing['monitors']
     assert listing['total'] == 5  # Focusing is not silently excluding unconfigured packages.
     assert listing['check_statuses'] == {'not_configured': 4, 'ok': 1}
-    assert listing['maintenance_labels'] == {'Yanked': 1}
+    assert listing['maintenance_labels'] == {'Yanked': 1, 'Outdated': 2, 'Untracked': 2}
     result = listing['items'][0]['monitors']['yanked']
     assert result['data'] == {
         'kind': 'evidence', 'finding_count': 1,
@@ -138,7 +138,7 @@ def test_v2_port_catalog_checks_and_facets_share_the_same_observation(config, sn
     }
     assert result['check']['status'] == 'ok'
     selected = api.get('/api/v2/packages?monitor=yanked&check=not_configured').json()
-    assert selected['total'] == 4 and selected['maintenance_labels'] == {}
+    assert selected['total'] == 4 and selected['maintenance_labels'] == {'Outdated': 1, 'Untracked': 2}
     assert selected['check_statuses'] == {'not_configured': 4, 'ok': 1}
     one = api.get('/api/v2/packages?monitor=yanked&maintenance=Yanked').json()
     assert one['total'] == one['counts']['all'] == 1

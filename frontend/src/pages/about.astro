@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
+import logos from '../assets/logos/catalog.json';
 ---
 <Base title="About · openRuyi Packages">
   <article class="prose">
@@ -14,7 +15,7 @@ import Base from '../layouts/Base.astro';
       <dd>Red means the current source has not succeeded on every active target. A check mark belongs to its OBS target, not a release guarantee. A previous successful version appears below a result only when it cannot be inferred from the current version.</dd>
       <dt>Untracked</dt>
       <dd>The Version view separates packages without an upstream rule. Muted version text means tracking or build confirmation is unavailable; its tooltip distinguishes the two.</dd>
-      <dt>Maintenance</dt>
+      <dt>Labels</dt>
       <dd>Labels link to packages with the same signal. Open a package for the provider evidence and collection checks; a security match does not evaluate local patches.</dd>
       <dt>Observation time</dt>
       <dd>Last updated is collection time; Succeeded at is build time. Failed checks retain earlier observations and their timestamps.</dd>
@@ -23,5 +24,11 @@ import Base from '../layouts/Base.astro';
     <h2>Data</h2>
     <p><a href="/api/v2/status">Collection status</a> includes schedules, coverage and errors. The <a href="/api">query interface</a> exposes package observations as JSON.</p>
     <p><a href="/LICENSE.txt">MulanPSL-2.0 license</a></p>
+    <p><a href="https://github.com/openRuyi-Project/openRuyi-logo">openRuyi logo</a> © 2026 ISCAS and openRuyi Project Contributors. Used unchanged under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p>
+    <h2>Tool and ecosystem marks</h2>
+    <p>Marks identify tools or language families, not endorsement. GNU identifies the Autotools family; language marks do not identify a particular build backend.</p>
+    <dl class="api-list">
+      {Object.values(logos).map(logo => <><dt><a href={logo.source}>{logo.title}</a></dt><dd>{logo.credit}. <a href={logo.license_url}>{logo.license}</a>. <a href={logo.asset_source}>SVG source</a>. {logo.changes}</dd></>)}
+    </dl>
   </article>
 </Base>

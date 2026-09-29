@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from typing import Callable, TYPE_CHECKING
 
 from tracker.presentation.build import build_cells, build_columns, build_sections
-from tracker.presentation.evidence import evidence_cells, evidence_section
-from tracker.presentation.model import Cell, Column, Section
-from tracker.presentation.requires import requires_cells, requires_sections
+from tracker.presentation.evidence import evidence_cells, evidence_lines, evidence_section
+from tracker.presentation.model import Cell, Column, Section, Text
+from tracker.presentation.requires import requires_cells, requires_preview, requires_sections
 from tracker.presentation.source import source_sections
 from tracker.presentation.values import single_column
 from tracker.presentation.version import version_cells, version_sections
@@ -27,6 +27,7 @@ class Presenter:
     columns: Callable[[str, list[dict]], list[Column]] | None = None
     cells: Callable[[dict, dict, Links], list[Cell]] | None = None
     filters: frozenset[str] = frozenset()
+    preview: Callable[[dict, dict, Links], list[list[Text]]] | None = None
 
     def __post_init__(self):
         if (self.columns is None) != (self.cells is None):
@@ -41,8 +42,8 @@ PRESENTERS = {
     'source': Presenter(source_sections),
     'version': Presenter(version_sections, single_column, version_cells, frozenset({'view', 'signal'})),
     'build': Presenter(build_sections, build_columns, build_cells, frozenset({'build'})),
-    'evidence': Presenter(evidence_section, single_column, evidence_cells),
-    'requires': Presenter(requires_sections, single_column, requires_cells, frozenset({'requires'})),
+    'evidence': Presenter(evidence_section, single_column, evidence_cells, preview=evidence_lines),
+    'requires': Presenter(requires_sections, single_column, requires_cells, frozenset({'requires'}), requires_preview),
 }
 
 

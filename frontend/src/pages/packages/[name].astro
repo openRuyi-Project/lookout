@@ -22,4 +22,5 @@ if (!data) Astro.response.status = status === 404 ? 404 : 503;
     </div>
   </> : <div role="alert" class="notice">{status === 404 ? 'No such source package.' : 'Snapshot unavailable. Please try again later.'}</div>}
   </div>
+  {data && <script is:inline type="module" src="/reveal-anchor.js"></script>}
 </Base>

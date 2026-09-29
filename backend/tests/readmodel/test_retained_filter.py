@@ -23,12 +23,12 @@ def observed(snapshot, name, findings=(), *, old=False, status='ok'):
 
 
 def security_finding(identity):
-    return monitor_model.finding(identity, 'Security', identity, [], 'https://example.org/' + identity)
+    return monitor_model.finding(identity, 'Advisory', identity, [], 'https://example.org/' + identity)
 
 
 @pytest.fixture
 def retained_projection(snapshot):
-    snapshot['monitor_catalog'] = {'security': {'title': 'Security'}}
+    snapshot['monitor_catalog'] = {'security': {'title': 'Advisory'}}
     snapshot['monitors'] = {
         'binutils': {'security': observed(snapshot, 'binutils',
             [security_finding('OLD-1'), security_finding('OLD-2')], old=True)},
@@ -88,9 +88,9 @@ def test_requires_needs_visible_assessments_not_only_old_provider_facts(snapshot
     def finding(kind):
         declaration = requirements.Requirement('python', 'Python', kind, 'pep440',
             '>=3.8', '>=3.8', 'Fixture', 'https://example.org/python').fact()
-        return monitor_model.finding(kind, 'Requires', 'Python', [], 'https://example.org/python',
+        return monitor_model.finding(kind, 'RuntimeDeps', 'Python', [], 'https://example.org/python',
                                      requirement=declaration)
-    snapshot['monitor_catalog'] = {'requires': {'title': 'Requires'}}
+    snapshot['monitor_catalog'] = {'requires': {'title': 'RuntimeDeps'}}
     snapshot['monitors'] = {
         'binutils': {'requires': observed(snapshot, 'binutils', [finding('runtime')], old=True)},
         'foo3': {'requires': observed(snapshot, 'foo3', [finding('build')], old=True)},
@@ -119,10 +119,10 @@ def test_retained_projection_is_repeatable_without_rewriting_observations():
 
 def test_intersections_and_disjunctive_retained_count_match_independent_scan():
     examples = [
-        ('pkg-a', True, 'error', 'cmake', 'Security', 'failed', ['security'], ['unmet']),
-        ('pkg-b', True, 'expired', 'cmake', 'License', 'succeeded', ['license'], ['changes']),
-        ('pkg-c', False, 'error', 'cmake', 'Security', 'failed', [], []),
-        ('other', True, 'ok', 'meson', 'Security', 'failed', ['security'], ['unmet']),
+        ('pkg-a', True, 'error', 'cmake', 'Advisory', 'failed', ['security'], ['unmet']),
+        ('pkg-b', True, 'expired', 'cmake', 'LicenseDiff', 'succeeded', ['license'], ['changes']),
+        ('pkg-c', False, 'error', 'cmake', 'Advisory', 'failed', [], []),
+        ('other', True, 'ok', 'meson', 'Advisory', 'failed', ['security'], ['unmet']),
     ]
     rows = [dict(name=name, monitors={'security': dict(dimensions={
         'retained:security': ['yes', 'yes'] if retained else [], 'check:security': [check],
@@ -149,9 +149,9 @@ def test_intersections_and_disjunctive_retained_count_match_independent_scan():
         assert result['total'] == len(expected)
         assert result['items'] == expected[:1]
         assert result['retained_count'] == sum(matches(row, True) for row in rows)
-    assert names(selected(index, freshness='retained', maintenance='License',
+    assert names(selected(index, freshness='retained', maintenance='LicenseDiff',
                           builds={'target': 'succeeded'})) == ['pkg-b']
-    assert selected(index, freshness='retained', maintenance='License',
+    assert selected(index, freshness='retained', maintenance='LicenseDiff',
                     builds={'target': 'failed'})['retained_count'] == 0
 
 
@@ -188,14 +188,14 @@ def test_raw_api_is_typed_and_composable(retained_client):
 def test_navigation_count_is_destination_count_and_modes_are_disjoint(retained_client, monitor, mode):
     document = retained_client.get('/api/ui/packages?monitor=' + monitor + mode).json()
     choices = [choice for navigation in document['controls']['navigation'] for choice in navigation['choices']]
-    retained = next(choice for choice in choices if choice['label'] == 'Out of date')
+    retained = next(choice for choice in choices if choice['label'] == 'Stale')
     assert retained['count'] == 2
     for choice in choices:
         if choice['count'] is not None:
             destination = retained_client.get(choice['href'].replace('/?', '/api/ui/packages?')).json()
             assert destination['total'] == choice['count']
         query = parse_qs(urlsplit(choice['href']).query)
-        if choice['label'] == 'Out of date':
+        if choice['label'] == 'Stale':
             assert query['freshness'] == ['retained'] and 'check' not in query
         else:
             assert 'freshness' not in query
@@ -205,16 +205,16 @@ def test_navigation_count_is_destination_count_and_modes_are_disjoint(retained_c
 def test_retained_count_follows_search_and_selected_zero_remains_visible(retained_client):
     document = retained_client.get('/api/ui/packages?monitor=security&q=foo').json()
     choices = [choice for navigation in document['controls']['navigation'] for choice in navigation['choices']]
-    retained = next(choice for choice in choices if choice['label'] == 'Out of date')
+    retained = next(choice for choice in choices if choice['label'] == 'Stale')
     assert retained['count'] == 1
     destination = retained_client.get(retained['href'].replace('/?', '/api/ui/packages?')).json()
     assert [row['key'] for row in destination['table']['rows']] == ['foo3']
     empty = retained_client.get('/api/ui/packages?monitor=security&q=absent&freshness=retained').json()
     choices = [choice for navigation in empty['controls']['navigation'] for choice in navigation['choices']]
-    retained = next(choice for choice in choices if choice['label'] == 'Out of date')
+    retained = next(choice for choice in choices if choice['label'] == 'Stale')
     assert retained['count'] == 0 and retained['selected'] and empty['total'] == 0
     inactive = retained_client.get('/api/ui/packages?monitor=security&q=foo4').json()
-    assert not any(choice['label'] == 'Out of date'
+    assert not any(choice['label'] == 'Stale'
                    for navigation in inactive['controls']['navigation'] for choice in navigation['choices'])
 
 
@@ -223,7 +223,7 @@ def test_row_markers_link_to_the_same_visible_retained_set(retained_client):
         document = retained_client.get('/api/ui/packages?monitor=' + monitor).json()
         for row in document['table']['rows']:
             markers = [value for cell in row['cells'] for line in cell['lines']
-                       for value in line if value['text'] == 'Out of date']
+                       for value in line if value['text'] == 'Stale']
             assert bool(markers) == (row['key'] in ('binutils', 'foo3'))
             for marker in markers:
                 destination = retained_client.get(marker['href'].replace('/?', '/api/ui/packages?')).json()

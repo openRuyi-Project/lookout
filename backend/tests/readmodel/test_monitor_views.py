@@ -69,7 +69,8 @@ def test_pending_monitor_is_not_a_negative_finding(snapshot, tmp_path):
     assert result['check_statuses'] == {'pending': 5}
     assert result['total'] == 5
     assert all(row['monitors']['future']['check']['status'] == 'pending' for row in result['items'])
-    assert result['maintenance_labels'] == {}
+    assert result['maintenance_labels'] == {'Outdated': 2, 'Untracked': 2}
+    assert all(not row['monitors']['future']['data']['labels'] for row in result['items'])
 
 
 def test_only_declared_adapters_are_published_without_importing_providers(snapshot):

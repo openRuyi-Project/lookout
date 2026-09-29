@@ -10,7 +10,7 @@ def test_native_file_is_the_only_rule_owner(tmp_path):
     text = '[__config__]\nhttp_timeout=20\n[widget]\nsource="pypi"\npypi="widget"\n'
     path.write_text(text)
     (tmp_path / 'widget.toml').write_text('source="pypi"\npypi="wrong"\n')
-    (tmp_path / 'groups.toml').write_text('schema=1\n[binding.widget]\ntrack_label="wrong"\n')
+    (tmp_path / 'unrelated.toml').write_text('[widget]\ntrack_label="unconfigured"\n')
     loaded = rules.load(path)
     assert loaded.entries == {'widget': {'source': 'pypi', 'pypi': 'widget'}}
     assert loaded.options == {'http_timeout': 20}
@@ -19,7 +19,7 @@ def test_native_file_is_the_only_rule_owner(tmp_path):
 
 
 @pytest.mark.parametrize('text', [
-    'schema=1\n[group.registry]\nsource="pypi"\npackages=["widget"]\n',
+    'widget=1\n',
     '[widget]\npypi="widget"\n', '[widget]\nsource=""\n',
     '[__unexpected__]\nsource="pypi"\n', '__config__=1\n',
     '[widget]\nsource="pypi"\n[widget]\nsource="git"\n',

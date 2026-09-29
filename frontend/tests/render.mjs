@@ -5,7 +5,6 @@ import {fileURLToPath} from 'node:url';
 import {once} from 'node:events';
 import {createServer, request} from 'node:http';
 import {gunzipSync, brotliDecompressSync} from 'node:zlib';
-import {runInNewContext} from 'node:vm';
 
 const targets = ['rva23', 'rva20', 'x86_64'].map(id => ({id, label: id, repository: id, architecture: 'riscv64'}));
 const makePackage = (name, patch = {}) => ({
@@ -23,7 +22,7 @@ const makePackage = (name, patch = {}) => ({
   ...patch,
 });
 const packages = [
-  makePackage('security', {version_annotations: [{monitor:'security',label:'Security',count:8,scope:'current',target_version:null,stale:false,finding_ids:[]}], maintenance_findings: [1, 2, 3, 4, 5, 6, 7, 8].map(i => ({
+  makePackage('security', {version_annotations: [{monitor:'security',label:'Advisory',count:8,scope:'current',target_version:null,stale:false,finding_ids:[]}], maintenance_findings: [1, 2, 3, 4, 5, 6, 7, 8].map(i => ({
     monitor: 'security', id: `CVE-2026-100${i}`, label: 'Advisory', title: `CVE-2026-100${i}`,
     facts: [{key: 'Observed version', code: 'query', value: '2.0', source: 'OSV', url: 'https://api.osv.dev/v1/query', status: 'observed'},
       {key: 'Exploit probability', code: 'epss_probability', value: 0.00396, source: 'FIRST', url: 'https://api.first.org/data/v1/epss', status: 'observed'},
@@ -32,8 +31,8 @@ const packages = [
     evidence_url: `https://nvd.nist.gov/vuln/detail/CVE-2026-100${i}`,
     scope: 'current', tags: [], stale: false,
   }))}),
-  makePackage('license-evidence', {version_annotations: [{monitor:'license',label:'License',count:1,scope:'upgrade',target_version:'2.1',stale:false,finding_ids:[]}], maintenance_findings: [{
-    monitor: 'license', id: 'license-target', label: 'License', title: 'MIT → Apache-2.0',
+  makePackage('license-evidence', {version_annotations: [{monitor:'license',label:'LicenseDiff',count:1,scope:'upgrade',target_version:'2.1',stale:false,finding_ids:[]}], maintenance_findings: [{
+    monitor: 'license', id: 'license-target', label: 'LicenseDiff', title: 'MIT → Apache-2.0',
     evidence_url: 'https://example.org/license', scope: 'upgrade', target_version: '2.1',
     tags: [], stale: false, facts: [
       {key: 'Licenses', value: ['MIT', 'Apache-2.0'], source: 'Registry', url: 'https://example.org/license', status: 'observed'},
@@ -50,6 +49,7 @@ const packages = [
     {id:'widget@missing',error:'no result',stale:true},
   ]}),
   makePackage('ahead', {relation: 'ahead'}),
+  makePackage('check-error', {checks: {version: {status: 'error', error: 'Fixture provider timeout'}}}),
   ...[false, null].map(matches_source => makePackage(matches_source === false ? 'old-source' : 'unknown-source', {
     builds: makePackage('base').builds.map(build => ({...build, matches_source})),
   })),
@@ -76,10 +76,10 @@ const catalog = [
   {id: 'source', title: 'Source', kind: 'source'},
   {id: 'version', title: 'Version', kind: 'version'},
   {id: 'build', title: 'Build', kind: 'build'},
-  {id: 'security', title: 'Security', kind: 'evidence'},
-  {id: 'license', title: 'License', kind: 'evidence'},
+  {id: 'security', title: 'Advisory', kind: 'evidence'},
+  {id: 'license', title: 'LicenseDiff', kind: 'evidence'},
   {id: 'yanked', title: 'Release files', kind: 'evidence'},
-  {id: 'requires', title: 'Requires', kind: 'requires'},
+  {id: 'requires', title: 'Dependencies', kind: 'requires'},
   {id: 'eol', title: 'EOL', kind: 'evidence'},
 ];
 // Synthetic runtime assessments, not live registry versions or host evaluation.
@@ -138,6 +138,10 @@ function monitored(pkg, detail = true, focus = '') {
   const monitors = Object.fromEntries(catalog.map(m => [m.id, {id: m.id, title: m.title, check: {...check},
     data: data[m.id] || {kind: 'evidence', labels: m.id === 'yanked' ? pkg.maintenance : [],
       findings: pkg.maintenance_findings.filter(f => f.monitor === m.id)}}]));
+  monitors.version.dimensions = {view: !pkg.track ? ['untracked'] : ['outdated', 'changed'].includes(pkg.relation) ? ['updates'] : []};
+  monitors.version.dimensions.maintenance = monitors.version.dimensions.view.map(value =>
+    ({untracked: 'Untracked', updates: 'Outdated'})[value]);
+  for (const [id, failure] of Object.entries(pkg.checks || {})) Object.assign(monitors[id].check, failure);
   for (const result of Object.values(monitors)) {
     if (result.data.kind !== 'evidence') continue;
     const findings = result.data.findings;
@@ -173,7 +177,7 @@ let lastQuery = new URLSearchParams();
 let unavailable = false;
 let health = 'ok';
 let ready = {status: 200, body: {status: 'degraded', generation: 1}};
-let appearancePalette = {custom: {background: '#123456', foreground: '#ffffff'}};
+let appearancePalette = {custom: {background: '#123456', foreground: '#ffffff', icon: 'gopher'}};
 let retainedCount = 0;
 const publicPaths = [
   '/api/v2/packages', '/api/v2/packages/security', '/api/v2/tracks/widget',
@@ -221,17 +225,18 @@ const mock = createServer((req, res) => {
       monitors: catalog, check_statuses: {ok: packages.length}, section,
       result_count: resultRows.length, coverage_count: packages.length, retained_count: retainedCount,
       presentation: {buildsystems: appearancePalette},
-      buildsystems: {custom: 1}, maintenance_labels: {NewSignal: 1, License: 1},
+      buildsystems: {custom: 1}, maintenance_labels: {CheckFailed: 1, NewSignal: 1, LicenseDiff: 1, DepMismatch: 1},
       requires_counts: {all: 3, unmet: 1, changes: 1},
-      version_signals: {security: 1, license: 1},
+      version_signals: {security: 1, license: 1, requires: 1},
       build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'failed',label:'Failed',count:2}, {value:'blocked',label:'Blocked',count:1}]])),
       items: (url.searchParams.get('q') === 'quiet' ? rows.map(pkg=>({...pkg,maintenance:[],maintenance_findings:[]})) : rows).slice((page - 1) * perPage, page * perPage).map(pkg => monitored(pkg, true, focus)),
       total: rows.length, page, per_page: perPage, pages,
       counts: {all: packages.length, updates: 3, problems: 1, attention: 1, untracked: 1}, targets,
-      collection: {obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
+      collection: {build_service_url: 'https://build.example.org', source_repository: {url: 'https://github.com/fixture/repo.git', branch: 'stable/3', revision: 'abcdef0123456789abcdef0123456789abcdef01'}, obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
         packages: packages.length, tracked_packages: packages.length - 1}};
   const query = Object.fromEntries(url.searchParams);
   query.build = url.searchParams.getAll('build');
+  query.maintenance = url.searchParams.getAll('maintenance');
   query.section = section;
   const document = project(url.pathname === '/api/ui/theme' ? 'theme' : selected ? 'detail' : 'list', payload, query);
   res.writeHead(200, {'Content-Type': 'application/json'}); res.end(JSON.stringify(url.pathname.startsWith('/api/ui/') ? document : payload));
@@ -336,59 +341,81 @@ try {
   assert.equal(invalidSelection.status, 422);
   assert.match(invalidSelection.body.toString(), /Invalid filter selection/);
   const listing = await read('/');
-  assert.match(listing, /aria-label="Monitors"/);
-  const mainNavigation = listing.match(/<nav[^>]*aria-label="Monitors"[^]*?<\/nav>/)[0];
-  assert.doesNotMatch(mainNavigation, /monitor=source|>Source<\/span>/);
-  assert.match(mainNavigation, /monitor=version/);
-  assert.match(mainNavigation, />Version<\/span>/);
-  assert.doesNotMatch(mainNavigation, /monitor=yanked|>Release files<\/span>/);
-  assert.match(mainNavigation, /monitor=eol[^]*?<\/a>\s*<\/nav>$/, 'EOL is the last topic');
+  assert.match(listing, /<title>openRuyi Tracker<\/title>/);
+  assert.match(listing, /class="brand"[^]*?<span>openRuyi Tracker<\/span>/);
+  assert.match(listing, /lang="en"/);
   const globalNavigation = listing.match(/<div class="global-navigation"[^]*?<\/section>\s*<\/div>/)?.[0];
   assert.ok(globalNavigation, 'global filters have a persistent sidebar location');
   assert.doesNotMatch(globalNavigation, /<details\b|<summary\b/);
-  assert.match(globalNavigation, /<h2>Build system<\/h2>/);
-  assert.match(globalNavigation, /aria-label="Build system"/);
-  assert.match(globalNavigation, /buildsystem=custom[^]*?>custom<\/span>\s*<b>1<\/b>/);
-  assert.doesNotMatch(listing, /<select[^>]*name="buildsystem"/);
+  assert.match(globalNavigation, /<h2>BuildSystem<\/h2>/);
+  assert.match(globalNavigation, /aria-label="BuildSystem"/);
+  assert.match(globalNavigation, /buildsystem=custom[^]*?>custom<\/span><\/span>\s*<b>1<\/b>/);
+  assert.equal((globalNavigation.match(/class="brand-icon/g) || []).length, 1);
+  const logoURL = globalNavigation.match(/<img src="([^"]+)"/)[1];
+  assert.match(logoURL, /^\/_astro\/gopher[.\w-]*\.svg$/);
+  const iconResponse = await wire(logoURL);
+  assert.equal(iconResponse.status, 200);
+  assert.match(iconResponse.headers['content-type'], /image\/svg\+xml/);
+  assert.match(listing, /href="https:\/\/build.example.org\/">BuildService<\/a>/);
+  assert.match(listing, /href="https:\/\/github.com\/fixture\/repo\/tree\/stable%2F3">stable\/3<\/a>/);
+  assert.match(listing, /href="https:\/\/github.com\/fixture\/repo\/commit\/abcdef0123456789abcdef0123456789abcdef01"[^>]*>abcdef<\/a>/);
   assert.equal((listing.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 5);
-  assert.doesNotMatch(listing, /<th[^>]*>Maintenance<\/th>/);
-  assert.match(listing, /data-auto-submit/);
-  assert.match(listing, /aria-describedby="filter-behavior"/);
   assert.equal((listing.match(/<form\b/g) || []).length, 1);
-  assert.doesNotMatch(listing, /<select[^>]*name="(?:monitor|check)"/);
-  assert.equal((listing.match(/<select[^>]*name="build"/g) || []).length, 3, 'Overview keeps compact target selects');
-  const maintenanceOptions = listing.match(/<select[^>]*name="maintenance"[^]*?<\/select>/)[0];
-  assert.equal((maintenanceOptions.match(/<option value="License"/g) || []).length, 1);
-  assert.match(maintenanceOptions, /<option value="License"[^>]*>\s*License \(1\)/);
-  assert.doesNotMatch(maintenanceOptions, /LicenseChange/);
-  const script = await wire('/filters.js');
-  let filterChange, submissions = 0;
-  class Select {}
-  runInNewContext(script.body.toString(), {
-    document: {querySelectorAll: () => [{
-      addEventListener(event, listener) { assert.equal(event, 'change'); filterChange = listener; },
-      requestSubmit() { submissions++; },
-    }]}, HTMLSelectElement: Select,
-  });
-  assert.doesNotMatch(listing, /data-filter-submit|Apply filters/);
+  const packageMenu = listing.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
+  assert.match(packageMenu, />Outdated<\/span>/);
+  assert.match(packageMenu, />Untracked<\/span>/);
+  assert.match(packageMenu, /maintenance=Outdated/);
+  assert.match(packageMenu, /maintenance=Untracked/);
+  assert.match(packageMenu, /maintenance=CheckFailed/);
+  assert.match(packageMenu, />DepMismatch<\/span>[^]*?>DepChanges<\/span>/);
+  assert.match(packageMenu, /signal=requires/);
+  const changedPage = await read('/?signal=requires');
+  assert.match(changedPage, /aria-label="Remove DepChanges"/);
+  assert.match(changedPage, /name="signal" value="requires"/);
+  const untrackedRow = listing.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
+  assert.match(untrackedRow, /data-decoration="dashed"/);
+  assert.match(untrackedRow, /label%3AUntracked[^>]*>Untracked/);
+  assert.match(listing, /href="\/\?page=1&amp;maintenance=CheckFailed"/);
+  const errorPage = await read('/packages/check-error');
+  assert.match(errorPage, /id="check-version"/);
+  assert.match(errorPage, /Fixture provider timeout/);
+  assertCollapsedChecksLast(errorPage);
+  assert.equal((packageMenu.match(/>LicenseDiff<\/span>/g) || []).length, 1);
+  assert.match(packageMenu, /maintenance=LicenseDiff[^]*?>LicenseDiff<\/span><\/span>\s*<b>1<\/b>/);
   assert.equal((listing.match(/<button[^>]*type="submit"/g) || []).length, 1);
-  assert.match(listing, /Without JavaScript, use Search/);
-  for (let i = 0; i < 5; i++) filterChange({target: new Select()});
-  assert.equal(submissions, 5);
-  filterChange({target: {}}); assert.equal(submissions, 5);
-  const scoped = await read('/?buildsystem=custom&maintenance=License&build=rva23:blocked');
-  assert.doesNotMatch(scoped, /class="active-filters"/);
-  assert.match(scoped, /value="License" selected/);
+  const scoped = await read('/?buildsystem=custom&maintenance=LicenseDiff&build=rva23:blocked');
+  for (const label of ['BuildSystem: custom', 'LicenseDiff', 'rva23: Blocked']) {
+    assert.ok(scoped.includes(`aria-label="Remove ${label}"`));
+  }
+  const chips = scoped.match(/<div class="active-filters"[^]*?<\/div>/)[0];
+  const clearBuild = chips.match(/<a href="([^"]+)" aria-label="Remove rva23: Blocked"/)[1];
+  const cleared = new URL(clearBuild.replaceAll('&amp;', '&'), 'http://fixture').searchParams;
+  assert.deepEqual(cleared.getAll('build'), []);
+  assert.equal(cleared.get('maintenance'), 'LicenseDiff');
+  assert.equal(cleared.get('buildsystem'), 'custom');
+  const selectedMenu = scoped.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
+  assert.match(selectedMenu, /aria-current="page"[^]*?>LicenseDiff<\/span>/);
+  const searchForm = scoped.match(/<form\b[^]*?<\/form>/)[0];
+  assert.match(searchForm, /name="maintenance" value="LicenseDiff"/);
+  assert.match(searchForm, /name="build" value="rva23:blocked"/);
+  const combined = await read('/?maintenance=LicenseDiff&maintenance=DepMismatch&signal=requires');
+  for (const label of ['LicenseDiff', 'DepMismatch', 'DepChanges']) {
+    assert.ok(combined.includes(`aria-label="Remove ${label}"`));
+  }
+  const combinedSearch = combined.match(/<form\b[^]*?<\/form>/)[0];
+  assert.match(combinedSearch, /name="maintenance" value="LicenseDiff"/);
+  assert.match(combinedSearch, /name="maintenance" value="DepMismatch"/);
+  assert.match(combinedSearch, /name="signal" value="requires"/);
   const exactCheck = await read('/?monitor=security&check=expired');
-  assert.match(exactCheck, /aria-label="Remove Check: Out of date"/);
+  assert.match(exactCheck, /aria-label="Remove Check: Stale"/);
   const paged = await read('/?q=fixture&per_page=3&page=2&buildsystem=custom');
   const topPager = paged.match(/<nav[^>]*aria-label="Pages above results"[^]*?<\/nav>/)[0];
   const bottomPager = paged.match(/<nav[^>]*aria-label="Pages below results"[^]*?<\/nav>/)[0];
   const pagerLinks = html => [...html.matchAll(/href="([^"]+)"/g)].map(match => match[1]);
   assert.deepEqual(pagerLinks(topPager), pagerLinks(bottomPager));
   assert.equal(pagerLinks(topPager).length, 2);
-  assert.ok(paged.indexOf(topPager) < paged.indexOf('<table'));
-  assert.ok(paged.indexOf(bottomPager) > paged.indexOf('</table>'));
+  assert.ok(paged.indexOf(topPager) < paged.indexOf('<table class="data-table'));
+  assert.ok(paged.indexOf(bottomPager) > paged.lastIndexOf('</table>'));
   for (const link of pagerLinks(topPager)) {
     const query = new URL(link.replaceAll('&amp;', '&'), 'http://fixture').searchParams;
     assert.equal(query.get('q'), 'fixture');
@@ -396,7 +423,12 @@ try {
     assert.equal(query.get('per_page'), '3');
   }
   assert.doesNotMatch(listing, /Pages above results/);
-  assert.equal((listing.match(/Pages below results/g) || []).length, 1);
+  assert.equal((listing.match(/class="result-count"/g) || []).length, 2);
+  assert.match(listing, /class="results-toolbar"[^]*?class="result-count"[^]*?<form[^>]*role="search"/);
+  assert.match(listing, /rel="icon" type="image\/svg\+xml" href="\/openruyi.svg"/);
+  assert.match(listing, /<img src="\/openruyi.svg" width="38" height="28" alt=""/);
+  assert.match(await read('/openruyi.svg'), /<svg/);
+  assert.match(await read('/about'), /CC BY-SA 4.0/);
   const simple = await read('/?monitor=version');
   assert.match(simple, /<table class="data-table"/);
   assert.match(await read('/?monitor=build'), /<table class="data-table wide status-matrix"/);
@@ -413,15 +445,13 @@ try {
   assert.equal(lastQuery.get('monitor'), 'source');
   assert.deepEqual(lastQuery.getAll('build'), ['rva23:blocked']);
   // The website forwards the URL; the backend presenter owns the reading scope.
-  assert.doesNotMatch(sourceCoverage, /<select[^>]*name="(?:build|maintenance)"/);
   const focused = await read('/?monitor=yanked&buildsystem=custom&build=rva23:blocked');
   assert.equal(lastQuery.get('monitor'), 'yanked');
   assert.deepEqual(lastQuery.getAll('build'), ['rva23:blocked']);
   assert.match(focused, /Release withdrawn/);
   assert.doesNotMatch(focused, /data-key="success"/);
-  assert.doesNotMatch(focused, /<select[^>]*name="(?:build|maintenance)"/);
   assert.match(focused, /name="buildsystem" value="custom"/, 'search preserves the global filter');
-  const focusedGlobal = focused.match(/<nav[^>]*aria-label="Build system"[^]*?<\/nav>/)[0];
+  const focusedGlobal = focused.match(/<nav[^>]*aria-label="BuildSystem"[^]*?<\/nav>/)[0];
   assert.match(focusedGlobal, /aria-current="page"[^>]*data-appearance="buildsystem%3Acustom"[^]*?>custom<\/span>/);
   for (const match of focusedGlobal.matchAll(/href="([^"]+)"/g)) {
     const link = new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture');
@@ -446,13 +476,12 @@ try {
   assert.match(unknownPort, /Release withdrawn/);
   assert.match(unknownPort, />Files<\/dt>/);
   assert.match(unknownPort, />3<\/span>/);
-  assert.doesNotMatch(unknownPort, /Review linked evidence|<th>Action|urgent/);
   const row = name => listing.match(new RegExp(`<tr data-key="${name}"[^]*?</tr>`))?.[0] ?? '';
   assert.match(row('success'), /data-appearance="buildsystem%3Acustom"/);
   assert.doesNotMatch(row('success'), /#build/);
   assert.equal((row('success').match(/>✓</g) || []).length, 3);
   for (const version of ['1.9', '1.8', '1.7']) assert.ok(row('failed').includes(`>${version}</a>`));
-  assert.doesNotMatch(listing, /9\.9-shared|· last/);
+  assert.doesNotMatch(listing, /9\.9-shared/);
   assert.match(row('failed'), /tone-negative/);
   const presentationCSS = await read('/presentation.css');
   assert.match(presentationCSS, /\[data-appearance="buildsystem%3Acustom"\]\{--appearance-background:#123456;--appearance-foreground:#ffffff\}/);
@@ -462,7 +491,16 @@ try {
   const changedPaletteCSS = await read('/presentation.css');
   assert.match(changedPaletteCSS, /--appearance-background:#654321;--appearance-foreground:#eeeeee/);
   assert.doesNotMatch(changedPaletteCSS, /unsafe|body|display|#123456/);
-  appearancePalette = {custom: {background: '#123456', foreground: '#ffffff'}};
+  appearancePalette = {custom: {background: '#123456', foreground: '#ffffff', icon: 'rust'}};
+  const changedIcon = await read('/');
+  assert.match(changedIcon, /<img src="\/_astro\/rust[.\w-]*\.svg"/);
+  for (const icon of ['not-in-catalog', '../gopher', 'https://untrusted.example/logo.svg']) {
+    appearancePalette.custom.icon = icon;
+    const fallback = (await read('/')).match(/<nav[^>]*aria-label="BuildSystem"[^]*?<\/nav>/)[0];
+    assert.doesNotMatch(fallback, /<img|untrusted|not-in-catalog/);
+    assert.match(fallback, />custom<\/span>/);
+  }
+  appearancePalette = {custom: {background: '#123456', foreground: '#ffffff', icon: 'gopher'}};
   assert.doesNotMatch(listing, / style=/);
   const sourceContext = await read('/packages/success');
   assert.match(sourceContext, /Fixture package/);
@@ -477,23 +515,25 @@ try {
   assert.match(sourceCheck, /2026-09-19 11:10:00 UTC/);
   const detail = await read('/packages/failed');
   assert.match(detail, />\/SPECS\/failed<\/a>/);
-  assert.doesNotMatch(detail, /SPEC Source:/);
   assert.match(detail, /Last successful version/);
   assert.match(detail, /2026-09-19 11:00:00 UTC/);
   const security = await read('/packages/security');
-  assert.equal((security.match(/Queried source component only/g) || []).length, 1);
+  assert.equal((security.match(/Local patches, bundled dependencies and binary artifacts are not evaluated/g) || []).length, 1);
   assert.match(security, /0\.396%/);
   assert.match(security, /Reported fixes/);
   assert.match(security, /unavailable/);
   assert.match(security, />No<\/span>/);
-  assert.doesNotMatch(security, /Review linked evidence|SecurityReview|urgent/);
   assert.match(security, /<section\b[^>]*id="security"[^>]*>/, 'evidence remains expanded');
   assert.equal((security.match(/>Observed version<\/dt>/g) || []).length, 1);
   assert.equal((security.match(/>Reported fixes<\/dt>/g) || []).length, 8);
   const versionList = await read('/?monitor=version');
+  const versionViews = versionList.match(/<nav[^>]*aria-label="Version"[^]*?<\/nav>/)[0];
+  assert.match(versionViews, /view=updates[^>]*>\s*<span class="choice-label"><span>Outdated<\/span><\/span><b>3<\/b>/);
+  const updatesList = await read('/?monitor=version&view=updates');
+  assert.match(updatesList, /view=updates[^>]*aria-current="page"[^>]*>\s*<span class="choice-label"><span>Outdated<\/span>/);
+  assert.match(updatesList, /aria-label="Remove Outdated"/);
   assert.match(versionList, /class="choice-row-label">Related<\/span>/);
   assert.match(versionList, /<nav[^>]*aria-label="Related"/);
-  assert.doesNotMatch(versionList, /<select[^>]*name="signal"/);
   const versionRelated = await read('/?monitor=version&signal=security&q=openssl&buildsystem=custom');
   const relatedNav = versionRelated.match(/<nav[^>]*aria-label="Related"[^]*?<\/nav>/)[0];
   assert.match(relatedNav, /signal=security[^>]*aria-current="page"/);
@@ -505,53 +545,49 @@ try {
     assert.equal(link.searchParams.getAll('signal').length <= 1, true);
   }
   const versionTable = versionList.match(/<table\b[^]*?<\/table>/)[0];
-  assert.match(versionTable, />Security 8<\/a>/);
+  assert.match(versionTable, />Advisory 8<\/a>/);
   assert.match(versionTable, /signal=security/);
   assert.doesNotMatch(versionTable, /CVE-2026-|Reported fixes|Exploit probability/);
   const securityDetail = await read('/packages/security');
-  assert.match(securityDetail, /href="#security"[^>]*>Security 8<\/a>/);
+  assert.match(securityDetail, /href="#security"[^>]*>Advisory 8<\/a>/);
   assert.equal((securityDetail.match(/<section\b[^>]*id="security"/g) || []).length, 1);
   const securityList = await read('/?monitor=security');
   for (let i = 1; i <= 8; i++) assert.match(securityList, new RegExp('>CVE-2026-100' + i + '</a>'));
   const securityTable = securityList.match(/<table\b[^]*?<\/table>/)[0];
-  assert.doesNotMatch(securityTable, /advisories<|\+\d+ more|<details|Reported fixes|Observed version/);
+  assert.doesNotMatch(securityTable, /<details|Reported fixes|Observed version/);
   const requirementPage = await read('/packages/requires-upgrade');
   const requirementSection = requirementPage.match(/<section\b[^>]*id="requires"[^]*?<\/section>/)[0];
-  assert.match(requirementSection, />Requires<\/h2>/);
+  assert.match(requirementSection, />RuntimeDeps<\/h2>/);
   for (const name of ['Python', 'libwidget', 'libexample']) assert.ok(requirementSection.includes(name));
   assert.match(requirementSection, /≥ 1.80<[^]*?>✓<[^]*?→[^]*?≥ 1.82<[^]*?>✗</);
   for (const mark of ['✓', '✗']) assert.ok(requirementSection.includes(`>${mark}<`));
-  assert.match(requirementSection, /Current source version does not satisfy the upstream declaration/);
+  assert.match(requirementSection, /Observed dependency version does not satisfy the upstream declaration/);
   const optionalSection = requirementPage.match(/<section\b[^>]*id="requires-optional"[^]*?<\/section>/)[0];
   assert.match(optionalSection, /Optional library[^]*?condition not evaluated[^]*?>\?</);
   assert.doesNotMatch(optionalSection, /platform_python_implementation|sys_platform|speedups/);
   const conditions = requirementPage.match(/<details\b[^>]*id="requires-conditions"[^]*?<\/details>/)[0];
   assert.match(conditions, /platform_python_implementation[^]*?speedups/);
   assert.doesNotMatch(conditions.split('>')[0], /\bopen\b/);
-  assert.doesNotMatch(requirementSection, /<details|Query |scheme|revision|PyPI|Compiler|Rust|Requires update/);
+  assert.doesNotMatch(requirementSection, /<details/);
   const requiresList = await read('/?monitor=requires');
   for (const name of ['Python', 'libwidget', 'Optional library', 'libexample']) assert.ok(requiresList.includes(name));
   assert.doesNotMatch(requiresList, /platform_python_implementation|sys_platform|speedups/);
-  assert.match(requiresList, />Runtime<[^]*?>Optional</);
-  assert.doesNotMatch(requiresList, /aria-label="Results and coverage"/);
+  assert.match(requiresList, />RuntimeDeps<[^]*?>Optional RuntimeDeps</);
   const requiresRow = name => requiresList.match(new RegExp(`<tr data-key="${name}"[^]*?</tr>`))?.[0] ?? '';
   assert.match(requiresRow('requires-upgrade'), />2\.0<[^]*?→[^]*?>2\.1</);
   assert.match(requiresRow('requires-current'), /libcurrent/);
   assert.doesNotMatch(requiresRow('requires-current'), /→|Upgrade:|>2\.0</);
   assert.match(requiresRow('requires-target-only'), /libtarget<[^]*?Upgrade:[^]*?>✗</);
-  const requirementNav = requiresList.match(/<nav[^>]*aria-label="Requires"[^]*?<\/nav>/)[0];
-  for (const label of ['All', 'Unmet', 'Changes', 'Uncovered', 'Failed']) assert.ok(requirementNav.includes(label));
-  assert.doesNotMatch(requirementNav, />Checks</);
-  assert.doesNotMatch(requiresList, /<select[^>]*name="(?:build|maintenance)"/);
+  const requirementNav = requiresList.match(/<nav[^>]*aria-label="Dependencies"[^]*?<\/nav>/)[0];
+  for (const label of ['DepMismatch', 'DepChanges', 'Uncovered', 'CheckFailed']) assert.ok(requirementNav.includes(label));
   assert.match(requirementNav, /requires=unmet/);
   assert.match(requirementNav, /check=uncovered/);
   assert.match(requirementNav, /check=failed/);
-  assert.doesNotMatch(requiresList, /aria-label="Check status"/);
   assert.match(requirementNav, /requires=changes/);
   const requiresFiltered = await read('/?monitor=requires&requires=unmet&build=rva23:blocked&per_page=1');
   assert.equal(lastQuery.get('requires'), 'unmet');
   assert.match(requiresFiltered, /name="requires" value="unmet"/);
-  const filteredNav = requiresFiltered.match(/<nav[^>]*aria-label="Requires"[^]*?<\/nav>/)[0];
+  const filteredNav = requiresFiltered.match(/<nav[^>]*aria-label="Dependencies"[^]*?<\/nav>/)[0];
   for (const match of filteredNav.matchAll(/href="([^"]+)"/g)) {
     const link = new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture');
     assert.equal(link.searchParams.get('page'), '1');
@@ -560,33 +596,29 @@ try {
     if (link.searchParams.get('check')) assert.equal(link.searchParams.get('requires'), null);
   }
   const requiresCoverage = await read('/?monitor=requires&check=uncovered&requires=unmet&build=rva23:blocked');
-  const coverageNav = requiresCoverage.match(/<nav[^>]*aria-label="Requires"[^]*?<\/nav>/)[0];
-  for (const label of ['All', 'Unmet', 'Changes', 'Uncovered', 'Failed']) assert.ok(coverageNav.includes(label));
-  assert.doesNotMatch(requiresCoverage, /<select[^>]*name="(?:build|maintenance)"|name="requires"/);
+  const coverageNav = requiresCoverage.match(/<nav[^>]*aria-label="Dependencies"[^]*?<\/nav>/)[0];
+  for (const label of ['DepMismatch', 'DepChanges', 'Uncovered', 'CheckFailed']) assert.ok(coverageNav.includes(label));
+  assert.doesNotMatch(requiresCoverage, /name="requires"/);
   assert.match(requiresCoverage, />Version<\/th>/);
-  assert.doesNotMatch(requiresCoverage, />Check<\/th>|>Last checked<\/th>/);
   const uncovered = await read('/?monitor=version&check=uncovered');
   const uncoveredRow = uncovered.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
   assert.match(uncoveredRow, />2\.0</);
-  assert.doesNotMatch(uncoveredRow, /Not configured|Uncovered|→/);
+  assert.doesNotMatch(uncoveredRow, /→/);
   const buildReason = await read('/packages/build-reason');
   assert.match(buildReason, /nothing provides &lt;fixture-dependency&gt;/);
   assert.doesNotMatch(buildReason, /worker:\/\/|nothing provides <fixture-dependency>/);
   const buildList = await read('/?monitor=build');
   assert.match(buildList, /status-matrix/);
-  assert.doesNotMatch(buildList, /<select[^>]*name="build"/);
-  assert.equal((buildList.match(/class="choice-row"/g) || []).length, 3);
-  assert.doesNotMatch(buildList, />Issues<\/span>/);
-  assert.doesNotMatch(buildList.match(/<nav[^>]*aria-label="Views"[^]*?<\/nav>/)[0], /Out of date/);
+  assert.equal((buildList.match(/class="choice-row"/g) || []).length, targets.length);
+  assert.doesNotMatch(buildList.match(/<nav[^>]*aria-label="Views"[^]*?<\/nav>/)[0], /Stale/);
   for (const target of targets) {
-    assert.ok(buildList.includes(`class="choice-row-label">${target.label}</span>`));
-    const targetNav = buildList.match(new RegExp(`<nav[^>]*aria-label="${target.label}"[^]*?</nav>`))[0];
-    for (const label of ['All', 'Blocked']) assert.ok(targetNav.includes(`>${label}</span>`));
+    const controls = buildList.match(new RegExp(`<nav[^>]*aria-label="${target.label}"[^]*?</nav>`))[0];
+    assert.match(controls, />Blocked<\/span><\/span>\s*<b>1<\/b>/);
   }
   const buildFiltered = await read('/?monitor=build&build=rva23:blocked&build=x86_64:blocked&q=openssl&buildsystem=custom');
   for (const target of targets) {
     const targetNav = buildFiltered.match(new RegExp(`<nav[^>]*aria-label="${target.label}"[^]*?</nav>`))[0];
-    assert.equal((targetNav.match(/aria-current="page"/g) || []).length, 1, 'one selected status per target');
+    assert.equal((targetNav.match(/aria-current="page"/g) || []).length, target.id === 'rva20' ? 0 : 1, 'at most one selected status per target');
     for (const match of targetNav.matchAll(/href="([^"]+)"/g)) {
       const link = new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture');
       assert.equal(link.searchParams.get('monitor'), 'build');
@@ -602,18 +634,23 @@ try {
   retainedCount = 2;
   const retainedBuilds = await read('/?monitor=build');
   const retainedNavigation = retainedBuilds.match(/<nav[^>]*aria-label="Views"[^]*?<\/nav>/)[0];
-  assert.match(retainedNavigation, /freshness=retained[^]*?>Out of date<\/span>\s*<b>2<\/b>/);
-  assert.doesNotMatch(retainedBuilds, /<select[^>]*name="freshness"/);
+  assert.match(retainedNavigation, /freshness=retained[^]*?>Stale<\/span><\/span>\s*<b>2<\/b>/);
   retainedCount = 0;
   const selectedRetained = await read('/?monitor=build&freshness=retained');
   assert.match(selectedRetained.match(/<nav[^>]*aria-label="Views"[^]*?<\/nav>/)[0],
-    /freshness=retained[^>]*aria-current="page"[^]*?>Out of date<\/span>\s*<b>0<\/b>/);
-  assert.doesNotMatch(buildList, /<select[^>]*name="maintenance"/);
+    /freshness=retained[^>]*aria-current="page"[^]*?>Stale<\/span><\/span>\s*<b>0<\/b>/);
   assert.match(buildList, /nothing provides &lt;fixture-dependency&gt;/);
   assert.doesNotMatch(buildList, /worker:\/\//);
-  assert.doesNotMatch(listing, /status-matrix|nothing provides/);
-  assert.doesNotMatch(detail, />Track<\/dt>|id="version"/);
-  assert.doesNotMatch(listing.match(/<table\b[^]*?<\/table>/)[0], /<details|More filters/);
+  const aggregateReason = listing.match(/<tr class="row-note"[^]*?<\/tr>/)[0];
+  assert.match(aggregateReason, /colspan="2" aria-hidden="true"/);
+  assert.match(aggregateReason, /colspan="3"[^]*?rva23:[^]*?nothing provides &lt;fixture-dependency&gt;/);
+  const aggregateRuntime = listing.match(/<tr data-key="requires-upgrade"[^]*?<\/tr>/)[0];
+  assert.match(aggregateRuntime, /RuntimeDeps:[^]*?libwidget/);
+  assert.doesNotMatch(aggregateRuntime, /Python|Optional library|platform_python_implementation/);
+  assert.match(listing, /MIT → Apache-2.0/);
+  assert.match(listing, /CVE-2026-1001/);
+
+  assert.doesNotMatch(listing.match(/<table\b[^]*?<\/table>/)[0], /<details/);
   assert.match(detail, /id="checks"/);
   const license = await read('/packages/license-evidence');
   assert.match(license, /MIT, Apache-2\.0/);
@@ -635,14 +672,24 @@ try {
   assert.doesNotMatch(hostile, /href="(?:javascript:|\/\/evil)/);
   assertCollapsedChecksLast(hostile);
   packages.pop();
-  console.log('PASS documents: arbitrary monitor, opaque navigation/facets, immediate GET, visible tables/fields, safe links, theme and retained evidence');
+  console.log('PASS documents: arbitrary monitor, opaque navigation, immediate GET, visible tables/fields, safe links, theme and retained evidence');
   // Wire-level tests deliberately bypass fetch's automatic decompression/cache.
   const identity = await wire('/');
   assert.equal(identity.status,200);assert.equal(identity.headers['content-encoding'],undefined);
   assert.equal(identity.headers['cache-control'],'private, no-cache');
   assert.match(identity.headers['content-security-policy'], /script-src 'self'/);
   assert.doesNotMatch(identity.headers['content-security-policy'], /unsafe-inline|unsafe-eval/);
-  assert.match((await wire('/packages/success')).headers['content-security-policy'], /script-src 'none'/);
+  const detailResponse = await wire('/packages/success');
+  assert.match(detailResponse.headers['content-security-policy'], /script-src 'self'/);
+  assert.doesNotMatch(detailResponse.headers['content-security-policy'], /unsafe-inline|unsafe-eval/);
+  const scripts = [...detailResponse.body.toString().matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)];
+  assert.equal(scripts.length, 1);
+  assert.match(scripts[0][1], /src="\/reveal-anchor\.js"/);
+  assert.equal(scripts[0][2].trim(), '');
+  const anchorScript = await wire('/reveal-anchor.js');
+  assert.equal(anchorScript.status, 200);
+  assert.match(anchorScript.headers['content-type'], /javascript/);
+  assert.match((await wire('/livez')).headers['content-security-policy'], /script-src 'none'/);
   assert.match(identity.headers.vary,/Cookie/);
   const etag=identity.headers.etag;assert.match(etag,/^W\/"[0-9a-f]{64}"$/);
   for (const coding of ['gzip','br']) {
@@ -670,7 +717,7 @@ try {
   const css=await wire(cssPath,{'Accept-Encoding':'gzip'});assert.equal(css.status,200);assert.equal(css.headers['content-encoding'],'gzip');assert.match(css.headers['cache-control'],/immutable/);assert.ok(gunzipSync(css.body).length>css.body.length);
   const appCSS = gunzipSync(css.body).toString();
   assert.match(appCSS, /\.value-tag\{[^}]*var\(--appearance-background/);
-  assert.match(appCSS, /\.value-tag\{[^}]*var\(--appearance-foreground/);
+  assert.match(appCSS, /\.value-tag\[data-variant=solid\]\{[^}]*var\(--appearance-foreground/);
   assert.match(appCSS, /\[aria-current\]\[data-appearance\]\{[^}]*color-mix\([^}]*var\(--appearance-background/);
   assert.match(appCSS, /\[aria-current\]\[data-appearance\]\{[^}]*box-shadow:[^}]*var\(--appearance-background/);
   const range=await wire(cssPath,{'Accept-Encoding':'gzip',Range:'bytes=0-9'});assert.equal(range.status,206);assert.equal(range.headers['content-encoding'],undefined);assert.equal(range.body.length,10);

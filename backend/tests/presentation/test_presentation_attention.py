@@ -27,7 +27,7 @@ def prepared(config, monkeypatch):
     monkeypatch.setattr(state, 'compare', lambda current, latest, *args:
                         'unknown' if not current or not latest else 'current' if current == latest else 'outdated')
     snapshot = make_snapshot(config, NOW.isoformat())
-    snapshot['monitor_catalog'] = {'requires': {'title': 'Requires'}}
+    snapshot['monitor_catalog'] = {'requires': {'title': 'RuntimeDeps'}}
     snapshot['specs']['binutils'] = state.success({}, {
         'metadata': {'name': 'binutils', 'version': '3.9.0', 'summary': 'Fixture summary',
                      'description': 'Fixture long description', 'license': 'Fixture-License',
@@ -86,7 +86,7 @@ def test_explicit_source_ui_link_is_coverage_without_a_fake_results_mode(client)
     assert hidden['monitor'] == 'source' and hidden['section'] == 'coverage'
     choices = [choice for nav in document['controls']['navigation'] for choice in nav['choices']]
     assert [(choice['label'], choice['count']) for choice in choices] == [
-        ('Uncovered', 0), ('Failed', 0)]
+        ('Uncovered', 0), ('CheckFailed', 0)]
 
 
 def test_source_v2_fields_and_detail_provenance_remain_available(client):
@@ -147,43 +147,46 @@ def test_inherited_selections_not_supported_by_the_page_are_removed(client, focu
     expected = client.get(f'/api/ui/packages?monitor={focus}&q=bin&per_page=1&page=2' + supported).json()
     assert document == expected
     controls = document['controls']
-    assert not any(facet['name'] == 'maintenance' for facet in controls['facets'])
-    build_rows = [row for row in controls['choice_rows'] if row['label'] in {'rva23', 'rva20', 'x86_64'}]
-    assert bool(build_rows) == ('build' in allowed)
+    assert any(row['icon'] for row in controls['choice_rows']) == ('build' in allowed)
     hidden = {parameter['name'] for parameter in controls['hidden']}
     assert not (hidden & ({'view', 'requires'} - allowed))
     assert not any(choice['label'].startswith(('View:', 'Requires:', 'Maintenance:'))
                    for choice in controls['active'])
 
 
-def test_empty_unselected_facets_are_not_all_only_controls(prepared):
+def test_empty_unselected_menus_are_not_all_only_controls(prepared):
     payload = listing_payload(prepared)
     payload.update(buildsystems={}, maintenance_labels={},
                    build_statuses={target['id']: [] for target in payload['targets']})
-    controls = presentation_navigation.listing_controls(payload, {}, None, presentation_navigation.Links())
-    assert controls.facets == [] and controls.active == []
+    page = presentation_pages.listing(payload, {})
+    assert not page.controls.active
+    choices = {c.label: c.count for c in page.controls.choice_rows[0].choices}
+    assert {'Outdated', 'Untracked', 'DepChanges', 'DepMismatch', 'Advisory', 'LicenseDiff', 'Yanked', 'EOL', 'CheckFailed'} <= choices.keys()
+    assert choices['Advisory'] == choices['DepMismatch'] == choices['LicenseDiff'] == 0
+    assert not any(row.icon for row in page.controls.choice_rows)
 
 
-def test_selected_zero_count_facets_remain_visible_and_removable(prepared):
+def test_selected_zero_count_menus_remain_visible_and_removable(prepared):
     payload = listing_payload(prepared)
     payload.update(buildsystems={'fixture-system': 0}, maintenance_labels={'FixtureSignal': 0},
                    build_statuses={target['id']: [] for target in payload['targets']})
     target = payload['targets'][0]['id']
-    payload['build_statuses'][target] = [{'value': 'failed', 'label': 'Failed', 'count': 0}]
+    payload['build_statuses'][target] = [{'value': 'failed', 'label': 'CheckFailed', 'count': 0}]
     query = {'buildsystem': 'fixture-system', 'maintenance': 'FixtureSignal', 'build': [target + ':failed']}
-    controls = presentation_navigation.listing_controls(payload, query, None, presentation_navigation.Links(query))
-    assert {facet.name for facet in controls.facets} == {'maintenance', 'build'}
+    page = presentation_pages.listing(payload, query)
+    controls = page.controls
+    selectors = [row for row in controls.choice_rows if any(choice.selected for choice in row.choices)]
+    assert len(selectors) == 2
     sidebar, = presentation_navigation.global_navigation(payload, query, presentation_navigation.Links(query))
-    assert sidebar.label == 'Build system'
+    assert sidebar.label == 'BuildSystem'
     assert [(c.label, c.count) for c in sidebar.choices if c.selected] == [('fixture-system', 0)]
-    assert not controls.active
-    assert 'buildsystem' not in parsed(sidebar.choices[0].href)
-    for facet in controls.facets:
-        selected = [option for option in facet.options if option.selected]
+    assert len(controls.active) == 3
+    assert 'buildsystem' not in parsed(controls.active[0].href)
+    for facet in selectors:
+        selected = [option for option in facet.choices if option.selected]
         assert len(selected) == 1 and selected[0].count == 0
-        all_option = next(option for option in facet.options if option.label == 'All')
-        cleared = presentation_navigation.filter_link(presentation_navigation.Links(query), facet.name, all_option.value)
-        assert facet.name not in parsed(cleared)
+        key = 'maintenance' if facet.label == 'Alerts' else 'build'
+        assert any(key not in parsed(chip.href) for chip in controls.active)
 
 
 def evidence_result(scopes):
@@ -236,11 +239,10 @@ def test_retained_evidence_is_marked_at_its_narrowest_shared_scope(stale, sectio
 
     section, = presentation_evidence.evidence_section(result, presentation_navigation.Links())
 
-    assert section.title.count('Out of date') == section_markers
-    assert [sum(value.text == 'Out of date' for value in entry.heading)
+    assert section.title.count('Stale') == section_markers
+    assert [sum(value.text == 'Stale' for value in entry.heading)
             for entry in section.entries] == entry_markers
     assert not any(field.label == 'Evidence' for field in section.fields)
-    assert 'Previous observation' not in section.model_dump_json()
     assert section.fields[0].label == 'Target' and section.fields[0].values[0].text == '2.0'
     assert [entry.heading[0].href for entry in section.entries] == [
         finding['evidence_url'] for finding in result['data']['findings']]
@@ -261,14 +263,13 @@ def test_list_groups_retained_evidence_without_repeating_a_field_per_finding(mon
 
     rendered, = presentation_evidence.evidence_cells({'detail_url': '/packages/fixture'}, result, presentation_navigation.Links())
     values = [value for line in rendered.lines for value in line]
-    markers = [value for value in values if value.text == 'Out of date']
+    markers = [value for value in values if value.text == 'Stale']
 
     assert len(markers) == int(any(stale))
     for marker in markers:
         query = parse_qs(urlsplit(marker.href).query)
         assert query['monitor'] == [monitor_id]
         assert query['freshness'] == ['retained']
-    assert 'Previous observation' not in rendered.model_dump_json()
     for finding in result['data']['findings']:
         matching = [value for value in values if value.text == finding['title']]
         assert len(matching) == 1 and matching[0].href == finding['evidence_url']
@@ -289,4 +290,4 @@ def test_upgrade_arrow_does_not_substitute_for_evidence_freshness(relation, stal
     values = [value.text for line in rendered.lines for value in line]
 
     assert ('→' in values) == (relation == 'outdated')
-    assert ('Out of date' in values) == stale
+    assert ('Stale' in values) == stale

@@ -1,0 +1,4 @@
+Tux artwork: Larry Ewing, created with The GIMP.
+Usage permission and original artwork: https://isc.tamu.edu/~lewing/linux/
+Local vector adaptation: Simple Icons 16.15.0 (CC0-1.0).
+The Linux mark is not an endorsement of this tracker.

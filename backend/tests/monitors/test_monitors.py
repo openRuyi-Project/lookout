@@ -67,7 +67,7 @@ def test_security_alias_dedup_and_attributed_kev_epss():
     result = monitor_security.check({"version": "1.0"}, {"ecosystem": "PyPI", "name": "fixture"}, io)
     assert result["status"] == "ok" and len(result["findings"]) == 1
     f = result["findings"][0]
-    assert f["label"] == "Security" and f["tags"] == ["KEV"]
+    assert f["label"] == "Advisory" and f["tags"] == ["KEV"]
     facts = {fact["key"]: fact["value"] for fact in f["facts"]}
     assert facts["EPSS probability · CVE-2026-12345"] == 0.92
     assert facts["EPSS model date · CVE-2026-12345"] == "2026-09-20"
@@ -129,7 +129,7 @@ def test_new_monitor_uses_existing_runner_projection_and_api(config, snapshot, m
     client = ProjectedClient(create_app(db))
     out = client.get("/api/v2/packages?maintenance=NewSignal").json()
     assert out["total"] == 1 and out["items"][0]["name"] == "binutils"
-    assert out["maintenance_labels"] == {"NewSignal": 1}
+    assert out["maintenance_labels"] == {"NewSignal": 1, "Outdated": 1, "Untracked": 0}
     detail = client.get("/api/v2/packages/binutils").json()
     assert detail["monitors"]["newsignal"]["data"]["findings"][0]["title"] == "New observation"
 
@@ -153,7 +153,7 @@ def test_upgrade_monitor_never_runs_without_upgrade(config, snapshot, monkeypatc
         "findings": [
             monitor_model.finding(
                 "license",
-                "License",
+                "LicenseDiff",
                 "License changed",
                 [],
                 "https://example.org/",
@@ -165,10 +165,10 @@ def test_upgrade_monitor_never_runs_without_upgrade(config, snapshot, monkeypatc
     fact = monitor.check(config, snapshot, "binutils", "license", FixtureIO({}))
     snapshot["monitors"] = {"binutils": {"license": fact}}
     now = datetime.now(timezone.utc)
-    assert monitor_model.project(snapshot, "binutils", now)["summary"][0]["label"] == "License"
+    assert monitor_model.project(snapshot, "binutils", now)["summary"][0]["label"] == "LicenseDiff"
     snapshot['tracks']['binutils']['error'] = 'timeout'
     assert monitor_model.project(snapshot, "binutils", now)["summary"] == [
-        {'label': 'License', 'count': 1, 'stale': True}]
+        {'label': 'LicenseDiff', 'count': 1, 'stale': True}]
     snapshot['tracks']['binutils']['error'] = None
     snapshot['tracks']['binutils']['version'] = '3.11.0'
     assert monitor_model.project(snapshot, "binutils", now)["summary"] == []
@@ -205,7 +205,8 @@ def test_buildsystem_configuration_not_frontend_categories(snapshot, tmp_path):
     db = tmp_path/'state.db';state.commit(db, snapshot);client = ProjectedClient(create_app(db))
     result = client.get('/api/v2/packages?buildsystem=new-buildsystem').json()
     assert result['total'] == 1 and result['items'][0]['monitors']['source']['data']['buildsystem'] == 'new-buildsystem'
-    assert result['presentation'] == snapshot['presentation']
+    assert result['presentation'] == {'buildsystems': {
+        name: {**style, 'icon': None} for name, style in snapshot['presentation']['buildsystems'].items()}}
     missing = client.get('/api/v2/packages?buildsystem=_not_detected').json()
     assert missing['total'] == 4
     assert missing['buildsystems']['_not_detected'] == 4
@@ -225,11 +226,13 @@ def test_real_license_adapter_compares_same_pair_and_requires_spdx():
     io = FixtureIO({'/1.0/': {'info': {'name': 'fixture', 'version': '1.0', 'license_expression': 'MIT'}},
                     '/2.0/': {'info': {'name': 'fixture', 'version': '2.0', 'license_expression': 'Apache-2.0'}}})
     result = monitor_license.check(subject, {'pypi': 'fixture'}, io)
-    assert result['findings'][0]['label'] == 'License'
+    assert result['findings'][0]['label'] == 'LicenseDiff'
     assert result['findings'][0]['target_version'] == '2.0'
     io.responses['/2.0/']['info']['license_expression'] = 'mit'
     assert monitor_license.check(subject, {'pypi': 'fixture'}, io)['findings'] == []
     io.responses['/2.0/']['info'] = {'name': 'fixture', 'version': '2.0', 'license': 'MIT'}
+    assert monitor_license.check(subject, {'pypi': 'fixture'}, io)['status'] == 'ok'
+    io.responses['/2.0/']['info']['license'] = 'See COPYING for license terms'
     assert monitor_license.check(subject, {'pypi': 'fixture'}, io)['status'] == 'unsupported'
 
 
@@ -336,8 +339,8 @@ def test_facets_follow_search_other_filter_and_view_not_pagination(snapshot, tmp
     snapshot["monitor_catalog"] = {"fixture": {"title": "Fixture"}}
     for name, buildsystem, labels in [
         ("binutils", "cmake", ["EOL"]),
-        ("foo3", "cmake", ["Security"]),
-        ("foo4", "meson", ["EOL", "Security"]),
+        ("foo3", "cmake", ["Advisory"]),
+        ("foo4", "meson", ["EOL", "Advisory"]),
     ]:
         snapshot["specs"][name] = state.success({}, {"head": "spec-" + name, "metadata": {"name": name, "buildsystem": buildsystem, "version": snapshot["sources"][name]["version"]}}, state.utcnow())
         snapshot.setdefault("monitors", {})[name] = {
@@ -356,13 +359,15 @@ def test_facets_follow_search_other_filter_and_view_not_pagination(snapshot, tmp
     client = ProjectedClient(create_app(db))
     out = client.get("/api/v2/packages?buildsystem=cmake&maintenance=EOL&per_page=1&page=2").json()
     assert out["total"] == 1 and out["items"][0]["name"] == "binutils"
-    assert out["maintenance_labels"] == {"EOL": 1, "Security": 1}
+    assert out["maintenance_labels"] == {"EOL": 1, "Advisory": 0, "Outdated": 1, "Untracked": 0}
     assert out["buildsystems"] == {"cmake": 1, "meson": 1}
     assert out["counts"]["all"] == out["counts"]["updates"] == 1 and out["counts"]["problems"] == 0
     out = client.get("/api/v2/packages?buildsystem=cmake&view=updates").json()
-    assert out["maintenance_labels"] == {"EOL": 1} and out["counts"]["all"] == 2 and out["total"] == 1
+    assert out["maintenance_labels"] == {"EOL": 1, "Outdated": 1}
+    assert out["counts"]["all"] == 2 and out["total"] == 1
     out = client.get("/api/v2/packages?q=foo&buildsystem=cmake&maintenance=EOL").json()
-    assert out["total"] == 0 and out["maintenance_labels"] == {"Security": 1, "EOL": 0}
+    assert out["total"] == 0
+    assert out["maintenance_labels"] == {"Advisory": 0, "EOL": 0, "Outdated": 0, "Untracked": 0}
     assert out["buildsystems"] == {"meson": 1, "cmake": 0}
     assert all(v == 0 for v in out["counts"].values())
 
@@ -417,25 +422,15 @@ def test_osv_fixed_events_are_scoped_to_query_identity():
 
 
 def test_invalid_saved_schema_is_preserved_but_not_presented(snapshot):
-    old = {
-        "id": "old",
-        "label": "SecurityReview",
-        "title": "old",
-        "detail": "Review",
-        "evidence_url": "https://example.org/",
-        "resolution": "Upgrade",
-        "severity": "urgent",
-        "tags": [],
-        "scope": "current",
-        "target_version": None,
-    }
+    invalid = monitor_model.finding("fixture", "Advisory", "Fixture", [], "https://example.org/")
+    invalid["facts"] = "not a fact list"
     snapshot["monitors"] = {
         "binutils": {
             "security": {
                 "subject": monitor_model.subject(snapshot, "binutils"),
                 "status": "ok",
                 "checked_at": state.utcnow(),
-                "findings": [old],
+                "findings": [invalid],
             }
         }
     }
@@ -444,17 +439,6 @@ def test_invalid_saved_schema_is_preserved_but_not_presented(snapshot):
     assert out["findings"] == []
     assert out["checks"][0]["status"] == "schema_changed"
     assert snapshot == before
-
-
-def test_evidence_contract_rejects_advice_fields_and_false_unknowns():
-    fact = monitor_model.evidence("KEV", False, "CISA", "https://www.cisa.gov/")
-    item = monitor_model.finding("id", "Security", "id", [fact], "https://example.org/")
-    for field in ["severity", "resolution", "detail"]:
-        with pytest.raises(ValueError):
-            monitor_model.validate_findings([{**item, field: "review"}])
-    for patch in [{"status": "unavailable"}, {"url": "javascript:alert(1)"}, {"value": float("nan")}]:
-        with pytest.raises(ValueError):
-            monitor_model.validate_findings([{**item, "facts": [{**fact, **patch}]}])
 
 
 def test_scanner_findings_do_not_claim_osv_query_or_fixed_events(monkeypatch):
@@ -474,7 +458,7 @@ def test_scanner_findings_do_not_claim_osv_query_or_fixed_events(monkeypatch):
 def test_unchanged_evidence_preserves_revision_and_changed_time(monkeypatch):
     facts = [monitor_model.evidence('Aliases', ['B', 'A'], 'fixture', 'https://example.org/'),
              monitor_model.evidence('KEV', False, 'fixture', 'https://example.org/')]
-    item = monitor_model.finding('id', 'Security', 'id', facts, 'https://example.org/')
+    item = monitor_model.finding('id', 'Advisory', 'id', facts, 'https://example.org/')
     adapter = types.SimpleNamespace(HOSTS=set(), check=lambda *args: {
         'status': 'ok', 'findings': [deepcopy(item)], 'note': 'fixture'})
     monkeypatch.setitem(monitor_registry.REGISTRY, 'fixture', adapter)

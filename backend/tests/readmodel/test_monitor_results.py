@@ -12,8 +12,8 @@ def observed(snapshot, name, findings=(), status='ok'):
 
 
 def test_results_and_coverage_share_linked_filter_context(snapshot, tmp_path):
-    snapshot['monitor_catalog'] = {'license': {'title': 'License'}}
-    finding = monitor_model.finding('changed', 'License', 'MIT → BSD-2-Clause', [], 'https://example.org/')
+    snapshot['monitor_catalog'] = {'license': {'title': 'LicenseDiff'}}
+    finding = monitor_model.finding('changed', 'LicenseDiff', 'MIT → BSD-2-Clause', [], 'https://example.org/')
     snapshot['monitors'] = {
         'binutils': {'license': observed(snapshot, 'binutils', [finding])},
         'foo4': {'license': observed(snapshot, 'foo4')},
@@ -65,7 +65,7 @@ def test_transient_source_failure_keeps_upgrade_evidence_explicitly_old(config, 
     config['packages']['binutils'] = {'monitors': {'license': {'pypi': 'fixture'}}}
     proposed = monitor.plan(config, snapshot, 'binutils', 'license')
     target = proposed['subject']['target_version']
-    finding = monitor_model.finding('license', 'License', 'MIT → ISC', [], 'https://example.org/',
+    finding = monitor_model.finding('license', 'LicenseDiff', 'MIT → ISC', [], 'https://example.org/',
                                     scope='upgrade', target_version=target)
     previous = {**proposed, 'status': 'ok', 'checked_at': state.utcnow(),
                 'attempted_at': state.utcnow(), 'findings': [finding]}

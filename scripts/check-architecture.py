@@ -30,9 +30,11 @@ from tracker import config as configuration
 # Side-effect-free monitor types and comparisons can be read without collecting.
 PURE_MONITORS = {
     'tracker.monitors.contract', 'tracker.monitors.model', 'tracker.monitors.schedule',
+    'tracker.monitors.issues',
     'tracker.monitors.build.status', 'tracker.monitors.version.compare',
     'tracker.monitors.version.rules', 'tracker.monitors.source.release',
     'tracker.monitors.requires.model', 'tracker.monitors.requires.compare',
+    'tracker.monitors.requires.markers',
 }
 WRITE_PATH = {'tracker.collector', 'tracker.package', 'tracker.config_change', 'tracker.runtime_checks'}
 READ_PREFIXES = ('tracker.readmodel', 'tracker.presentation')

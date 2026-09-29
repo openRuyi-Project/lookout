@@ -2,12 +2,14 @@
 from urllib.parse import urlsplit
 
 from tracker.presentation.model import Entry, Section
+from tracker.presentation.labels import appearance, caption
 from tracker.presentation.values import CHECK_LABELS, cell, field, retained_marker, text, version_value
 
 
-def evidence_labels(result, links):
-    return [text(label['label'] + (f" {label['count']}" if label['count'] > 1 else ''),
-                 kind='tag', href=links.to(maintenance=label['label']),
+def evidence_labels(result, links, *, counts=True):
+    return [text(caption(label['label']) + (f" {label['count']}" if counts and label['count'] > 1 else ''),
+                 kind='tag', href=links.only_filter(maintenance=[label['label']]),
+                 appearance=appearance(label['label']),
                  tone='notice' if label['stale'] else 'normal',
                  title=CHECK_LABELS['expired'] if label['stale'] else None)
             for label in result['data']['labels']]
@@ -76,23 +78,23 @@ def evidence_section(result, links):
         if finding['scope'] == 'upgrade' and not shared_target:
             fields.insert(0, field('Target', text(finding.get('target_version'), kind='code')))
         heading = [text(finding['title'], href=finding['evidence_url'])]
-        heading += [text(tag, kind='tag', href=links.to(maintenance=tag)) for tag in finding['tags']]
+        heading += [text(caption(tag), kind='tag', appearance=appearance(tag), href=links.only_filter(maintenance=[tag])) for tag in finding['tags']]
         if finding['stale'] and not all_stale:
             heading.append(retained_marker())
         entries.append(Entry(heading=heading, fields=fields))
-    notes = (['Queried source component only. Local patches, bundled dependencies and binary artifacts are not evaluated.']
+    notes = (['Provider matches do not establish RPM applicability. Local patches, bundled dependencies and binary artifacts are not evaluated.']
              if security else [])
     fields = fact_fields(shared)
     if shared_target:
         fields.insert(0, field('Target', text(shared_target, kind='code')))
-    title = f"{result['title']} · {len(findings)}"
+    title = f"{caption(result['title'])} · {len(findings)}"
     if all_stale:
         title += ' · ' + CHECK_LABELS['expired']
     return [Section(id=result['id'], title=title,
                     fields=fields, entries=entries, notes=notes)]
 
 
-def evidence_cells(pkg, result, links):
+def evidence_lines(pkg, result, links):
     data = result['data']
     entries = data.get('entries') or data.get('findings', [])
     checks_url = links.to(monitor=result['id'], freshness='retained', check='', section='results')
@@ -106,7 +108,7 @@ def evidence_cells(pkg, result, links):
                       for entry in entries if entry['stale'] == stale]
             if values:
                 lines.append(([retained_marker(checks_url)] if stale else []) + values)
-        return [cell(*lines)]
+        return lines
     lines = []
     for stale in (False, True):
         group = [[text(entry['title'], href=entry['evidence_url'], tone='notice' if stale else 'normal')]
@@ -114,6 +116,12 @@ def evidence_cells(pkg, result, links):
         if stale and group:
             group[0].insert(0, retained_marker(checks_url))
         lines.extend(group)
-    if any(finding.get('scope') == 'upgrade' for finding in entries):
+    return lines
+
+
+def evidence_cells(pkg, result, links):
+    lines = evidence_lines(pkg, result, links)
+    entries = result['data'].get('entries') or result['data'].get('findings', [])
+    if result['id'] != 'security' and any(finding.get('scope') == 'upgrade' for finding in entries):
         lines.insert(0, version_value(pkg))
     return [cell(*lines)]

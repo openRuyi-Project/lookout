@@ -55,9 +55,9 @@ def test_new_monitor_uses_existing_document_primitives(snapshot, tmp_path):
 
 def test_security_list_shows_every_identifier_once_without_full_evidence(snapshot, tmp_path):
     add_evidence(snapshot, mid='security')
-    snapshot['monitor_catalog']['security']['title'] = 'Security'
+    snapshot['monitor_catalog']['security']['title'] = 'Advisory'
     observed = snapshot['monitors']['binutils']['security']
-    observed['findings'] = [monitor_model.finding(f'advisory-{i}', 'Security', f'CVE-2026-{1000 + i}',
+    observed['findings'] = [monitor_model.finding(f'advisory-{i}', 'Advisory', f'CVE-2026-{1000 + i}',
         [monitor_model.evidence('Long provider explanation', 'detail only', 'OSV', 'https://example.org/')],
         f'https://example.org/{i}', tags=['KEV'] if i == 0 else []) for i in range(8)]
     client, _ = client_for(snapshot, tmp_path)
@@ -69,8 +69,9 @@ def test_security_list_shows_every_identifier_once_without_full_evidence(snapsho
     assert [v['href'] for v in cell['lines'][0]] == [f'https://example.org/{i}' for i in range(8)]
     assert 'detail only' not in str(document) and 'advisories' not in str(document)
     overview = client.get('/api/ui/packages').json()
-    assert 'CVE-2026-' not in str(overview)
-    assert 'Security 8' in str(overview)
+    assert all(f'CVE-2026-{1000 + i}' in str(overview['table']) for i in range(8))
+    assert 'Security 8' not in str(overview['table'])
+    assert 'detail only' not in str(overview)
 
 
 def test_security_retained_identifiers_have_one_freshness_marker():
@@ -79,7 +80,7 @@ def test_security_retained_identifiers_have_one_freshness_marker():
     result = dict(id='security', data=dict(entries=entries, finding_count=2))
     lines = presentation_evidence.evidence_cells({}, result, presentation_navigation.Links())[0].lines
     assert [value.text for value in lines[0]] == ['CVE-2026-0']
-    assert [value.text for value in lines[1]] == ['Out of date', 'CVE-2026-1']
+    assert [value.text for value in lines[1]] == ['Stale', 'CVE-2026-1']
     query = parse_qs(urlsplit(lines[1][0].href).query)
     assert query['monitor'] == ['security']
     assert query['freshness'] == ['retained']
@@ -94,7 +95,6 @@ def test_focused_display_discards_filters_without_visible_controls(snapshot, tmp
     assert page['total'] == facts['total'] == 1
     assert [r['key'] for r in page['table']['rows']] == [p['name'] for p in facts['items']]
     controls = page['controls']
-    assert not any(facet['name'] in ('build', 'maintenance') for facet in controls['facets'])
     for choice in page['navigation']['choices']:
         assert 'build' not in parse_qs(urlsplit(choice['href']).query)
     assert not any('rva20' in choice['label'] for choice in controls['active'])
@@ -182,7 +182,7 @@ def test_navigation_escapes_values_and_preserves_repeated_filters():
     assert parsed['maintenance'] == ['A & B']
     assert parsed['build'] == ['a:failed', 'b:blocked']
     assert parsed['page'] == ['1']
-    assert parse_qs(urlsplit(links.without('build', 'a:failed')).query)['build'] == ['b:blocked']
+    assert parse_qs(urlsplit(presentation_navigation.filter_link(links, 'build', 'a:')).query)['build'] == ['b:blocked']
 
 
 def test_document_contract_rejects_ragged_tables_and_unknown_markup():
@@ -233,6 +233,8 @@ def test_version_display_uses_decision_not_independent_comparison(snapshot):
         version['relation'] = relation
         assert [value.text for value in presentation_values.version_value(pkg)] == ['source.version']
     version.update(track=None, relation='untracked')
+    pkg['monitors']['version']['dimensions']['view'] = ['untracked']
+    pkg['monitors']['version']['dimensions']['maintenance'] = ['Untracked']
     assert presentation_values.version_value(pkg)[0].tone == 'muted'
     assert presentation_values.version_value(pkg)[0].title == 'Upstream is not tracked'
 
@@ -374,7 +376,6 @@ def test_package_context_and_changelog_remain_visible_without_empty_sections(sna
     assert document.sections[-2].entries[0].fields[-1].values[0].text == 'Packager'
     assert document.sections[-1].id == 'checks'
     assert [s.id for s in document.sections + document.context if s.collapsible] == ['checks']
-    assert all('folded' not in section.model_dump() for section in document.sections + document.context)
 
 
 def test_compact_labels_do_not_hide_different_cve_subjects(snapshot):
@@ -389,7 +390,7 @@ def test_compact_labels_do_not_hide_different_cve_subjects(snapshot):
     assert [f.label for f in section.entries[0].fields] == ['KEV', 'KEV · CVE-2026-1001']
     assert [v.text for v in section.entries[0].heading] == ['CVE-2026-1000']
     assert section.fields == []
-    assert section.title.endswith(' · Out of date')
+    assert section.title.endswith(' · Stale')
 
 
 def test_meaningful_release_line_is_not_lost_with_redundant_track(snapshot):
@@ -415,7 +416,7 @@ def test_page_size_survives_navigation_and_filter_forms(snapshot, tmp_path):
     assert len(document['table']['rows']) == 2
     assert {'name': 'per_page', 'value': '2'} in document['controls']['hidden']
     links = presentation_navigation.Links({'per_page': 2, 'page': 1, 'q': 'foo'})
-    for link in (links.to(page=2), links.to(monitor='build'), links.without('q', 'foo')):
+    for link in (links.to(page=2), links.to(monitor='build'), links.to(q='')):
         assert parse_qs(urlsplit(link).query)['per_page'] == ['2']
     assert client.get(links.to(page=2).replace('/?', '/api/ui/packages?')).status_code == 200
 

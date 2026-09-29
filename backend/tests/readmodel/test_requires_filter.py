@@ -17,13 +17,13 @@ TARGETS = [dict(id=name, label=name) for name in ('first', 'second')]
 def dimension_rows():
     # Duplicate unmet values model several failed requirements in one package.
     examples = [
-        ('pkg-a', ['unmet', 'changes', 'unmet'], 'cmake', 'Security', 'blocked', 'failed', 'ok'),
-        ('pkg-b', ['changes'], 'cmake', 'Security', 'blocked', 'succeeded', 'ok'),
-        ('pkg-c', ['unknown'], 'cmake', 'Security', 'failed', 'succeeded', 'partial'),
+        ('pkg-a', ['unmet', 'changes', 'unmet'], 'cmake', 'Advisory', 'blocked', 'failed', 'ok'),
+        ('pkg-b', ['changes'], 'cmake', 'Advisory', 'blocked', 'succeeded', 'ok'),
+        ('pkg-c', ['unknown'], 'cmake', 'Advisory', 'failed', 'succeeded', 'partial'),
         ('pkg-d', ['unmet'], 'meson', 'EOL', 'succeeded', 'failed', 'ok'),
         ('pkg-e', ['unmet'], 'cmake', 'EOL', 'blocked', 'failed', 'error'),
-        ('pkg-f', [], 'cmake', 'Security', 'succeeded', 'succeeded', 'ok'),
-        ('other', [], 'cmake', 'Security', 'succeeded', 'succeeded', 'pending'),
+        ('pkg-f', [], 'cmake', 'Advisory', 'succeeded', 'succeeded', 'ok'),
+        ('other', [], 'cmake', 'Advisory', 'succeeded', 'succeeded', 'pending'),
     ]
     return [dict(name=name, monitors={'requires': dict(dimensions={
         'requires': values, 'buildsystem': [system], 'maintenance': [label],
@@ -42,8 +42,8 @@ def test_requires_counts_and_every_linked_facet_match_independent_scan():
     rows = dimension_rows()
     index = PackageList(rows, TARGETS)
     for query, requirement, system, label, first, second in product(
-        ('', 'PKG'), ('', 'unmet', 'changes'), ('', 'cmake', 'meson'),
-        ('', 'Security', 'EOL'), ('', 'blocked'), ('', 'failed'),
+        ('', 'PKG'), ('unmet', 'changes'), ('', 'cmake', 'meson'),
+        ('', 'Advisory', 'EOL'), ('', 'blocked'), ('', 'failed'),
     ):
         selections = {'requires': requirement, 'buildsystem': system, 'maintenance': label,
                       'build:first': first, 'build:second': second}
@@ -66,13 +66,14 @@ def test_requires_counts_and_every_linked_facet_match_independent_scan():
         for dimension, options in [('buildsystem', result['buildsystems']),
                                    ('maintenance', result['maintenance_labels'])]:
             for value, count in options.items():
-                assert count == sum(matches(row, dimension, value) for row in rows)
+                assert count == sum(matches(row, dimension, value)
+                                    and (dimension != 'maintenance' or matches(row)) for row in rows)
         for target, options in result['build_statuses'].items():
             for option in options:
                 assert option['count'] == sum(matches(row, 'build:' + target, option['value']) for row in rows)
 
 
-def test_unmet_is_current_only_unknown_and_changes_do_not_imply_unmet():
+def test_unknown_and_changes_do_not_imply_unmet():
     index = PackageList(dimension_rows(), TARGETS)
     unmet = select(index, requires='unmet')
     assert [row['name'] for row in unmet['items']] == ['pkg-a', 'pkg-d', 'pkg-e']
@@ -98,7 +99,7 @@ def test_requires_results_and_coverage_preserve_their_other_selections():
 
 @pytest.fixture
 def linked_client(snapshot, tmp_path, monkeypatch):
-    snapshot['monitor_catalog'] = {'requires': {'title': 'Requires'}}
+    snapshot['monitor_catalog'] = {'requires': {'title': 'RuntimeDeps'}}
     rows, collection = view.project_monitors(snapshot)
     projected = {'binutils': ['unmet', 'changes', 'unmet'], 'foo3': ['changes'],
                  'foo4': ['unknown'], 'unknown': [], 'untracked': ['unmet']}
@@ -110,7 +111,7 @@ def linked_client(snapshot, tmp_path, monkeypatch):
             'requires': projected[row['name']],
             'check:requires': [check],
             'findings:requires': ['yes'] if projected[row['name']] else [],
-            'maintenance': ['Security'],
+            'maintenance': ['Advisory'],
         })
         row['monitors']['source']['dimensions']['buildsystem'] = ['cmake']
     index = PackageList(rows, snapshot['targets'])
@@ -135,17 +136,17 @@ def test_requires_filter_is_validated_only_on_monitored_api(linked_client):
         assert linked_client.get(path + '?requires=invalid').status_code == 422
 
 
-def test_requires_navigation_and_forms_keep_search_facets_and_page_size(linked_client):
+def test_requires_navigation_and_forms_keep_search_menus_and_page_size(linked_client):
     query = ('monitor=requires&requires=unmet&section=results&buildsystem=cmake'
-             '&maintenance=Security&build=rva23:succeeded&build=rva20:succeeded&per_page=1&page=2')
+             '&maintenance=Advisory&build=rva23:succeeded&build=rva20:succeeded&per_page=1&page=2')
     document = linked_client.get('/api/ui/packages?' + query).json()
     controls = document['controls']
-    navigation = next(nav for nav in controls['navigation'] if nav['label'] == 'Requires')
+    navigation = next(nav for nav in controls['navigation'] if nav['label'] == 'Dependencies')
     assert [(choice['label'], choice['count'], choice['selected']) for choice in navigation['choices']] == [
-        ('All', 4, False), ('Unmet', 2, True), ('Changes', 2, False),
-        ('Uncovered', 1, False), ('Failed', 1, False)]
+        ('DepMismatch', 2, True), ('DepChanges', 2, False),
+        ('Uncovered', 1, False), ('CheckFailed', 1, False)]
     assert not any(nav['label'] == 'Results and coverage' for nav in controls['navigation'])
-    for choice, requirement in zip(navigation['choices'], ('', 'unmet', 'changes')):
+    for choice, requirement in zip(navigation['choices'], ('unmet', 'changes')):
         query = parsed(choice['href'])
         assert query.get('requires', ['']) == [requirement]
         assert query['page'] == ['1']
@@ -153,10 +154,11 @@ def test_requires_navigation_and_forms_keep_search_facets_and_page_size(linked_c
         assert query['buildsystem'] == ['cmake']
         assert query['per_page'] == ['1']
     assert {'name': 'requires', 'value': 'unmet'} in controls['hidden']
-    assert controls['facets'] == []
     assert {'name': 'buildsystem', 'value': 'cmake'} in controls['hidden']
-    assert document['global_navigation'][0]['label'] == 'Build system'
-    assert all(parsed(choice['href'])['requires'] == ['unmet'] for choice in controls['active'])
+    assert document['global_navigation'][0]['label'] == 'BuildSystem'
+    unmet_chip = next(choice for choice in controls['active'] if choice['label'] == 'DepMismatch')
+    assert 'requires' not in parsed(unmet_chip['href'])
+    assert parsed(unmet_chip['href'])['buildsystem'] == ['cmake']
     assert parsed(document['pagination'][0]['href'])['requires'] == ['unmet']
     assert parsed(document['pagination'][0]['href'])['page'] == ['1']
     links = presentation_navigation.Links({'q': 'a&b', 'requires': 'unmet', 'page': 9})
@@ -166,17 +168,17 @@ def test_requires_navigation_and_forms_keep_search_facets_and_page_size(linked_c
 
 def test_uncovered_link_resets_requirement_filter_and_keeps_navigation_stable(linked_client):
     document = linked_client.get('/api/ui/packages?monitor=requires&requires=unmet').json()
-    navigation = next(nav for nav in document['controls']['navigation'] if nav['label'] == 'Requires')
+    navigation = next(nav for nav in document['controls']['navigation'] if nav['label'] == 'Dependencies')
     coverage_link = next(choice['href'] for choice in navigation['choices'] if choice['label'] == 'Uncovered')
     assert 'requires' not in parsed(coverage_link)
     coverage = linked_client.get(coverage_link.replace('/?', '/api/ui/packages?')).json()
     assert coverage['total'] == 1
     assert [row['key'] for row in coverage['table']['rows']] == ['unknown']
-    checks = next(nav for nav in coverage['controls']['navigation'] if nav['label'] == 'Requires')
+    checks = next(nav for nav in coverage['controls']['navigation'] if nav['label'] == 'Dependencies')
     assert [(choice['label'], choice['count']) for choice in checks['choices']] == [
-        ('All', 4), ('Unmet', 2), ('Changes', 2), ('Uncovered', 1), ('Failed', 1)]
-    assert not coverage['controls']['active']
-    unmet_link = next(choice['href'] for choice in checks['choices'] if choice['label'] == 'Unmet')
+        ('DepMismatch', 2), ('DepChanges', 2), ('Uncovered', 1), ('CheckFailed', 1)]
+    assert [chip['label'] for chip in coverage['controls']['active']] == ['Check: Uncovered']
+    unmet_link = next(choice['href'] for choice in checks['choices'] if choice['label'] == 'DepMismatch')
     assert parsed(unmet_link)['requires'] == ['unmet'] and 'check' not in parsed(unmet_link)
     unmet = linked_client.get(unmet_link.replace('/?', '/api/ui/packages?')).json()
     assert [row['key'] for row in unmet['table']['rows']] == ['binutils', 'untracked']
@@ -188,7 +190,7 @@ def test_navigation_counts_describe_the_link_destination(linked_client, section,
     document = linked_client.get('/api/ui/packages', params={
         'monitor': 'requires', 'section': section, 'requires': requirement}).json()
     for navigation in document['controls']['navigation']:
-        if navigation['label'] not in ('Requires', 'Checks'):
+        if navigation['label'] != 'Dependencies':
             continue
         for choice in navigation['choices']:
             if choice['count'] is None:
@@ -200,4 +202,4 @@ def test_navigation_counts_describe_the_link_destination(linked_client, section,
 def test_requires_navigation_is_not_added_to_other_monitors(linked_client):
     for query in ('', 'monitor=build', 'monitor=version'):
         document = linked_client.get('/api/ui/packages?' + query).json()
-        assert not any(nav['label'] == 'Requires' for nav in document['controls']['navigation'])
+        assert not any(nav['label'] == 'Dependencies' for nav in document['controls']['navigation'])

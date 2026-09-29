@@ -5,7 +5,7 @@ values. This is a disposable projection, never a second stored observation.
 """
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field as Constraint, model_validator
 
 
 class DocumentModel(BaseModel):
@@ -17,8 +17,10 @@ class Text(DocumentModel):
     href: str | None = None
     title: str | None = None
     kind: Literal['text', 'code', 'tag', 'time'] = 'text'
+    variant: Literal['outline', 'solid'] = 'outline'
     tone: Literal['normal', 'muted', 'positive', 'negative', 'notice'] = 'normal'
     appearance: str | None = None
+    decoration: Literal['dashed'] | None = None
     datetime: str | None = None
 
 
@@ -26,14 +28,38 @@ class Cell(DocumentModel):
     lines: list[list[Text]] = []
 
 
+class Choice(DocumentModel):
+    appearance: str | None = None
+    icon: str | None = None
+    label: str
+    href: str
+    selected: bool = False
+    count: int | None = None
+
+
+class Navigation(DocumentModel):
+    label: str
+    show_label: bool = True
+    icon: str | None = None
+    choices: list[Choice]
+
+
 class Column(DocumentModel):
     title: str
     role: Literal['identity', 'value', 'status'] = 'value'
 
 
+class RowNote(DocumentModel):
+    column: int = Constraint(ge=0)
+    span: int = Constraint(ge=1)
+    values: list[Text]
+
+
 class Row(DocumentModel):
     key: str
+    id: str | None = Constraint(default=None, pattern=r'^[A-Za-z][A-Za-z0-9_-]*$')
     cells: list[Cell]
+    notes: list[RowNote] = []
 
 
 class Table(DocumentModel):
@@ -46,11 +72,14 @@ class Table(DocumentModel):
     def rectangular(self):
         if any(len(row.cells) != len(self.columns) for row in self.rows):
             raise ValueError('Every row must have one cell per column')
+        if any(note.column + note.span > len(self.columns) for row in self.rows for note in row.notes):
+            raise ValueError('Row notes must stay within the table columns')
         return self
 
 
 class Field(DocumentModel):
     label: str
+    href: str | None = None
     values: list[Text]
 
 
@@ -69,33 +98,6 @@ class Section(DocumentModel):
     notes: list[str] = []
 
 
-class Choice(DocumentModel):
-    appearance: str | None = None
-    label: str
-    href: str
-    selected: bool = False
-    count: int | None = None
-
-
-class Navigation(DocumentModel):
-    label: str
-    choices: list[Choice]
-
-
-class Option(DocumentModel):
-    value: str
-    label: str
-    count: int | None = None
-    selected: bool = False
-
-
-class Facet(DocumentModel):
-    id: str
-    name: str
-    label: str
-    options: list[Option]
-
-
 class Parameter(DocumentModel):
     name: str
     value: str
@@ -105,7 +107,6 @@ class Controls(DocumentModel):
     action: str = '/'
     query: str = ''
     hidden: list[Parameter] = []
-    facets: list[Facet] = []
     active: list[Choice] = []
     navigation: list[Navigation] = []
     choice_rows: list[Navigation] = []

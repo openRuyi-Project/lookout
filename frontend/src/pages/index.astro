@@ -7,6 +7,7 @@ import Fields from '../components/document/Fields.astro';
 import Pagination from '../components/document/Pagination.astro';
 import {api} from '../lib/api';
 import type {ListingDocument} from '../lib/document';
+import NavigationMenu from '../components/document/NavigationMenu.astro';
 const {data, status} = await api<ListingDocument>('/api/ui/packages' + Astro.url.search);
 if (!data) Astro.response.status = status === 422 ? 422 : 503;
 ---
@@ -14,7 +15,6 @@ if (!data) Astro.response.status = status === 422 ? 422 : 503;
   {data ? <div class="workspace">
     <aside class="monitor-rail">
       <div class="rail-workspace">
-        <div><span class="rail-label">Monitors</span><Navigation navigation={data.navigation} rail/></div>
         {data.global_navigation.length > 0 && <div class="global-navigation">
           {data.global_navigation.map(navigation => <section class="global-navigation-group">
             <h2>{navigation.label}</h2>
@@ -24,14 +24,15 @@ if (!data) Astro.response.status = status === 422 ? 422 : 503;
       </div>
     </aside>
     <section class="listing" aria-label="Package list">
-      <header class="listing-heading"><h1>{data.title}</h1></header>
+      {!data.navigation.choices[0]?.selected && <header class="listing-heading">
+        <h1>{data.title}</h1><NavigationMenu title="Views" menu={data.navigation} id="view-menu"/>
+      </header>}
       <Controls controls={data.controls}/>
       {data.notices.map(notice => <p class="notice">{notice}</p>)}
-      {data.pages > 1 && <Pagination page={data} label="Pages above results"/>}
+      <Pagination page={data} label="Pages above results" controls={data.controls}/>
       <Table table={data.table}/>
       <Pagination page={data} label="Pages below results"/>
       <div class="collection-meta"><Fields fields={data.meta} compact/></div>
     </section>
   </div> : <div role="alert" class="notice">{status === 422 ? 'Invalid filter selection.' : 'Snapshot unavailable.'} <a href="/">Packages</a></div>}
-  <script is:inline src="/filters.js" defer></script>
 </Base>

@@ -163,18 +163,12 @@ def test_build_failure_retains_success_time(config,snapshot):
     assert actual['raw_status']==previous['raw_status'] and actual['fetched_at']==previous['fetched_at']
     assert actual['error']
 
-def test_obs_collection_refreshes_source_without_upstreams(config,snapshot):
-    # OBS collection refreshes source facts and never touches upstream tracks.
+def test_obs_collection_refreshes_source_without_upstreams(config,snapshot,monkeypatch):
+    def unexpected_upstream(*args, **kwargs):
+        pytest.fail('OBS collection invoked nvchecker')
+    monkeypatch.setattr(nv, 'run', unexpected_upstream)
     new=collector.collect(config,snapshot,FakeOBS(config,new_hash='new-binutils'),state.utcnow())
     assert new['sources']['binutils']['version']=='3.11.0'
-    assert new['tracks']==snapshot['tracks']
-
-def test_collect_has_no_upstream_entry_point(config,snapshot):
-    # collect() cannot launch nvchecker: the OBS phase holds the writer lock, upstreams do not.
-    import inspect
-    params=inspect.signature(collector.collect).parameters
-    assert 'run_nv' not in params and 'include_upstreams' not in params
-    new=collector.collect(config,snapshot,FakeOBS(config,new_hash='new-binutils'),state.utcnow())
     assert new['tracks']==snapshot['tracks']
 
 def test_slow_upstream_run_preserves_newer_obs(config,snapshot,tmp_path,monkeypatch):

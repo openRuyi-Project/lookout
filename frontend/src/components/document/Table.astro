@@ -11,14 +11,25 @@ const statusMatrix = table.columns[0]?.role === 'identity' && table.columns.leng
   <table class:list={['data-table', {wide, 'status-matrix': statusMatrix}]}>
     <colgroup>{table.columns.map(column => <col class={`column-${column.role}`}/>)}</colgroup>
     <thead><tr>{table.columns.map(column => <th scope="col" class={`column-${column.role}`}>{column.title}</th>)}</tr></thead>
-    <tbody>{table.rows.map(row => <tr data-key={row.key}>
+    {table.rows.map((row, rowIndex) => <tbody>
+    <tr data-key={row.key} id={row.id || undefined}>
       {row.cells.map((cell, index) => {
         const Tag = index === 0 ? 'th' : 'td';
-        return <Tag scope={index === 0 ? 'row' : undefined} class={`column-${table.columns[index].role}`}>
+        return <Tag scope={index === 0 ? 'row' : undefined}
+          id={index === 0 ? `row-${encodeURIComponent(table.label)}-${rowIndex}` : undefined}
+          class={`column-${table.columns[index].role}`}>
           {cell.lines.length ? cell.lines.map(line => <div class="value-line"><Values values={line}/></div>) : <span class="tone-muted">—</span>}
         </Tag>;
       })}
-    </tr>)}</tbody>
+    </tr>
+    {row.notes.map(note => <tr class="row-note">
+      {note.column > 0 && <td colspan={note.column} aria-hidden="true"></td>}
+      <td colspan={note.span} headers={`row-${encodeURIComponent(table.label)}-${rowIndex}`}>
+        <div class="value-line"><Values values={note.values}/></div>
+      </td>
+      {note.column + note.span < table.columns.length && <td colspan={table.columns.length - note.column - note.span} aria-hidden="true"></td>}
+    </tr>)}
+    </tbody>)}
   </table>
 </div>
 {!table.rows.length && <p class="empty">{table.empty}</p>}
