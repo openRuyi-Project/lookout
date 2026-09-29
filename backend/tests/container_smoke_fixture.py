@@ -1,6 +1,9 @@
 """Populate only the fresh volumes owned by deploy/smoke-image.py."""
 import os
+from contextlib import closing
+import json
 from pathlib import Path
+import sqlite3
 import sys
 
 import tomlkit
@@ -29,7 +32,7 @@ def prepare(mode, config_dir=Path('/config'), data_dir=Path('/data')):
     config.load(path)
     if mode == 'invalid':
         path.write_text('broken = [')
-    if mode in ('seeded', 'hot-journal'):
+    if mode in ('seeded', 'hot-journal', 'legacy'):
         now = state.utcnow()
         snap = state.empty()
         snap.update(generation=1, targets=targets, obs=cfg['obs'], last_attempt=now,
@@ -37,7 +40,16 @@ def prepare(mode, config_dir=Path('/config'), data_dir=Path('/data')):
                     obs_stale_after_seconds=7200)
         snap['sources'][PACKAGE] = state.success({}, {'version': VERSION, 'srcmd5': 'fixture'}, now)
         snap['builds'][PACKAGE] = {t['id']: state.success({}, {'raw_status': 'succeeded'}, now) for t in targets}
-        state.commit(data_dir / 'state/tracker.sqlite3', snap)
+        db = data_dir / 'state/tracker.sqlite3'
+        if mode == 'legacy':
+            db.parent.mkdir()
+            with closing(sqlite3.connect(db)) as conn, conn:
+                conn.execute('CREATE TABLE snapshot (id INTEGER PRIMARY KEY, payload TEXT NOT NULL)')
+                conn.execute('INSERT INTO snapshot VALUES (1, ?)', (json.dumps(snap),))
+                conn.execute('CREATE TABLE snapshot_clock (id INTEGER PRIMARY KEY, revision TEXT, build_checked_at TEXT)')
+                conn.execute("INSERT INTO snapshot_clock VALUES (1, 'fixture', NULL)")
+        else:
+            state.commit(db, snap)
         if mode == 'hot-journal':
             leave_hot_journal(data_dir / 'state/tracker.sqlite3')
     for root in (config_dir, data_dir):

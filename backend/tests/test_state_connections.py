@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from tracker import state
+from tracker import state, storage
 
 
 class StateConnectionTests(unittest.TestCase):
@@ -151,7 +151,7 @@ class StateConnectionTests(unittest.TestCase):
     def test_decode_does_not_block_writer_or_mix_snapshot_revisions(self):
         _, revision = state.read_cached(self.db)
         changed = {**self.snapshot, 'generation': 7}
-        body = json.dumps(changed)
+        body = storage.pack(changed)[0]
         decode = json.loads
 
         def decode_while_writer_commits(payload):
@@ -165,7 +165,8 @@ class StateConnectionTests(unittest.TestCase):
         with patch.object(state.json, 'loads', decode_while_writer_commits):
             observed = state.read_cached(self.db)
         self.assertEqual(observed, (self.snapshot, revision))
-        self.assertEqual(state.read_cached(self.db), (changed, 'next-fixture'))
+        self.assertEqual(state.read_cached(self.db)[0], changed)
+        self.assertEqual(state.read_cached(self.db)[1].token, 'next-fixture')
 
 
 if __name__ == '__main__':

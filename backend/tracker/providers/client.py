@@ -76,7 +76,7 @@ class IO:
     def text(self, url, *, max_age=None, min_interval=0):
         return self._read('GET', url, None, max_age=max_age, min_interval=min_interval, text=True)
 
-    def _read(self, method, url, body, *, max_age, min_interval, text=False):
+    def _read(self, method, url, body, *, max_age, min_interval, text=False, observed=None):
         identity = [method, url, body] + (['text'] if text else [])
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         with self.guard:
@@ -100,6 +100,8 @@ class IO:
                 self.memory[key] = cached
                 if cached.get('error'):
                     raise ValueError('provider request failed earlier in this run')
+                if observed is not None:
+                    observed.append(cached['time'])
                 return cached['data']
             try:
                 host = urlsplit(url).hostname
@@ -119,6 +121,8 @@ class IO:
                     temp.write_text(json.dumps(cached, separators=(',', ':')))
                     temp.replace(path)
                 self.memory[key] = cached
+                if observed is not None:
+                    observed.append(cached['time'])
                 return data
             except Exception:
                 # A broken global KEV endpoint must not be retried for every package.
@@ -136,14 +140,24 @@ class ProviderIO:
         self.owner, self.hosts = owner, hosts
         self.max_age = max_age
         self.today = owner.today
+        self.observed = []
+
+    @property
+    def observed_at(self):
+        """Oldest successful response used by this check, including cache hits."""
+        if self.observed:
+            return datetime.fromtimestamp(min(self.observed), timezone.utc).isoformat(timespec='seconds')
+        return None
 
     def json(self, method, url, body=None, *, min_interval=0):
         self.validate(method, url)
-        return self.owner.json(method, url, body, max_age=self.max_age, min_interval=min_interval)
+        return self.owner._read(method, url, body, max_age=self.max_age,
+                                min_interval=min_interval, observed=self.observed)
 
     def text(self, url, *, min_interval=0):
         self.validate('GET', url)
-        return self.owner.text(url, max_age=self.max_age, min_interval=min_interval)
+        return self.owner._read('GET', url, None, max_age=self.max_age,
+                                min_interval=min_interval, text=True, observed=self.observed)
 
     def validate(self, method, url):
         parsed = urlsplit(url)

@@ -30,7 +30,7 @@ from tracker import config as configuration
 # Side-effect-free monitor types and comparisons can be read without collecting.
 PURE_MONITORS = {
     'tracker.monitors.contract', 'tracker.monitors.model', 'tracker.monitors.schedule',
-    'tracker.monitors.issues',
+    'tracker.monitors.issues', 'tracker.monitors.observations',
     'tracker.monitors.build.status', 'tracker.monitors.version.compare',
     'tracker.monitors.version.rules', 'tracker.monitors.source.release',
     'tracker.monitors.requires.model', 'tracker.monitors.requires.compare',

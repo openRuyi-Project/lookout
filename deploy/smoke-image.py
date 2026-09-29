@@ -118,6 +118,30 @@ for path in ('/', '/packages/smoke-fixture'):
             raise RuntimeError(f'{mode}: expected preflight exit 2')
         print(f'PASS {mode}: preflight exit 2', flush=True)
 
+    def migration(self):
+        volumes = self.fixture('legacy')
+        helper = self.prefix + '-migrate'
+        self.containers.append(helper)
+        self.run('run', '--rm', '--name', helper, '--network', 'none', *self.mapping,
+                 '--read-only', '--cap-drop=all', '--security-opt=no-new-privileges',
+                 '-v', f'{volumes[0]}:/config:ro,nocopy', '-v', f'{volumes[1]}:/data:rw,nocopy',
+                 '--entrypoint', '/opt/venv/bin/python', self.image,
+                 '/app/deploy/migrate-state.py', '--db', '/data/state/tracker.sqlite3',
+                 '--backup', '/data/before.sqlite3')
+        self.containers.remove(helper)
+        name = self.start('migrated', volumes)
+        self.wait_live(name)
+        self.assert_seeded(name)
+        self.python(name, '''from tracker import state
+from pathlib import Path
+backup = Path('/data/before.sqlite3')
+assert backup.is_file()
+assert state.read(backup)['sources']['smoke-fixture']['version'] == '1.2.3'
+assert state.read('/data/state/tracker.sqlite3')['sources']['smoke-fixture']['version'] == '1.2.3'
+''')
+        self.stop(name)
+        print('PASS migration: legacy data backed up, migrated and served through the real entrypoint', flush=True)
+
     def check(self):
         info = json.loads(self.run('image', 'inspect', self.image).stdout)[0]
         if info['Config']['User'] != '10001:10001':
@@ -198,6 +222,7 @@ assert snapshot['generation'] < 999999
         self.negative('invalid')
         self.negative('unwritable')
         self.negative('root', root=True)
+        self.migration()
 
     def cleanup(self, failed):
         for name in self.containers:

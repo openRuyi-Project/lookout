@@ -355,10 +355,11 @@ def check_specs(config, db, describe=native_spec.describe):
             error = 'SPEC fetch failed'
         # Failed fetch, traversal or macro reads retain facts and success timestamps.
         with state.writer_lock(db, timeout=60):
-            latest = state.read(db)
+            previous = state.read_cached(db)
+            latest = previous[0]
             specs = {name: fact for name, fact in specs.items() if name in latest['sources']}
             snapshot = merge_specs(config, latest, specs, error, now, context=context)
-            state.commit(db, snapshot)
+            state.commit(db, snapshot, previous=previous)
     return snapshot
 
 
@@ -382,8 +383,9 @@ def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt
                     raise ValueError('partial upstream result belongs to a different rule')
             with state.writer_lock(db, timeout=60):
                 guard()
-                latest = merge_upstreams(config, state.read(db), completed, None, now, selected=list(completed))
-                state.commit(db, latest)
+                previous = state.read_cached(db)
+                latest = merge_upstreams(config, previous[0], completed, None, now, selected=list(completed))
+                state.commit(db, latest, previous=previous)
         if due and not selected:
             tracks, error = {}, None
         elif selected is None:
@@ -396,7 +398,8 @@ def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt
             raise ValueError('selected upstream results do not match requested tracks')
         with state.writer_lock(db, timeout=60):
             guard()
-            latest = state.read(db)
+            previous = state.read_cached(db)
+            latest = previous[0]
             if due:
                 retained = {name: fact for name, fact in latest['tracks'].items() if name in config['native']}
                 retained.update(tracks)
@@ -422,7 +425,7 @@ def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt
                 snapshot['components']['nvchecker'] = component
             else:
                 snapshot = merge_upstreams(config, latest, tracks, error, now, selected)
-            state.commit(db, snapshot)
+            state.commit(db, snapshot, previous=previous)
         if attempt is not None:
             attempt.update(selected_track_count=len(tracks),
                            track_errors={name: fact['error'] for name, fact in tracks.items() if fact.get('error')},
@@ -436,7 +439,8 @@ def collect_obs(config, db, source_limit=None):
         try:
             observed = collect(config, state.read(db), client, state.utcnow(), source_limit)
             with state.writer_lock(db, timeout=60):
-                latest = state.read(db)
+                previous = state.read_cached(db)
+                latest = previous[0]
                 if latest.get('obs') and latest['obs'] != config['obs']:
                     raise ValueError('OBS scope changed during collection')
                 # OBS owns these fields only. A concurrent upstream/spec job may
@@ -446,7 +450,7 @@ def collect_obs(config, db, source_limit=None):
                      'builds': build_patch(observed, 'obs')},
                     {key: value for key, value in observed['components'].items()
                      if key in ('targets', 'inventory', 'source_index') or key.startswith('build_history:')})
-                state.commit(db, snapshot)
+                state.commit(db, snapshot, previous=previous)
         finally:
             client.close()
     return snapshot
@@ -466,7 +470,8 @@ def collect_builds(config, db):
         finally:
             client.close()
         with state.writer_lock(db, timeout=60):
-            latest = state.read(db)
+            previous = state.read_cached(db)
+            latest = previous[0]
             if latest.get('obs') != old['obs'] or latest.get('targets') != old['targets']:
                 raise ValueError('OBS scope changed while checking builds')
             patches = {name: facts for name, facts in observed['builds'].items()
@@ -476,7 +481,7 @@ def collect_builds(config, db):
                 snapshot = state.read(db)
             else:
                 snapshot = state.merge(latest, 'builds', {'builds': patches}, {'builds': component})
-                state.commit(db, snapshot)
+                state.commit(db, snapshot, previous=previous)
     return snapshot
 
 

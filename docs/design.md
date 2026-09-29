@@ -7,7 +7,7 @@
 | Operator settings and package policy | `config.py` | Loads explicit files; does not inspect observations |
 | Native version rules | `monitors/version/` | Discovery proposes candidates; only reviewed configuration runs |
 | Provider collection | `monitors/`, `providers/` | Produces attributed observations, not maintainer dispositions |
-| Snapshot publication | `state.py`, `collector.py` | Serializes writers and enforces phase-owned fields |
+| Snapshot publication | `state.py`, `storage.py`, `collector.py` | Serializes writers and enforces phase-owned fields |
 | Read models and filtering | `readmodel/` | Uses saved observations; never invokes collectors |
 | Reading documents | `presentation/` | Selects and formats facts for a view |
 | Layout and interaction | `frontend/` | Renders documents and submits selections; does not infer monitor results |
@@ -40,16 +40,29 @@ old observations; responses collected for the old scope are discarded.
 
 A complete, successful OBS status poll with unchanged facts updates only SQLite's
 `snapshot_clock` row. Payload and content generation remain unchanged. Partial,
-failed or changed vectors take the full-snapshot path; missing observations cannot
+failed or changed vectors update their affected records; missing observations cannot
 become fresh through a clock update.
 
-`state.read_cached` reads the payload and clock in one SQLite transaction and
-folds the clock into the returned snapshot. Collectors read, merge and commit
-under the writer lock. `state.commit` stores the supplied snapshot, resets the
-clock and assigns a new storage revision; it does not refresh old input. This
-also applies when an import retains the content generation. Cache reuse requires
-the same storage revision and database file identity. SQLite backups include both
-tables; readers require the current clock schema.
+`storage.py` stores source, track, SPEC, build and monitor observations as keyed
+rows. A transaction publishes changed rows, deletions and a small snapshot header;
+unchanged row revisions remain stable. Collectors pass the unmodified read result
+back to commit; the stored revision and heartbeat must still match. Equal rows
+then need neither JSON encoding nor hashing. Stale incremental bases are rejected. `state.read_cached` captures the header,
+clock and row revisions in one read transaction, then decodes changed JSON outside
+the lock. Unchanged observations are borrowed read-only. A background projection
+still presents one complete snapshot, not partially updated pages.
+
+Collectors read, merge and commit under the writer lock. Phase merging preserves independent mutable snapshots. A successful, unchanged build clock can
+survive another phase's commit without rewriting all build timestamps. An imported
+snapshot receives a new storage revision even if its content generation is equal.
+Cache reuse requires the same database identity and matching row revisions.
+
+SQLite `user_version` versions storage independently of the public snapshot
+`schema`. Readers accept the deployed legacy snapshot for migration; writers and
+startup preflight require the current storage format. `deploy/migrate-state.py`
+backs up, migrates transactionally, and compares complete observations before and
+after. Unknown formats fail closed. No upgrade deletes the database or silently
+creates a replacement. See [release upgrades](deployment.md#upgrade-and-recovery).
 
 Writes use rollback journals and `synchronous=FULL`. API connections are read-only.
 On startup, under the writer lock, SQLite may recover an interrupted transaction;
@@ -114,8 +127,12 @@ or catalog changes; unchanged stored observations and settings require no write.
 Collection schedules and operator overrides are defined in `monitors/schedule.py`
 and each collector's `polling()` or adapter's `refresh()`.
 
-Single-scope findings survive provider failure only while the query fingerprint
-matches, retaining their original successful-check time. Combined current/upgrade
+A pending or failed replacement keeps one `last_result`, with its original
+query, interpretation version and time. Only evidence matching the current query
+can enter its projection, and evidence awaiting reinterpretation is marked stale.
+Different-query history is retained but cannot be asserted for the new subject.
+A completed result, including a verified empty result, replaces this saved result.
+Retries do not create a history chain. Combined current/upgrade
 checks reuse each exact upstream release independently; their
 [scope contract](monitor-porting.md#module-contract) excludes revision-dependent
 facts. Rebinding source context does not refresh external evidence. Invalid saved
@@ -126,7 +143,7 @@ Timestamp and revision fields have distinct meanings:
 | Field | Meaning |
 |---|---|
 | `attempted_at` | Last attempted check, including failure |
-| `checked_at` | For a single-scope adapter, last accepted result, including partial/unsupported; a thrown failure retains the prior time |
+| `checked_at` | Observation time of the oldest HTTP input used by a result; cached bytes keep their original time. Checks without HTTP use execution time. Failures retain dated evidence. |
 | Scope `checked_at` | Last successful result for that scope; the combined observation uses the latest successful scope time |
 | `evidence_revision` / `changed_at` | Revision and time of query-input or normalized finding changes, not polling time or result order |
 

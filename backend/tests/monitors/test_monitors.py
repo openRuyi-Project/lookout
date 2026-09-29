@@ -288,9 +288,9 @@ def test_monitor_batch_fairness_and_partial_publication(config, snapshot, monkey
     monkeypatch.setattr(monitor.cfg, 'require_unchanged', lambda config, path: None)
     db = tmp_path/'state.db';state.commit(db, snapshot)
     commit = state.commit
-    def capture(path, new):
+    def capture(path, new, **kwargs):
         published.append(deepcopy(new))
-        return commit(path, new)
+        return commit(path, new, **kwargs)
     monkeypatch.setattr(state, 'commit', capture)
     result = monitor.collect(config, 'unused', db, io=FixtureIO({}))
     assert Counter(calls) == {'first': 1, 'second': 1}

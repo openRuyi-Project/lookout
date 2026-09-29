@@ -10,7 +10,7 @@ conn = sqlite3.connect(sys.argv[1])
 conn.execute('PRAGMA cache_size=1')
 conn.execute('BEGIN EXCLUSIVE')
 snapshot = json.loads(conn.execute('SELECT payload FROM snapshot WHERE id=1').fetchone()[0])
-snapshot['generation'] = 999999
+snapshot.get('snapshot', snapshot)['generation'] = 999999
 snapshot['uncommitted'] = 'x' * 1000000
 conn.execute('UPDATE snapshot SET payload=? WHERE id=1', (json.dumps(snapshot),))
 os._exit(0)

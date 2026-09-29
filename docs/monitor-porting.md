@@ -54,7 +54,7 @@ use `outline` for issues and `solid` for build-system identities.
 
 | Member | Meaning |
 |---|---|
-| `VERSION` | Interpretation revision included in the query fingerprint. Increment when unchanged inputs would produce differently interpreted facts. |
+| `VERSION` | Interpretation revision included in the result fingerprint. Increment when unchanged inputs would produce differently interpreted facts. |
 | `HOSTS` | Exact HTTPS hosts permitted by scoped IO. Credentials, redirects, fragments and nonstandard ports are rejected. |
 | `TITLE` | Optional display title; defaults to the registry ID. |
 | `SCOPE` | `current` by default, or `upgrade` / `current_and_upgrade`. |
@@ -138,7 +138,10 @@ not deadlines: batch limits and worker availability still apply. Transport cache
 age is bounded by the effective recheck/retry policy. Operator overrides live in
 `[monitors.refresh.ID]`; the stale threshold must exceed the normal interval.
 
-The fingerprint always includes the adapter ID, `VERSION` and resolved `inputs`.
+The result fingerprint includes the adapter ID, `VERSION` and resolved `inputs`.
+The query fingerprint omits `VERSION` so a new interpretation can retain dated
+evidence for the same query. Do not bump `VERSION` for layout changes or new
+backends that cannot change existing results.
 Its subject portion defaults to the whole source context. Narrow it only when
 omitted fields cannot change the provider query or its interpretation:
 
@@ -151,7 +154,8 @@ omitted fields cannot change the provider query or its interpretation:
 A packaging-only revision can then reuse upstream evidence without a provider
 call. Publication rechecks source availability and the fingerprint; combined
 checks may retain an independently matching release scope. A successful unchanged
-poll advances `checked_at`, not `changed_at` or `evidence_revision`. A heartbeat
+network poll advances `checked_at`, not `changed_at` or `evidence_revision`.
+Reinterpreting cached inputs keeps their original observation time. A heartbeat
 skips publication when its projected state is unchanged; input invalidation or
 catalog changes can still require a write
 without provider jobs. A temporary source failure gates retained evidence without

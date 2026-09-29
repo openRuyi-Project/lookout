@@ -11,6 +11,7 @@ import threading
 import time
 
 from tracker import state
+from tracker.storage import Revision
 from tracker.readmodel import packages as package_list, snapshot as view
 
 LOG = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ class Prepared:
     index: package_list.PackageList
     collection: dict
     signature: tuple
-    revision: str | None
+    revision: Revision | None
     deadline: datetime | None
     built_at: datetime
 

@@ -17,6 +17,7 @@ from pydantic import (
 )
 
 from tracker import state
+from tracker.monitors.observations import visible
 from tracker.monitors.issues import observation_label
 from tracker.monitors.requires.model import RequirementDeclaration
 from tracker.monitors.version import compare as version_status
@@ -162,12 +163,13 @@ def project(snapshot, name, now, *, version=None):
     findings, checks = [], []
     ttl = snapshot.get("monitor_stale_after_seconds", 86400)
     for provider, observation in sorted(observations.items()):
+        observation = visible(observation)
         combined = observation.get('scope') == 'current_and_upgrade'
         expected = {**current, "target_version": latest} if observation.get("scope") == "upgrade" else current
         observed_subject = observation.get('subject') or {}
         same = ({k: v for k, v in observed_subject.items() if k != 'target_version'} == current
                 if combined else observed_subject == expected)
-        old = source_unavailable or state.stale(observation, now, ttl)
+        old = source_unavailable or observation.get('_retained', False) or state.stale(observation, now, ttl)
         status = observation.get("status", "pending") if same else "input_changed"
         gated = same and observation.get('input_status') == 'unsupported'
         if gated:
@@ -198,7 +200,7 @@ def project(snapshot, name, now, *, version=None):
                                                 or f.get("target_version") != latest):
                     continue
                 scope_check = observation.get('scope_checks', {}).get(f['scope']) if combined else None
-                unavailable = (source_unavailable or gated or state.stale(scope_check, now, ttl)
+                unavailable = (source_unavailable or gated or observation.get('_retained', False) or state.stale(scope_check, now, ttl)
                                or scope_check['status'] != 'ok') if scope_check else old or status not in ('ok', 'partial')
                 findings.append(
                     {

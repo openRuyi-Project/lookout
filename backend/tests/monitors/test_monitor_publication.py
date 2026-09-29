@@ -49,7 +49,7 @@ def one_package(fixture):
 def test_single_completed_result_has_no_duplicate_final_publish(collection):
     one_package(collection)
     with patch.object(cfg, 'require_unchanged', wraps=cfg.require_unchanged) as guards, \
-         patch.object(state, 'read', wraps=state.read) as reads, \
+         patch.object(state, 'read_cached', wraps=state.read_cached) as reads, \
          patch.object(state, 'commit', wraps=state.commit) as writes:
         result = run(collection)
     assert guards.call_count == 2  # Initial invalidation and completed result.
@@ -63,7 +63,7 @@ def test_single_completed_result_has_no_duplicate_final_publish(collection):
 def test_last_result_in_coalescing_window_is_flushed(collection):
     state.commit(collection.db, collection.snapshot)
     with patch.object(cfg, 'require_unchanged', wraps=cfg.require_unchanged) as guards, \
-         patch.object(state, 'read', wraps=state.read) as reads, \
+         patch.object(state, 'read_cached', wraps=state.read_cached) as reads, \
          patch.object(state, 'commit', wraps=state.commit) as writes:
         result = run(collection)
     assert guards.call_count == 3  # Initial, first completion, final dirty batch.
@@ -79,7 +79,7 @@ def test_idle_heartbeat_revalidates_once_without_writing_or_opening_pool(collect
     initial = run(collection)
     monkeypatch.setattr(monitor, 'ThreadPoolExecutor', lambda **kwargs: pytest.fail('no work to submit'))
     with patch.object(cfg, 'require_unchanged', wraps=cfg.require_unchanged) as guards, \
-         patch.object(state, 'read', wraps=state.read) as reads, \
+         patch.object(state, 'read_cached', wraps=state.read_cached) as reads, \
          patch.object(state, 'commit', wraps=state.commit) as writes:
         result = run(collection)
     assert result == initial

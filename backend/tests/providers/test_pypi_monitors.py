@@ -236,7 +236,7 @@ def test_failed_release_retains_only_its_dated_evidence_while_other_release_refr
         config, snapshot, monkeypatch, failed_scope):
     config["native"]["binutils"] = {"source": "pypi", "pypi": "upstream-fixture"}
     monkeypatch.setattr(state, "compare", lambda *args: "outdated")
-    first = datetime.now(timezone.utc)
+    first = datetime.now(timezone.utc).replace(microsecond=0)
     first_at, retry_at = first.isoformat(), (first + timedelta(minutes=1)).isoformat()
     fail = False
 
@@ -252,10 +252,12 @@ def test_failed_release_retains_only_its_dated_evidence_while_other_release_refr
         io = IO(client=client, ttl=0)
         proposed = monitor.plan(config, snapshot, "binutils", "requires")
         monkeypatch.setattr(state, "utcnow", lambda: first_at)
+        monkeypatch.setattr("tracker.providers.client.time.time", lambda: first.timestamp())
         previous = monitor.execute("requires", proposed, io)
         assert previous["status"] == "ok"
         fail = True
         monkeypatch.setattr(state, "utcnow", lambda: retry_at)
+        monkeypatch.setattr("tracker.providers.client.time.time", lambda: first.timestamp() + 60)
         retried = monitor.execute("requires", proposed, io, previous)
         assert retried["status"] == "partial" and retried["checked_at"] == retry_at
         assert retried["findings"] == previous["findings"]

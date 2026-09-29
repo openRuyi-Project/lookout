@@ -1,4 +1,4 @@
-"""Atomic SQLite snapshots with phase-owned updates and a separate build clock."""
+"""Phase-owned observation updates and atomic SQLite snapshot views."""
 from contextlib import closing, contextmanager
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import sqlite3
 import time
-import uuid
+from tracker import storage
 
 def utcnow():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
@@ -50,29 +50,7 @@ def read_cached(db, previous=None):
     """
     if not Path(db).is_file():
         return empty(), None
-    with closing(sqlite3.connect(Path(db).resolve().as_uri() + '?mode=ro', uri=True, timeout=10)) as conn:
-        conn.execute('BEGIN')
-        clock = conn.execute('SELECT revision, build_checked_at FROM snapshot_clock WHERE id=1').fetchone()
-        if clock is None:
-            raise ValueError('snapshot clock row is missing')
-        revision, stamp = clock
-        reuse = bool(previous and stamp is not None and previous[1] == revision)
-        if not reuse:
-            row = conn.execute('SELECT payload FROM snapshot WHERE id=1').fetchone()
-    # Payload and clock came from one transaction. Decode the captured text
-    # after closing it so CPU work cannot keep collectors waiting on a read lock.
-    if reuse:
-        snapshot = previous[0]
-    else:
-        if row is None:
-            raise ValueError('snapshot row is missing')
-        snapshot = json.loads(row[0])
-    # Only a missing database is a cold start; an existing unsupported snapshot
-    # must not reach collectors that could overwrite it using the current schema.
-    if (not isinstance(snapshot, dict) or type(snapshot.get('schema')) is not int
-            or snapshot['schema'] != 1 or type(snapshot.get('generation')) is not int
-            or snapshot['generation'] < 0):
-        raise ValueError('snapshot payload is invalid')
+    snapshot, revision, stamp = storage.read(db, previous)
     if stamp:
         snapshot = {**snapshot,
             'builds': {name: {tid: {**fact, 'fetched_at': stamp, 'attempted_at': stamp}
@@ -86,7 +64,7 @@ def commit_build_heartbeat(db, latest, patches, component):
     """Return True only when a complete successful poll changed no status facts.
 
     Called under writer_lock. A partial/failing response, scope change or changed
-    fact takes the ordinary full-snapshot path, including its exact old timestamps.
+    fact takes the ordinary row-update path, including its exact old timestamps.
     """
     stamps = {'fetched_at', 'attempted_at'}
     stamp = component.get('fetched_at')
@@ -116,26 +94,16 @@ def commit_build_heartbeat(db, latest, patches, component):
         return True
 
 
-def commit(db, snapshot):
-    """Replace payload and reset its heartbeat in one database transaction.
+def commit(db, snapshot, *, previous=None):
+    """Publish changed observations and their clock in one database transaction.
 
     Concurrent writers must hold writer_lock across read/merge/commit; a transaction
     alone cannot prevent overwriting a newer snapshot with old input.
     Each payload write gets a new storage revision, even if generation is unchanged.
+    ``previous`` is an unmodified read_cached result; its storage revision and
+    heartbeat are checked before skipping serialization of equal observations.
     """
-    # Serialization happens before opening the transaction: invalid data cannot replace a snapshot.
-    body = json.dumps(snapshot, ensure_ascii=False, allow_nan=False, separators=(',', ':'))
-    db = Path(db)
-    db.parent.mkdir(parents=True, exist_ok=True)
-    with closing(sqlite3.connect(db, timeout=10)) as conn, conn:
-        # Read-only systemd API mounts cannot recreate WAL/SHM after a writer exits.
-        # Short, infrequent writes use rollback journals so closed-writer reads work.
-        conn.execute('PRAGMA journal_mode=DELETE')
-        conn.execute('PRAGMA synchronous=FULL')
-        conn.execute('CREATE TABLE IF NOT EXISTS snapshot (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)')
-        conn.execute('INSERT INTO snapshot VALUES (1, ?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload', (body,))
-        conn.execute('CREATE TABLE IF NOT EXISTS snapshot_clock (id INTEGER PRIMARY KEY CHECK(id=1), revision TEXT NOT NULL, build_checked_at TEXT)')
-        conn.execute('INSERT OR REPLACE INTO snapshot_clock VALUES (1, ?, NULL)', (uuid.uuid4().hex,))
+    return storage.commit(db, snapshot, previous=previous)
 
 @contextmanager
 def writer_lock(db, timeout=0):

@@ -1,7 +1,7 @@
 """Exact upstream release declarations; comparison and local assessment are read-side."""
 from typing import Protocol
 
-from tracker.monitors.model import finding, fingerprint
+from tracker.monitors.model import finding, fingerprint, version_query as query_subject
 from tracker.monitors.requires import cpan as requires_cpan, cratesio as requires_cratesio, pypi as requires_pypi
 from tracker.monitors.requires.model import Requirement, UnsupportedRequirements, key
 from tracker.monitors.schedule import Schedule

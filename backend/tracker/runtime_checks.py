@@ -1,12 +1,13 @@
 """Fail-closed checks performed before the supervisor starts children."""
 import argparse
+from contextlib import closing
 import os
 from pathlib import Path
 import sqlite3
 import sys
 import tempfile
 
-from tracker import state
+from tracker import state, storage
 from tracker.config import load
 from tracker.monitors.source import rpm as native_spec
 
@@ -56,6 +57,9 @@ def check_runtime(config, db, *, recover=False):
             if recover and state.recover(data):
                 print('runtime: SQLite journal recovery verified', file=sys.stderr)
             state.read(data)
+            with closing(sqlite3.connect(data.resolve().as_uri() + '?mode=ro', uri=True)) as conn:
+                if conn.execute('PRAGMA user_version').fetchone()[0] != storage.FORMAT:
+                    raise ValueError('database migration required; run deploy/migrate-state.py before startup')
         except (sqlite3.Error, OSError, ValueError) as error:
             raise RuntimeError(f'tracker database is unreadable: {error}') from error
     if spec.get('repo') or config.get('collector', {}).get('native_spec_fallback'):

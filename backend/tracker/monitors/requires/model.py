@@ -8,6 +8,7 @@ from packaging.utils import canonicalize_name
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from tracker import config as cfg, identity as package_identity, state
+from tracker.monitors.observations import visible
 from tracker.monitors.requires import compare as requirement_versions
 from tracker.monitors.requires.markers import applies
 from tracker.monitors.source import release as source_release
@@ -166,14 +167,14 @@ class Resolver:
             self.index_components(package)
 
     def index_components(self, package):
-        observation = self.snapshot.get('monitors', {}).get(package, {}).get('requires', {})
+        observation = visible(self.snapshot.get('monitors', {}).get(package, {}).get('requires', {}))
         check = observation.get('scope_checks', {}).get('current', {})
         provided = check.get('provides', [])
         if not provided:
             return
         source = state.current_source(self.snapshot, package)
         subject = observation.get('subject', {})
-        if (check.get('status') != 'ok' or observation.get('input_status') == 'unsupported'
+        if (observation.get('_retained') or check.get('status') != 'ok' or observation.get('input_status') == 'unsupported'
                 or any(subject.get(k) != source.get(k) for k in ('version', 'revision'))
                 or self.observed(package)['stale']
                 or state.stale(check, self.now, self.snapshot.get('monitor_stale_after_seconds', 86400))):

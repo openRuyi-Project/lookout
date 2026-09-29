@@ -416,3 +416,55 @@ def test_stored_requirements_accept_release_declarations_not_derived_comparisons
     comparison.update(current=current['constraint'], target=current['constraint'])
     with pytest.raises(ValueError):
         monitor_model.finding('derived', 'RuntimeDeps', 'Runtime', [], current['constraint']['url'], requirement=comparison)
+
+
+def test_deployment_then_transport_failure_keeps_dated_release_evidence(config, snapshot, release_setup, monkeypatch):
+    first = execute(config, snapshot)
+    monkeypatch.setattr(monitor_requires, 'VERSION', monitor_requires.VERSION + 1)
+    proposed = monitor.plan(config, snapshot, 'binutils', 'requires')
+    pending = monitor.retain_current(proposed, first)
+
+    class UnavailableIO(OfflineIO):
+        def for_hosts(self, *args, **kwargs):
+            raise OSError('transport unavailable')
+
+    for _ in range(2):
+        pending = monitor.execute('requires', proposed, UnavailableIO(), pending)
+        save_observation(snapshot, pending)
+        projected = monitor_model.project(snapshot, 'binutils', NOW)
+        assert {f['id'].removeprefix('requires:') for f in projected['findings']} == {f['id'] for f in first['findings']}
+        assert all(f['stale'] for f in projected['findings'])
+        assert projected['checks'][0]['status'] == 'error'
+        assert projected['checks'][0]['checked_at'] == first['checked_at']
+        assert pending['last_result'] == first
+
+
+@pytest.mark.parametrize('failed_version', ['3.9.0', '3.10.0'])
+def test_partial_reinterpretation_preserves_only_the_failed_scope(config, snapshot, release_setup,
+                                                                 monkeypatch, failed_version):
+    backend, calls = release_setup
+    first = execute(config, snapshot)
+    monkeypatch.setattr(monitor_requires, 'VERSION', monitor_requires.VERSION + 1)
+    proposed = monitor.plan(config, snapshot, 'binutils', 'requires')
+    pending = monitor.retain_current(proposed, first)
+
+    def partial(version, *args):
+        if version == failed_version:
+            raise OSError('one release unavailable')
+        return []  # A successful empty response must replace this scope's old findings.
+
+    backend.read = partial
+    failed_scope = 'current' if failed_version == '3.9.0' else 'upgrade'
+    for _ in range(2):
+        pending = monitor.execute('requires', proposed, OfflineIO(), pending)
+        save_observation(snapshot, pending)
+        projected = monitor_model.project(snapshot, 'binutils', NOW)
+        assert pending['status'] == 'partial'
+        assert [f['scope'] for f in projected['findings']] == [failed_scope]
+        assert projected['findings'][0]['stale']
+        assert pending['last_result'] == first
+
+    backend.read = lambda *args: []
+    completed = monitor.execute('requires', proposed, OfflineIO(), pending)
+    assert completed['status'] == 'ok' and completed['findings'] == []
+    assert 'last_result' not in completed

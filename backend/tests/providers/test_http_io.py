@@ -16,6 +16,27 @@ from tracker.monitors.version import discover
 from tracker.providers import client as monitor_io, http as http_io
 
 
+def test_cached_inputs_keep_their_observation_time(tmp_path, monkeypatch):
+    clock = [1000000000.0]
+    requests = []
+    monkeypatch.setattr(monitor_io.time, 'time', lambda: clock[0])
+    def respond(request):
+        requests.append(request)
+        return httpx.Response(200, json={'value': 'fixture'})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        first = monitor_io.IO(tmp_path, client=client).for_hosts({'example.org'})
+        assert first.json('GET', 'https://example.org/fact') == {'value': 'fixture'}
+        stamp = first.observed_at
+        clock[0] += 100
+        second = monitor_io.IO(tmp_path, client=client).for_hosts({'example.org'})
+        assert second.json('GET', 'https://example.org/fact') == {'value': 'fixture'}
+        assert second.observed_at == stamp and len(requests) == 1
+        clock[0] += 30000
+        third = monitor_io.IO(tmp_path, client=client).for_hosts({'example.org'})
+        third.json('GET', 'https://example.org/fact')
+        assert third.observed_at > stamp and len(requests) == 2
+
+
 class Stream(httpx.SyncByteStream):
     def __init__(self, parts, clock=None):
         self.parts = parts
