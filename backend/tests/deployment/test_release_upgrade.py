@@ -44,8 +44,14 @@ def deployment(tmp_path, monkeypatch):
 
 def simulate(monkeypatch, manifest, *, fail=None, incompatible=False):
     calls, ready = [], []
+    active = ['active']
     def run(argv, **kwargs):
         calls.append(argv)
+        if argv[0] == 'busctl':
+            if 'StartUnit' in argv: active[0] = 'active'
+            if 'StopUnit' in argv: active[0] = 'inactive'
+        if argv[:3] == ['systemctl', '--user', 'show']:
+            return active[0]
         if argv[:2] == ['podman', 'info']:
             return 'true'
         if argv[:3] == ['podman', 'image', 'inspect']:
@@ -90,13 +96,22 @@ def test_upgrade_keeps_data_and_orders_stop_backup_migrate_start(deployment, mon
     assert result['status'] == 'ready' and ready == [NEW]
     assert unit.read_text() == original.replace('Image=' + OLD, 'Image=' + NEW)
     assert (Path(result['data']) / 'state/tracker.sqlite3').read_bytes() == b'operator data'
-    stop = next(i for i, call in enumerate(calls) if call[:3] == ['systemctl', '--user', 'stop'])
+    stop = next(i for i, call in enumerate(calls) if call[0] == 'busctl' and 'StopUnit' in call)
     backup = next(i for i, call in enumerate(calls) if '/app/deploy/backup-snapshot.py' in call)
     migrate = next(i for i, call in enumerate(calls) if '/app/deploy/migrate-state.py' in call)
-    start = next(i for i, call in enumerate(calls) if call[:3] == ['systemctl', '--user', 'start'])
-    assert stop < backup < migrate < start
+    start = next(i for i, call in enumerate(calls) if call[0] == 'busctl' and 'StartUnit' in call)
+    reload = next(i for i, call in enumerate(calls) if call[0] == 'busctl' and call[-1] == 'Reload')
+    assert stop < backup < migrate < reload < start
     assert all(':Z' not in arg for call in calls[:stop] for arg in call)
     assert next(backups.glob('upgrade-*/previous.container')).read_text() == original
+
+
+def test_reload_rpc_failure_is_not_reported_as_success(monkeypatch):
+    def failed(argv, **kwargs):
+        return subprocess.CompletedProcess(argv, 1, '', 'manager unavailable')
+    monkeypatch.setattr(operations.subprocess, 'run', failed)
+    with pytest.raises(RuntimeError, match='busctl.*exit 1'):
+        operations.manager('Reload')
 
 
 @pytest.mark.parametrize('failure', ['/app/deploy/backup-snapshot.py', '/app/deploy/migrate-state.py', 'ready'])
@@ -108,7 +123,7 @@ def test_failed_upgrade_rolls_back_only_after_compatible_reader(deployment, monk
         upgrade.upgrade(bundle, unit, backups, apply=True)
     assert unit.read_text() == original and ready[-1] == OLD
     old_check = next(i for i, call in enumerate(calls) if OLD in call and 'tracker.runtime_checks' in call)
-    start = max(i for i, call in enumerate(calls) if call[:3] == ['systemctl', '--user', 'start'])
+    start = max(i for i, call in enumerate(calls) if call[0] == 'busctl' and 'StartUnit' in call)
     assert old_check < start
 
 
@@ -117,8 +132,8 @@ def test_incompatible_rollback_leaves_data_intact_and_service_stopped(deployment
     calls, ready = simulate(monkeypatch, manifest, fail='ready', incompatible=True)
     with pytest.raises(RuntimeError, match='old image preflight failed'):
         upgrade.upgrade(bundle, unit, backups, apply=True)
-    stops = [i for i, call in enumerate(calls) if call[:3] == ['systemctl', '--user', 'stop']]
-    assert not any(call[:3] == ['systemctl', '--user', 'start'] for call in calls[stops[-1]:])
+    stops = [i for i, call in enumerate(calls) if call[0] == 'busctl' and 'StopUnit' in call]
+    assert not any(call[0] == 'busctl' and 'StartUnit' in call for call in calls[stops[-1]:])
     assert ready == [NEW]
     assert (operations.quadlet(unit.read_text())['data'] / 'state/tracker.sqlite3').read_bytes() == b'operator data'
 
@@ -258,3 +273,29 @@ def test_config_read_reports_permissions_instead_of_claiming_file_type(tmp_path)
             read_input(path)
     finally:
         directory.chmod(0o700)
+
+
+@pytest.mark.parametrize('method,states', [
+    ('StartUnit', ['inactive', 'activating', 'active']),
+    ('StopUnit', ['active', 'deactivating', 'inactive']),
+])
+def test_acknowledged_job_must_reach_requested_state(monkeypatch, method, states):
+    observed = iter(states)
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return next(observed) if argv[0] == 'systemctl' else ''
+    monkeypatch.setattr(operations, 'run', run)
+    monkeypatch.setattr(operations.time, 'sleep', lambda *_: None)
+    operations.service_action('fixture.service', method)
+    assert len(calls) == 4 and method in calls[0]
+
+
+def test_service_transition_is_bounded_and_failed_start_rejected(monkeypatch):
+    monkeypatch.setattr(operations, 'run', lambda *a, **k: 'failed')
+    with pytest.raises(RuntimeError, match='failed to start'):
+        operations.service_action('fixture.service', 'StartUnit')
+    clock = iter([0, 61])
+    monkeypatch.setattr(operations.time, 'monotonic', lambda: next(clock))
+    with pytest.raises(RuntimeError, match='timed out'):
+        operations.service_action('fixture.service', 'StartUnit')

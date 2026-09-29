@@ -96,6 +96,8 @@ environment overrides and Quadlet `Environment=` lines are preserved on upgrade.
 ## Rootless Podman / Quadlet
 
 Use a dedicated non-root account and enable linger through the host administrator.
+The host upgrade tool uses systemd's `busctl` to request service transitions and
+reloads, then checks service state and HTTP readiness.
 Keep config, data and backups outside the checkout. With the release loaded, copy
 initial config from the image's `/app/config` into a **new** private directory;
 source checkouts also provide `deploy/init-config.py`, which refuses overwriting.

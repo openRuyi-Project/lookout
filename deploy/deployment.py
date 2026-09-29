@@ -358,6 +358,31 @@ def write_unit(path, expected, replacement):
             temporary.unlink(missing_ok=True)
 
 
+def manager(method, *arguments):
+    """Require the user manager to acknowledge each requested operation."""
+    run(['busctl', '--user', '--timeout=120', 'call', 'org.freedesktop.systemd1',
+         '/org/freedesktop/systemd1', 'org.freedesktop.systemd1.Manager', method, *arguments])
+
+
+def service_state(unit):
+    return run(['systemctl', '--user', 'show', '--property=ActiveState', '--value', unit], timeout=5)
+
+
+def service_action(unit, method):
+    manager(method, 'ss', unit, 'replace')
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        state = service_state(unit)
+        if method == 'StopUnit' and state in ('inactive', 'failed'):
+            return
+        if method == 'StartUnit':
+            if state == 'active':
+                return
+            if state == 'failed':
+                raise RuntimeError('service failed to start: ' + unit)
+        time.sleep(0.25)
+    raise RuntimeError('service transition timed out: ' + unit)
+
 
 class Quadlet:
     engine = 'podman'
@@ -376,26 +401,27 @@ class Quadlet:
     def check(self):
         if run(['podman', 'info', '--format', '{{.Host.Security.Rootless}}']) != 'true':
             raise ValueError('rootless Podman is required')
-        run(['systemctl', '--user', 'is-active', '--quiet', self.service])
+        if service_state(self.service) != 'active':
+            raise ValueError('Quadlet service must be active before upgrade')
         if self.unit.read_text() != self.original:
             raise ValueError('unit changed since review; refusing upgrade')
 
     def stop(self):
-        run(['systemctl', '--user', 'stop', self.service], timeout=60)
+        service_action(self.service, 'StopUnit')
 
     def stage(self, image):
         replacement = replace_image(self.original, image)
         write_unit(self.unit, self.original, replacement)
         self.replacement = replacement
-        run(['systemctl', '--user', 'daemon-reload'])
+        manager('Reload')
 
     def start(self):
-        run(['systemctl', '--user', 'start', self.service])
+        service_action(self.service, 'StartUnit')
 
     def rollback(self):
         expected = self.replacement or self.original
         write_unit(self.unit, expected, replace_image(self.original, self.settings['image']))
-        run(['systemctl', '--user', 'daemon-reload'])
+        manager('Reload')
         self.start()
 
     def save(self, directory):
