@@ -190,6 +190,11 @@ def test_packager_checks_revision_and_image_version(tmp_path, monkeypatch):
     manifest = upgrade.read_release(output)
     assert manifest['version'] == version and manifest['image'] == NEW
     assert (output / 'upgrade.py').read_bytes() == (ROOT / 'deploy/upgrade.py').read_bytes()
+    manual = (output / 'README.md').read_text()
+    assert '[build one](#build-and-test)' in manual
+    assert 'config/README.md` in the source checkout' in manual
+    import re
+    assert not any(link.startswith('../') for link in re.findall(r'\]\(([^)]+)\)', manual))
     with pytest.raises(FileExistsError):
         release.package('image', output, 'docker')
 

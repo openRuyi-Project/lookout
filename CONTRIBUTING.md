@@ -59,23 +59,19 @@ Regression tests fix their inputs, not today's upstream versions or package
 counts. Test shipped configuration against schema and policy. Freeze semantic
 clocks; synchronize concurrent tests with events rather than elapsed sleeps.
 
-## Write documentation and comments
+## Documentation and comments
 
-Keep instructions with their task: package edits in the configuration guide,
-operator commands in deployment, adapter contracts in porting, and cross-cutting
-invariants in design. Link to the owner instead of copying it.
+Put each instruction with its task: configuration, deployment, monitor porting
+or design. Link to that owner rather than repeat it. Follow the
+[GNU manual structure](https://www.gnu.org/prep/standards/html_node/GNU-Manuals.html):
+introduce the task, place the runnable example beside its explanation, then state
+the result and failure conditions. Keep reference details easy to locate.
+Check commands, paths and links against the implementation.
 
-A comment should explain something the code cannot: a protocol exception, an
-ownership constraint, or the reason an apparently simpler implementation is wrong.
-Do not narrate control flow or repeat types and names. Use a docstring for a
-caller's non-obvious contract, including failure or side effects when relevant;
-use a nearby comment for an implementation constraint. Do not turn an observed
-limitation into a guarantee. Check examples against fixtures, not live releases.
-
-Reference practices: [GNU manuals](https://www.gnu.org/prep/standards/html_node/GNU-Manuals.html),
-[Python docstrings](https://peps.python.org/pep-0257/),
-[Rust documentation](https://doc.rust-lang.org/rustdoc/how-to-write-documentation.html),
-[Java API contracts](https://www.oracle.com/java/technologies/javase/api-specifications.html).
+Comments explain protocol exceptions, ownership or why a simpler implementation
+would be wrong; they do not narrate code. Docstrings document a caller's non-obvious
+contract, side effects and failures. Use synthetic examples rather than assertions
+about today's provider versions or package counts.
 
 ## Request review
 

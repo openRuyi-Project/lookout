@@ -1,147 +1,177 @@
 # Deployment
 
-One container runs Astro SSR, FastAPI and independently scheduled OBS, version,
-SPEC and monitor collection. SQLite, the managed SPEC clone and provider caches
-live on persistent local storage. Only one complete instance may use that storage.
-Neither a page request nor an image upgrade starts a full recollection.
+One container runs Astro, FastAPI and scheduled OBS, SPEC, version and monitor
+checks. `/config` is read-only; `/data` holds SQLite, the SPEC clone and caches.
+Keep these across releases. Run **one writer per data directory** on local disk.
 
 ## Requirements
 
-Use a Linux host with cgroup v2, Landlock ABI 6+ and seccomp. Run the native image
-tests on that host; the kernel version alone is not sufficient evidence. Host
-release tools require Python 3.11+. Docker Engine or Rootless Podman with Quadlet
-is required. The application image supplies Python 3.14 and Node.
-
-Use a dedicated deployment account, local disk and private backup directories.
-Docker daemon access is privileged; use rootless Docker where supported or limit
-membership of its administrator group. Do not expose the engine socket to the app.
-Do not place this SQLite directory on a network filesystem.
+- Linux, cgroup v2, Landlock ABI 6+ and seccomp; verify with the image tests below.
+- Docker Engine, or a non-root account with Rootless Podman, Quadlet and `busctl`.
+- Python 3.11+ for host release tools. The image supplies Python 3.14 and Node.
+- Private config and backup directories. Docker socket access is administrative;
+  never mount it into the application. Do not use network storage for SQLite.
 
 ## Install a release with Docker
 
-Obtain the release for the host architecture from the trusted project release
-channel. Keep its directory: it contains the tested image, installation and upgrade
-tools, manifest and checksums. Checksums detect corruption, not a substituted
-publication channel. From that directory:
+Use a release bundle for the host architecture, from a trusted publisher. If no
+bundle is published, [build one](#build-and-test). Keep the bundle: it contains the
+image, manifest and upgrade tools. Checksums detect corruption, not a compromised
+publisher. In the unpacked directory:
 
 ```sh
 sha256sum --check SHA256SUMS
 python3 install.py --name openruyi-monitor --port 18730
+curl --fail http://127.0.0.1:18730/livez
 ```
 
-The installer validates the image identity, creates three explicitly named volumes
-(`openruyi-monitor-config`, `-data`, `-backups`), checks the runtime and starts the
-real entrypoint. It refuses existing containers or volumes. The application runs
-as UID/GID 10001 with a read-only root and config, dropped capabilities and bounded
-resources/logs. Only the one-time initialization helper owns new empty volumes as
-root. No anonymous data volume, production chown or permissive host directory is
-needed. Failed installation retains its volumes for inspection; do not rerun with
-a different name merely to bypass a failure.
+Installation creates named `openruyi-monitor-config`, `-data` and `-backups`
+volumes; existing names are refused. The app uses UID/GID 10001, read-only
+root/config, dropped capabilities and resource limits. Only initialization of
+new volumes uses root. Failed installation retains its volumes for inspection.
 
-To supply reviewed configuration at installation:
+To install reviewed settings instead of the defaults:
 
 ```sh
 python3 install.py --name openruyi-monitor --port 28730 \
   --config /absolute/private/config --memory 8g --cpus 4 --pids-limit 512
 ```
 
-Configuration files are read as the operator and copied into the private config
-volume. Private host files need not be made readable to UID 10001. Symlinks are
-rejected. An omitted `--config` initializes the release's defaults only on first
-installation; upgrading never reinitializes config or data.
+Files are copied as the operator into a private config volume; symlinks are
+rejected. Do not relax host permissions for container UID 10001. Defaults are
+copied only at first install, never on upgrade.
 
 ## Administrator settings
 
-| Setting | Docker | Rootless Quadlet | Default / effect |
-| --- | --- | --- | --- |
-| Host HTTP port | `install.py --port PORT`; `maintain.py --port PORT` to change | `PublishPort=127.0.0.1:PORT:8080` | 18730; recreate service, no frontend build |
-| Memory | `--memory 8g`; `docker update --memory 8g NAME` | `Memory=8g` | 8 GiB ceiling, not a measured minimum |
-| CPU | `--cpus 4`; `docker update --cpus 4 NAME` | `[Service] CPUQuota=400%` | four CPUs maximum |
-| Processes | `--pids-limit 512`; `docker update --pids-limit 512 NAME` | `PidsLimit=512` | includes collector child processes |
-| Outbound proxy | `--env TRACKER_MONITOR_PROXY=URL` | `Environment=TRACKER_MONITOR_PROXY=URL` | absent; configure Git's proxy separately if needed |
-| SPEC clone | `--env TRACKER_SPEC_REPO=/data/spec-full.git` | `Environment=TRACKER_SPEC_REPO=/data/spec-full.git` | overrides `[spec].repo`; an empty value falls back to TOML |
-| SPEC source | `tracker.toml`: `[spec].url`, `[spec].branch` | same | required for a managed clone; no source is inferred by the executable |
-| OBS project and targets | mounted `tracker.toml`: `[obs]`, `[[targets]]` | same | release defaults |
-| Collection budget | `tracker.toml`: `[collector]`, `[monitors]` | same | existing intervals/workers/timeouts; restart after editing |
-| Package identities and rules | `packages.toml`, `versions/nvchecker.toml` | same | see [configuration](../config/README.md) |
-| Provider credentials | private keyfile referenced by native nvchecker config | same | never a frontend `PUBLIC_*` variable |
-| Backup location and age | `maintain.py --output PATH` / `--status DIR` | same, with `--unit` | separate host directory; age budget 26 h |
+| Setting | Docker | Rootless Quadlet |
+|---|---|---|
+| Host port (default 18730) | `install.py --port PORT`; change with `maintain.py --port PORT` | `PublishPort=127.0.0.1:PORT:8080` |
+| Memory ceiling (8 GiB, not a measured minimum) | `--memory 8g`; `docker update --memory 8g NAME` | `Memory=8g` |
+| CPU ceiling (four CPUs) | `--cpus 4`; `docker update --cpus 4 NAME` | `[Service] CPUQuota=400%` |
+| Process ceiling (512, including collectors) | `--pids-limit 512`; `docker update --pids-limit 512 NAME` | `PidsLimit=512` |
+| Monitor outbound proxy | `--env TRACKER_MONITOR_PROXY=URL` | `Environment=TRACKER_MONITOR_PROXY=URL` |
+| SPEC clone path | `--env TRACKER_SPEC_REPO=/data/spec-full.git` | same variable in `Environment=` |
+| Source repository/branch, OBS targets, intervals | mounted `tracker.toml` | mounted `tracker.toml` |
+| Package identities and version rules | [Configuration](../config/README.md) | same |
+| Provider secrets | private nvchecker keyfile; never `PUBLIC_*` variables | same |
 
-The **host** port is configurable; container ports remain web 8080 and private API
-18731. Runtime environment goes to server processes, not browser assets. Domain,
-TLS, authentication and public/private ingress belong to an independent host
-proxy. The project neither discovers domains nor provisions certificates. Publish
-only `127.0.0.1`; do not use host networking or publish the API. A host proxy can
-forward to that loopback endpoint; another container's localhost is not this host.
-The [Caddy example](../deploy/Caddyfile.example) is optional external configuration.
+Container ports stay web 8080 and private API 18731. Publish only the web port on
+loopback. Domain, HTTPS, authentication and ingress belong to an independent host
+proxy; the app does not discover or configure them. The optional
+[Caddy example](../deploy/Caddyfile.example) runs **on the host**. Another
+container's localhost is not the host. No frontend rebuild is needed for a port
+or proxy change.
 
-Docker resource updates persist through upgrades. For config edits, export the
-private config, review it with the [existing configuration tools](../config/README.md),
-then import it as a **new config volume**:
+`TRACKER_MONITOR_PROXY` does not configure Git or OBS. Configure Git's proxy
+separately when needed. An empty `TRACKER_SPEC_REPO` falls back to `[spec].repo`;
+a managed clone also requires explicit `[spec].url` and `[spec].branch`.
+No `.env` file is implicitly loaded. Keep secrets in private files, not shell history.
+
+### Change Docker configuration
+
+Export, edit and validate a copy; import it into a **new** volume without replacing
+data. `maintain.py` preflights, restarts and restores the previous service on failure.
 
 ```sh
 umask 077
 mkdir /absolute/private/config-next
 docker cp openruyi-monitor:/config/. /absolute/private/config-next/
-# Edit and validate config-next, then apply it without replacing data:
+# Edit config-next using the configuration guide, then:
 python3 maintain.py --container openruyi-monitor --config /absolute/private/config-next
 ```
 
-This operation retains the previous config volume, preflights the candidate and
-recreates the service. It can be combined with `--port`. On startup failure it
-returns to the previous container/config. Secret values should be kept in private
-files, not command history. No `.env` file is loaded implicitly; installed Docker
-environment overrides and Quadlet `Environment=` lines are preserved on upgrade.
+`--port PORT` can accompany `--config`. Existing resource/environment overrides
+survive upgrades. For Quadlet, edit a new config directory and the unit, then
+preflight and restart with the operator's service tools.
 
 ## Rootless Podman / Quadlet
 
-Use a dedicated non-root account and enable linger through the host administrator.
-The host upgrade tool uses systemd's `busctl` to request service transitions and
-reloads, then checks service state and HTTP readiness.
-Keep config, data and backups outside the checkout. With the release loaded, copy
-initial config from the image's `/app/config` into a **new** private directory;
-source checkouts also provide `deploy/init-config.py`, which refuses overwriting.
-
-Render `openruyi-monitor.container.in`: replace `@IMAGE@` with the tested image ID,
-`@CONFIG_DIR@` and `@DATA_DIR@` with absolute existing directories. Paths must not
-contain whitespace, colons, quotes or systemd `%` specifiers. Edit `PublishPort`
-for a different loopback port and the resource fields as required. There are no
-domain or TLS placeholders. Use one unquoted `KEY=value` per `Environment=` line.
-
-Validate in a temporary directory before installing the unit:
+Use a dedicated account; ask the host administrator to enable linger. Run the
+following from the verified bundle. `ROOT` must be a new absolute directory;
+paths must not contain spaces, colons, quotes or systemd `%` specifiers.
 
 ```sh
-QUADLET_UNIT_DIRS="$TMP_QUADLET_DIR" \
+set -eu
+umask 077
+ROOT="$HOME/services/openruyi-monitor"
+mkdir -p "$HOME/services"
+mkdir "$ROOT"
+mkdir "$ROOT/config" "$ROOT/data" "$ROOT/backups" "$ROOT/units"
+sha256sum --check SHA256SUMS
+podman load --input image.tar
+IMAGE=$(python3 -c 'import json; print(json.load(open("release.json"))["image"])')
+podman run --rm --network none --read-only --cap-drop=all \
+  --security-opt=no-new-privileges --userns=keep-id:uid=10001,gid=10001 \
+  -v "$ROOT/config:/bootstrap:Z" --entrypoint /opt/venv/bin/python "$IMAGE" \
+  -c 'import shutil; shutil.copytree("/app/config", "/bootstrap", dirs_exist_ok=True)'
+```
+
+Review `$ROOT/config`. The following uses the same identity, mounts and sandbox
+as the service. Preflight may create directories but does not modify an existing
+database or contact providers. A missing database is valid on first startup.
+
+```sh
+podman run --rm --network none --read-only --cap-drop=all \
+  --security-opt=no-new-privileges --userns=keep-id:uid=10001,gid=10001 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=128m,mode=1777 \
+  -v "$ROOT/config:/config:ro,Z" -v "$ROOT/data:/data:Z" \
+  --entrypoint /opt/venv/bin/python "$IMAGE" -m tracker.runtime_checks \
+  --config /config/tracker.toml --db /data/state/tracker.sqlite3
+python3 - "$IMAGE" "$ROOT" <<'PY'
+from pathlib import Path
+import sys
+image, root = sys.argv[1:]
+values = {'IMAGE': image, 'CONFIG_DIR': root + '/config', 'DATA_DIR': root + '/data'}
+if any(any(c.isspace() or c in "'\"%" for c in v) for v in values.values()):
+    raise SystemExit('unsupported unit value')
+if ':' in root or not Path(root).is_absolute():
+    raise SystemExit('use an absolute directory without colons')
+text = Path('openruyi-monitor.container.in').read_text()
+for key, value in values.items():
+    text = text.replace('@' + key + '@', value)
+if '@' in text:
+    raise SystemExit('unresolved template placeholder')
+with (Path(root) / 'units/openruyi-monitor.container').open('x') as output:
+    output.write(text)
+PY
+QUADLET_UNIT_DIRS="$ROOT/units" \
   /usr/lib/systemd/system-generators/podman-system-generator --user --dryrun
-# Operator: install the reviewed file, without overwriting an existing unit.
+```
+
+Use the host's actual generator path. Inspect the generated mounts, loopback port
+and UID mapping; missing generator is not a passed check. Install without overwriting:
+
+```sh
+mkdir -p "$HOME/.config/containers/systemd"
+(set -C; cat "$ROOT/units/openruyi-monitor.container" > \
+  "$HOME/.config/containers/systemd/openruyi-monitor.container")
 systemctl --user daemon-reload
 systemctl --user start openruyi-monitor.service
 journalctl --user -u openruyi-monitor.service
 ```
 
-Use the actual generator location on the host. Missing generator is not a passed
-check. The template maps the operator to container 10001:10001; do not use
-`chmod 777`. `:Z` is a private SELinux label: stop the service before another
-container mounts that directory for preflight/migration. Online backup instead
-executes inside the existing container. Quadlet `[Install]` handles activation;
-do not `systemctl enable` the generated service. Do not retain a second legacy
-container or host collection timer.
+Quadlet `[Install]` handles activation; do not enable the generated service.
+`:Z` is an exclusive SELinux label: stop the writer before another container
+mounts its data for preflight/migration. Online backup runs inside the existing
+container. Remove the old service or collection timer before starting a replacement.
 
-## Health and operational checks
+## Verify operation
 
-- `/livez`: Node → FastAPI request chain.
-- `/readyz` (also `/healthz`): readable snapshot, possibly `degraded`.
-- `/api/v2/status`: collection coverage and timestamp progression.
+| Request | Meaning |
+|---|---|
+| `curl --fail http://127.0.0.1:18730/livez` | Node → FastAPI responds |
+| `curl --fail http://127.0.0.1:18730/readyz` | Snapshot readable; may report `degraded`. `/healthz` is the same readiness check. |
+| `curl --fail http://127.0.0.1:18730/api/v2/status` | Coverage, errors and collection timestamps; observe their progression |
 
-Readiness does not claim all providers are reachable. Freshness and coverage must
-be observed separately. An empty installation can be live before ready. Failed
-checks retain dated evidence rather than implying there are no issues.
+An empty install can be live before ready. Degraded readiness is not complete
+provider coverage. The optional `/opt/cve` scanner and fresh `/data/cve` database
+must be provisioned separately for vendor/product security checks; missing or
+older-than-two-days data stays unavailable. OSV checks are independent.
 
-The optional `/opt/cve` scanner is not included. Vendor/product checks require its
-controlled installation and a fresh `/data/cve` database; unavailable coverage is
-not “no vulnerabilities.” OSV checks are independent.
+## Back up and upgrade
 
-## Online backups
+Create a verified online backup; `--status` exits nonzero for missing/old backups
+or insufficient space. Default maximum age is 26 hours.
 
 ```sh
 install -d -m 0700 /absolute/backups
@@ -150,85 +180,64 @@ python3 maintain.py --container openruyi-monitor \
 python3 maintain.py --container openruyi-monitor --status /absolute/backups
 ```
 
-For Podman, replace `--container NAME` with `--unit /absolute/path/NAME.container`.
-Use a host scheduler to run **backup**, not collection, daily. A nonzero status
-means missing/old backup or insufficient space; arrange notification through the
-host's existing monitoring. Docker logs rotate at 10 MiB × 3; Podman uses host
-journald retention and unit rate limits. Both need disk monitoring.
+Podman uses `--unit /absolute/path/openruyi-monitor.container` instead of
+`--container NAME`. Schedule **backups**, not collection, daily with the host's
+scheduler; arrange disk/backup failure alerts there. Keep config, credentials,
+image identity and an independent storage copy too. SQLite's online Backup API
+produces a validated 0600 file; copying a live database or API export does not.
+Docker logs rotate at 10 MiB × 3; Podman uses host journald retention.
 
-Backup uses SQLite's online Backup API, verifies the snapshot and publishes an
-exclusive 0600 file. `cp` of a live database and API export are not backups. Keep
-config/credentials and image identity separately, plus at least one independent
-storage copy. Retention/deletion is an operator policy, never an upgrade side effect.
+### Upgrade and recovery
 
-## Upgrade and recovery
-
-From a verified new release directory, review and apply:
+From a verified **new** bundle, inspect the plan, then apply:
 
 ```sh
 python3 upgrade.py --container openruyi-monitor --backups /absolute/backups
 python3 upgrade.py --container openruyi-monitor --backups /absolute/backups --apply
-# Podman: use --unit /absolute/path/openruyi-monitor.container instead.
 ```
 
-The transaction pins the image, stops the sole writer, recovers any hot journal,
-backs up and performs a supported migration, then preflights and starts the new
-image. It preserves config/data identities, port, resources and environment.
-The image and its labels are checked against the manifest before stopping service.
-A short interruption is expected. Existing evidence/caches remain; unchanged
-fingerprints do not become new queries merely because the image changed.
+The transaction checks image identity, stops the sole writer, recovers a hot
+journal, backs up, performs a supported migration, preflights and starts the new
+image. It preserves config/data, port, resources and environment. Unchanged query
+fingerprints reuse observations and caches. Expect a short service interruption.
 
-Each transaction records the previous runtime, image, backup and result in a new
-private directory. The old image and volumes remain. On failure the old image is
-started only if it can read the current database. Otherwise the service stays
-stopped: no empty database, journal deletion or automatic rewind. After an
-interruption, inspect that directory and the engine before retrying.
+Each transaction saves the old runtime, image, backup and result in a new private
+directory. On failure, it restarts the old image only if that image can read the
+current data; otherwise it stays stopped. Inspect the transaction before retrying.
+Never delete a journal or replace an unreadable database with an empty one.
 
-For code rollback, stop all writers, preflight the old image against current data,
-then restore its saved container/unit and matching configuration. Unknown storage
-formats are rejected. A schema migration may require data restoration instead:
+For code rollback, stop writers and preflight the saved old image/config against
+current data before restoring that runtime. If its storage format is incompatible:
 
-1. Restore the verified backup into an **independent** data directory/volume.
-2. Run the matching image against that copy; check integrity, package versions,
-   monitor evidence and HTTP readiness.
-3. Explicitly choose whether to switch to the restored copy. Retain the current
-   data too: observations after the backup would otherwise be lost.
+1. Restore the verified backup into an **independent** data directory or volume.
+2. Test the matching image on that copy: integrity, packages, evidence and readiness.
+3. Explicitly choose whether to switch. Keep current data; restoring a backup loses
+   later observations. Upgrades do not automatically rewind data or delete old volumes.
 
-The first row-storage release migrates legacy snapshots once. Later compatible
-upgrades do not rewrite the dataset. Do not run two full instances against one
-SQLite directory, even during testing or rollback.
+## Build and test
 
-Before upgrading a legacy config that enabled a managed SPEC clone without
-`[spec].url` and `branch`, record its existing Git origin and branch in those
-fields. Preflight rejects missing identity rather than selecting another source.
-
-## Build and release checks
-
-From a clean explicit commit, run on the target architecture:
+From a clean checkout of an explicit commit, on the target architecture:
 
 ```sh
 VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"])')
 IMAGE="openruyi-monitor:$(git rev-parse --short=12 HEAD)"
 docker build --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
-  --build-arg RELEASE_VERSION="$VERSION" --build-arg SOURCE_URL="${SOURCE_URL:-}" -t "$IMAGE" -f Containerfile .
+  --build-arg RELEASE_VERSION="$VERSION" --build-arg SOURCE_URL="${SOURCE_URL:-}" \
+  -t "$IMAGE" -f Containerfile .
 CONTAINER_ENGINE=docker deploy/check-image.sh "$IMAGE"
 CONTAINER_ENGINE=docker python3 deploy/smoke-image.py "$IMAGE"
 python3 deploy/smoke-release.py "$IMAGE"
 CONTAINER_ENGINE=docker python3 deploy/release.py --image "$IMAGE" --output /new/release-dir
 ```
 
-Podman builds use `--format docker` to preserve HEALTHCHECK and
-`CONTAINER_ENGINE=podman` for image/native gates. `smoke-release.py` specifically
-exercises Docker installation/upgrade; Quadlet additionally needs generator and
-isolated systemd service tests. The packager rejects dirty source or mismatching
-revision/version. Scan the saved image with a current vulnerability database;
-record findings and database age rather than treating build success as a scan.
+Podman builds need `--format docker` for HEALTHCHECK; image gates use
+`CONTAINER_ENGINE=podman`. The release smoke tests Docker install/upgrade;
+Quadlet additionally needs generator and isolated systemd tests. Release packaging
+rejects dirty source or mismatched image revision/version. `SOURCE_URL` is optional
+publisher metadata, not the website or monitored SPEC URL; CI supplies its own
+repository identity.
 
-`SOURCE_URL` is optional source-provenance metadata supplied by the publisher;
-CI uses its repository context. It is not the deployed website URL and is never
-read by the service. The monitored SPEC repository is a separate `[spec]` setting.
-
-Deploy the exact tested artifact, not a rebuild of moving `main`. Keep immutable
-release versions. Target-host acceptance still includes native isolation, SELinux,
-actual provider timestamps, operation after logout/reboot, backup recovery and
-whatever external access the operator configured. Offline gates do not prove those.
+Deploy the tested artifact, not a rebuild of moving `main`. Scan with a current
+vulnerability database and record its coverage/age. Operator acceptance still
+requires target-host isolation/SELinux, real provider timestamps, logout/reboot
+survival, independent backup recovery and the chosen external access setup.

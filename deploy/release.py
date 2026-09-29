@@ -52,7 +52,12 @@ def package(image, output, engine):
                     platform=info['Os'] + '/' + info['Architecture'], sha256=digest)
     for name in ('upgrade.py', 'deployment.py', 'install.py', 'maintain.py'):
         shutil.copyfile(ROOT / 'deploy' / name, output / name)
-    shutil.copyfile(ROOT / 'docs/deployment.md', output / 'README.md')
+    manual = (ROOT / 'docs/deployment.md').read_text()
+    # The offline bundle has no parent checkout. Keep repository references
+    # identifiable without publishing broken links outside the bundle.
+    manual = re.sub(r'\[([^\]]+)\]\(\.\./([^)]+)\)',
+                    r'\1 (`\2` in the source checkout)', manual)
+    (output / 'README.md').write_text(manual)
     shutil.copyfile(ROOT / 'deploy/quadlet/openruyi-monitor.container.in', output / 'openruyi-monitor.container.in')
     (output / 'release.json').write_text(json.dumps(manifest, indent=2) + '\n')
     sums = []

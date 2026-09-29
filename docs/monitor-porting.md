@@ -1,127 +1,97 @@
 # Add a monitor
 
-Choose the smallest extension that supplies the missing observation:
+## Choose the extension point
 
-| Need | Change |
-|---|---|
-| Track another package's version | Add a native rule; see the [configuration guide](../config/README.md). |
-| Read a version-provider protocol nvchecker does not support | Add an [nvchecker source](#add-a-version-source). |
-| Obtain another assertion about a source release | Add an [evidence adapter](#add-an-evidence-adapter). |
-| Read dependency declarations from another ecosystem | Add a [Requires backend](#add-a-requires-backend). |
-| Read license or withdrawal metadata from another registry | Add a backend in `backend/tracker/providers/release.py`. |
-| Present existing facts differently | Change the [reading adapter or layout](#change-presentation), not collection. |
+| Need | Edit | Registration / consumer |
+|---|---|---|
+| Another package using an existing source | Native version rule or `packages.toml` identity | [Configuration](../config/README.md); no code |
+| New upstream fact | `monitors/ID.py` | `monitors/registry.py`, then `[monitors].enabled` |
+| Another requirements protocol | `monitors/requires/` | `monitor.BACKENDS` |
+| Another release-metadata registry | `providers/` | `providers.release.BACKENDS` |
+| Missing nvchecker protocol | `backend/nvchecker_source/NAME.py` | Native rule `source`; no monitor registration |
+| New presentation of saved facts | `presentation/` | Existing presenter or a new data-kind presenter |
 
-Package identities and policy belong in configuration. Provider protocols belong
-in code. See [Contributing](../CONTRIBUTING.md) for the directory map and checks,
-and [Design](design.md) for snapshot ownership and security boundaries.
+Use [EOL](../backend/tracker/monitors/eol.py) for current-release evidence,
+[License](../backend/tracker/monitors/license.py) for upgrade evidence, or
+[Yanked](../backend/tracker/monitors/yanked.py) for registry reuse. A normal evidence
+adapter gets catalog, API, facets and detail presentation automatically; it needs
+no Astro branch or new API endpoint.
 
 ## Add an evidence adapter
 
-Start with [EOL](../backend/tracker/monitors/eol.py) for a current-release check,
-[License](../backend/tracker/monitors/license.py) for an upgrade-only check, or
-[Yanked](../backend/tracker/monitors/yanked.py) for a small registry-backed example.
-
-1. Add `backend/tracker/monitors/ID.py`, implementing the
-   [Adapter contract](../backend/tracker/monitors/contract.py). Use a package only
-   when the implementation has distinct responsibilities to separate.
-2. Register the trusted module in `monitors.registry.REGISTRY`. The IDs `source`,
-   `version` and `build` are reserved. Add `ID` to `[monitors].enabled` in the
-   operator configuration.
-3. Resolve the identity in `inputs()`. Reuse `identity.from_package()` for saved
-   Source0 or native-rule identities; explicit monitor configuration takes
-   precedence. Put exceptions in `[NAME.monitors.ID]` in `config/packages.toml`,
-   not package-name branches in Python.
-4. Fetch through the supplied `io`, and return source-attributed facts. Reuse
-   `providers/` when another monitor already reads that protocol.
-5. Test the adapter through the runner and read projection, then inspect a package
-   with the contributor CLI. Release code and configuration together using the
-   [deployment procedure](deployment.md).
-
-An ordinary evidence adapter needs no API route or frontend component. The saved
-catalog, evidence presenter and generic renderer supply its title, findings,
-coverage and detail sections. A new *kind of data*, such as a matrix, has a
-separate [presentation path](#change-presentation).
-
-Issue names live in `monitors/issues.py`; their palette is in
-`presentation/labels.toml`. Reuse the same issue in findings, filters and labels.
-`DepMismatch` covers runtime and build dependency conflicts. `RuntimeDeps` and
-`BuildDeps` identify the declaration kind, not separate issues. An upgrade's
-changed declarations are `DepChanges`, even when the new constraint is satisfied.
-Unknown assessments are neither mismatches nor failed checks. Presentation tags
-use `outline` for issues and `solid` for build-system identities.
+1. Implement the [Adapter contract](../backend/tracker/monitors/contract.py) in
+   `monitors/ID.py`. Use a package only when responsibilities warrant separate files.
+2. Register the trusted module in `REGISTRY` and enable it in config. `source`,
+   `version` and `build` are reserved batch collectors, not per-package adapters.
+3. Resolve identity with `identity.from_package()`, letting explicit monitor
+   settings override saved Source0/native-rule identity. Put package exceptions
+   in `[NAME.monitors.ID]`, not Python name branches.
+4. Fetch through supplied `io`; return attributed facts using `finding()` and
+   `evidence()` from `monitors.model`. Reuse existing provider protocols.
+5. Test the runner → storage → API path, inspect a sample and release code with config.
 
 ### Module contract
 
-| Member | Meaning |
+| Member | Contract |
 |---|---|
-| `VERSION` | Interpretation revision included in the result fingerprint. Increment when unchanged inputs would produce differently interpreted facts. |
-| `HOSTS` | Exact HTTPS hosts permitted by scoped IO. Credentials, redirects, fragments and nonstandard ports are rejected. |
-| `TITLE` | Optional display title; defaults to the registry ID. |
-| `SCOPE` | `current` by default, or `upgrade` / `current_and_upgrade`. |
-| `inputs(package, configured)` | Pure function returning a JSON-compatible dict, or `None` if a reliable identity cannot be established. |
-| `check(subject, inputs, io)` | Fetch and interpret observations; return `status`, `findings` and `note`. |
-| `query_subject(subject, inputs)` | Optional pure projection used **only for fingerprinting**. `check()` still receives the full subject. |
-| `refresh(subject, inputs, previous)` | Optional pure function returning a `Schedule`; the default recheck interval is six hours. |
+| `VERSION` | Interpretation revision in the fingerprint; bump when identical inputs acquire different meaning |
+| `HOSTS` | Exact HTTPS hosts accepted by scoped IO |
+| `TITLE` | Optional display title, otherwise registry ID |
+| `SCOPE` | `current` (default), `upgrade`, or `current_and_upgrade` |
+| `inputs(package, configured)` | Pure JSON-compatible identity/settings, or `None` for no reliable identity |
+| `check(subject, inputs, io)` | Attributed `findings`, `status`, `note` |
+| `query_subject(subject, inputs)` | Optional pure fingerprint projection; `check` still receives the full subject |
+| `refresh(subject, inputs, previous)` | Optional `Schedule`; default recheck is six hours |
 
-`package` supplies the source name and revision, the configured native rule's
-public `identity`, and saved `source_release` evidence when available. A corroborated
-full Source0 revision also supplies `source_commit` (repository and commit). Its version
-is the upstream release identified by Source0 when established, otherwise the
-current source version. `configured` is this monitor's value, not the entire
-configuration. `subject` contains the same name/version/revision and, for upgrade
-scopes, `target_version`. The runner passes neither a snapshot nor a storage
-handle to an adapter.
+`package` supplies name/revision, public native-rule `identity`, saved
+`source_release` and corroborated full `source_commit` when available. Its version
+uses the identified Source0 release, otherwise the source version. `configured`
+is this adapter's setting. `subject` contains name/version/revision and, for
+upgrade scopes, `target_version`. Adapters receive no snapshot or storage handle.
 
-For `current` and `upgrade`, `check()` returns `status` equal to `ok`, `partial`
-or `unsupported`. Raise on failed or malformed provider responses. The runner
-isolates exceptions to that package/monitor and retains only matching old evidence.
-`upgrade` runs only for a confirmed upgrade from the shared version comparison;
-it must not implement a second comparison.
+| Result | Meaning |
+|---|---|
+| `ok`, including no findings | Provider check completed; not a claim that the whole package is safe |
+| `partial` | Usable facts with incomplete subchecks; preserve failures and their evidence gaps |
+| `unsupported` | Identity/metadata cannot support this check; not an empty success |
+| Exception | Failed/malformed response; runner isolates it and retains matching dated evidence |
 
-`current_and_upgrade` additionally returns `scope_checks`: one `current` entry,
-and an `upgrade` entry when a target exists. Each entry contains `status`
-(`ok`, `error` or `unsupported`) and `note`; the overall status may also be `error`.
-Findings name their own scope and upgrade target. See
-[Requires](../backend/tracker/monitors/requires/monitor.py): a failed target check
-must not discard a successful current-release observation.
+An upgrade-only adapter relies on the shared version decision, not another
+comparator. Combined scope additionally returns `scope_checks` for `current` and,
+when present, `upgrade`, each with `status` (`ok`, `error`, `unsupported`) and
+`note`. Its overall status may also be `error`. Findings identify their scope and
+target. Successful current results survive a failed target check; unsupported
+metadata does not become a transport failure.
 
-This combined scope is limited to exact upstream-release checks.
-`runner.same_scope()` matches adapter version, resolved inputs and release
-versions, not source revision or the full query fingerprint. It cannot safely
-reuse facts dependent on local patches or other revision-specific input; use a
-single scope for those checks.
+Combined scope is for exact upstream releases. `runner.same_scope` matches adapter
+revision, resolved inputs and release versions, **not** source revision. Checks
+sensitive to local patches must retain source context and use a single scope.
 
-### Facts and failure
+### Facts
 
-Build results with `monitors.model.finding()` and `evidence()`. Their Pydantic
-models validate the ingestion contract; use the models rather than a parallel
-schema in the adapter.
+Use the ingestion models, not a second schema. Finding IDs persist across polls;
+poll time is not identity. Labels/tags classify assertions, not urgency or
+maintainer actions. Each evidence field carries a provider and public HTTPS URL:
 
-- A finding ID identifies an assertion across polls. Do not include poll time.
-- Labels and tags classify facts; they do not assign urgency or maintainer actions.
-- Each evidence field carries its source and HTTPS URL. `key` is display text;
-  supply a stable `code` if a machine consumer must recognize the field.
-- Missing evidence has a null value with `unavailable`, `not_applicable` or
-  `not_evaluated`. It is not `false`.
-- `ok` with no findings means the check completed without a matching condition,
-  not that the package is generally safe. `partial` retains usable facts and
-  marks missing enrichment explicitly.
+```python
+facts = [evidence('Support ended', True, 'Provider', url, code='support_ended')]
+return {'status': 'ok', 'findings': [finding('cycle:3', 'EOL', '3.x', facts, url)],
+        'note': None}
+```
 
-A check describes collection, not the observed package. A successful OBS query
-can report a failed build. Likewise, zero findings and an unconfigured check are
-different results.
+`key` is display text; `code` is a stable machine identifier when a consumer needs
+one. Missing values are null with `unavailable`, `not_applicable` or `not_evaluated`,
+never false. Reuse issue names from `monitors/issues.py`; declare styles in
+`presentation/labels.toml`. The generic renderer distinguishes outline issue tags
+from solid BuildSystem identities.
 
-### IO and refresh
+### IO and scheduling
 
-Use `io.json(method, url, body=None)`, `io.text(url)` and `io.today`. Text responses
-are limited to 512 KiB. Shared IO owns bounded HTTP,
-cache, request deduplication and the operator proxy. Adapters neither create HTTP
-clients nor read/write snapshots. `min_interval=1.0` can space requests to a host
-across workers sharing that IO; cache hits do not consume the interval. HTTP
-429/503 defers further requests to that host using `Retry-After` with a 60-second
-minimum. This is a single-collector budget, not a cross-process quota.
-
-Choose timing in the module when provider semantics require it:
+Use `io.json(method, url, body=None)`, `io.text(url)` and `io.today`. Shared IO owns
+bounded transport, cache, deduplication and the operator proxy. Text is limited to
+512 KiB. Credentials, redirects, fragments and nonstandard ports are rejected.
+`min_interval=1.0` paces a host across workers, not cache hits. HTTP 429/503 applies
+`Retry-After` with a 60-second minimum; this is a per-collector budget.
 
 ```python
 from tracker.monitors.schedule import Schedule
@@ -131,60 +101,44 @@ def refresh(subject, inputs, previous):
     return Schedule(interval_seconds=21600, retry_seconds=300, max_retry_seconds=3600)
 ```
 
-The runner evaluates the policy on each heartbeat. Changed fingerprints are due
-immediately; unchanged queries wait for their interval. Errors and partial
-results use capped exponential retry delays. These are earliest eligible times,
-not deadlines: batch limits and worker availability still apply. Transport cache
-age is bounded by the effective recheck/retry policy. Operator overrides live in
-`[monitors.refresh.ID]`; the stale threshold must exceed the normal interval.
+Changed fingerprints are immediately eligible; errors/partials use capped
+exponential retries. Batch/worker limits may delay eligible work. Cache age is
+bounded by the effective interval. Operators override policies in
+`[monitors.refresh.ID]`; staleness must exceed the normal interval. Vulnerabilities
+can appear without version changes, so periodic refresh remains necessary.
 
-The result fingerprint includes the adapter ID, `VERSION` and resolved `inputs`.
-The query fingerprint omits `VERSION` so a new interpretation can retain dated
-evidence for the same query. Do not bump `VERSION` for layout changes or new
-backends that cannot change existing results.
-Its subject portion defaults to the whole source context. Narrow it only when
-omitted fields cannot change the provider query or its interpretation:
+Result fingerprints include adapter ID, `VERSION` and inputs; query fingerprints
+omit `VERSION` so reinterpretation can retain dated same-query evidence. Do not
+bump `VERSION` for layout-only changes or unrelated new backends. Narrow subject
+identity only when the omitted field cannot affect a query or its meaning:
 
-- `monitors.model.version_query` retains the current/target version pair for
-  upstream metadata checks.
-- EOL retains the derived release cycle.
-- A single-scope check that examines local patches must retain the relevant source
-  revision.
-
-A packaging-only revision can then reuse upstream evidence without a provider
-call. Publication rechecks source availability and the fingerprint; combined
-checks may retain an independently matching release scope. A successful unchanged
-network poll advances `checked_at`, not `changed_at` or `evidence_revision`.
-Reinterpreting cached inputs keeps their original observation time. A heartbeat
-skips publication when its projected state is unchanged; input invalidation or
-catalog changes can still require a write
-without provider jobs. A temporary source failure gates retained evidence without
-turning it into a fresh result.
-Periodic rechecks remain necessary: vulnerabilities and provider corrections can
-arrive without a version change.
-
-OBS, Git and nvchecker remain batch collectors with their own `polling()` policy.
-The common read contract does not require per-package OBS calls or a collection
-base class. HTTP page requests do not initiate polling.
-
-### Verify the port
-
-Use [test_monitor_porting.py](../backend/tests/monitors/test_monitor_porting.py)
-as the integration example. It substitutes provider HTTP while exercising the
-runner, SQLite publication, catalog, projection and facets.
-
-| Case | Required observation |
+| Check | Reusable query identity |
 |---|---|
-| Valid response, with and without a finding | Facts or a completed empty result; both distinguishable from missing coverage. |
-| Missing identity or unsupported metadata | Explicit unconfigured/unsupported state, not an empty success. |
-| Invalid inputs or timeout | Local failure; other packages still progress. |
-| Same query, unchanged facts | Successful-check time advances; evidence revision remains stable. |
-| Changed query or in-flight source change | Old evidence cannot become a fresh result for a different subject. |
-| Due-time boundary and cached response | Retry/refresh policy remains effective through transport caching. |
-| Upgrade-only check | No check without a confirmed upgrade; stale or changed targets cannot attach evidence. |
-| Reading document | Source links and unknown states survive; no monitor-name branch is needed in Astro. |
+| Exact release metadata | `monitors.model.version_query`: current/target versions |
+| Lifecycle | Derived product/cycle |
+| Local-patch-sensitive check | Relevant source revision retained |
 
-Inspect configuration offline, then check against a snapshot copy:
+A successful poll advances check time, not unchanged evidence revision. Cached
+bytes keep their original time. Source unavailability gates evidence; it does not
+freshen it. Persistence and publication details are in [Design](design.md).
+
+## Verify the port
+
+[Integration example](../backend/tests/monitors/test_monitor_porting.py) mocks
+provider HTTP while exercising runner, SQLite, catalog, projection and facets.
+
+| Fixture | Required result |
+|---|---|
+| Valid response, with/without a finding | Attributed fact / completed empty result |
+| Missing identity, unsupported metadata, timeout | Distinct states; another package still progresses |
+| Same query and facts | Check time advances, evidence revision stays stable |
+| New query or in-flight source change | Old evidence cannot become a fresh result for another subject |
+| Retry/refresh boundary and cached bytes | Effective schedule and original evidence age preserved |
+| Stale or changed upgrade target | No new upgrade check or misplaced finding |
+| Partial scope/provider failure | CheckFailed membership agrees with per-monitor filtering and detail Checks |
+
+Inspect offline, then check against a snapshot copy (network allowed, no snapshot
+or disk-cache writes):
 
 ```sh
 PYTHONPATH=backend python -m tracker.monitors explain PACKAGE --monitor ID \
@@ -193,138 +147,82 @@ PYTHONPATH=backend python -m tracker.monitors check PACKAGE --monitor ID \
   --config config/tracker.toml --db /path/to/snapshot-copy.sqlite3
 ```
 
-`explain` also accepts `--db` to show saved source context and due status. `check`
-may contact declared providers but writes neither the snapshot nor a disk cache.
-Follow the [development checks](../CONTRIBUTING.md) before release. Measure identity
-coverage, eligible checks, successful checks and findings separately on the same
-snapshot. Findings alone are not a coverage metric.
+`explain --db` adds saved context/due status. Run [development checks](../CONTRIBUTING.md#run-checks).
+Measure identity, eligible and successful-check coverage separately from findings,
+using the same snapshot; few alerts do not imply little coverage.
 
 ## Add a Requires backend
 
-Requires collects upstream declarations for exact releases. Local Source versions
-are used only to assess those declarations; SPEC dependencies are not a substitute
-for upstream evidence.
+Implement `HOSTS`, `inputs(package, configured)` and `read(version, settings, io)`
+in `monitors/requires/`, then register in `monitor.BACKENDS`. Return `Requirement`
+with stable dependency ID, kind, comparison scheme, declaration/URL and observed
+identity, conditions, extras and relationship. Use existing pure comparators in
+`requires.compare.COMPARATORS`, or test a new one against accepted/rejected syntax.
+Do not branch comparators on dependency names.
 
-1. Implement `inputs(package, configured)` and `read(version, settings, io)` in
-   `backend/tracker/monitors/requires/`. Register the module in `monitor.BACKENDS`.
-2. Return `Requirement` values carrying a stable dependency ID, `runtime` or
-   `build` kind, comparison scheme, declaration, source URL, and identity,
-   conditions, extras and prerequisite relationship where supplied. Keep provider parsing separate from the
-   read-side assessment.
-3. Reuse a comparator in `requires.compare.COMPARATORS`, or add an isolated one
-   with tests for supported and rejected syntax. Comparators must not branch on
-   dependency names.
-4. Test both release scopes, missing metadata, stale observations, ambiguous
-   mappings and conditions through the existing API and presenter.
+Requires observes **upstream declarations**; SPEC requirements are not a substitute.
+Local source versions only assess satisfaction, not installability/ABI. Mappings
+come from reviewed native identities and `[openruyi.dependencies]`; missing or
+ambiguous identities remain unknown. Current/target declarations are independent:
+a missing side does not prove addition/removal; changes require two fresh observed
+unequal declarations. Local dependency updates can reassess saved facts without
+another provider request.
 
-The [PyPI backend](../backend/tracker/monitors/requires/pypi.py) reads
-`Requires-Python` and `Requires-Dist`. Markers/extras are preserved, not evaluated
-against the collector host. `optional` classifies feature selection, not platform
-applicability. Conditions use declared target context; unknown variables stay
-unknown, and false conditions are `not_applicable`. The
-[crates.io backend](../backend/tracker/monitors/requires/cratesio.py) records
-`rust-version` as a **build** requirement, not a runtime dependency.
+| Backend concern | Preserve |
+|---|---|
+| PyPI `Requires-Python` / `Requires-Dist` | Markers/extras; target environment, not collector host; unknown variables remain unknown |
+| Optional vs platform condition | Feature selection vs applicability; false target conditions are `not_applicable` |
+| crates.io `rust-version` | Build requirement, not runtime dependency |
+| CPAN prerequisites | Static `dynamic_config=false`; requires/recommends/suggests as distinct clauses |
+| CPAN module versions | Distribution versions cannot substitute for component versions |
 
-The read-side resolver uses reviewed native identities and
-`[openruyi.dependencies]` exceptions. An absent or ambiguous mapping stays
-unknown. `not_packaged` requires an explicit mapping absent from a fresh,
-successful inventory. Satisfaction compares a declared constraint with an
-observed source version; it does not establish installability or binary
-compatibility.
-
-Current and target requirements are assessed independently. A missing side is
-not proof of addition/removal. Only two fresh, observed, unequal declarations
-establish a change. A local dependency version change can reassess saved
-requirements without querying the upstream provider again. Runtime constraints
-apply to both releases. Build declarations remain raw evidence and do not enter
-the list or `DepMismatch` counts until a reliable build-dependency monitor is
-available. SPEC dependencies are not upstream declarations.
-
-CPAN requires static `dynamic_config=false` metadata. Its runtime `requires`,
-`recommends` and `suggests` remain distinct clauses. CPAN module identities are
-not distribution identities; an archive version cannot stand in for a module
-version. A backend may additionally implement `provides(version, settings, io)`
-to return component identities, versions and evidence URLs for that exact release.
-These are retained with the successful release check, not emitted as alerts.
-Declarations with `version_scope="component"` use this evidence; missing or ambiguous
-components never fall back to the distribution version. CPAN reads indexed modules
-from `metadata.provides`; dynamic prerequisites remain unsupported.
+Optional `provides(version, settings, io)` returns attributed component versions
+for `version_scope="component"` requirements, retained with the successful release
+check. Missing/ambiguous components never fall back to distribution versions.
+Build declarations remain raw evidence, outside list/DepMismatch assessment until
+a reliable build-dependency monitor exists. Test scope reuse, stale/missing metadata,
+mapping and target conditions through the API and presenter.
 
 ## Add a registry metadata backend
 
-Implement `HOSTS`, `inputs()` and `metadata()` in `providers/`, then register the
-module in `providers.release.BACKENDS`. Return `Release` with attributed license
-metadata and its original declaration. License comparison remains in the monitor.
-An optional `withdrawal()` enables Yanked; omit it when the registry offers no
-such assertion. Go uses a separate proxy query, not deps.dev's deprecated flag.
-Missing or ambiguous release assertions raise `UnsupportedRelease`; transport
-failures remain errors. Neither case is a negative finding. Both paths share IO
-and the existing presenter; no frontend provider branch is needed.
+Implement `HOSTS`, `inputs()` and `metadata()` in `providers/`; register in
+`providers.release.BACKENDS`. Return `Release` with attributed license metadata and
+original declaration. Optional `withdrawal()` enables Yanked only when the registry
+asserts it; Go uses proxy retraction, not deps.dev's deprecated flag.
+Raise `UnsupportedRelease` for absent/ambiguous assertions; transport failures remain
+errors. Neither is a negative finding. License comparison stays in the monitor.
 
 ## Add a version source
 
-Use native nvchecker sources and options first. When several rules need a missing
-provider protocol, add `backend/nvchecker_source/NAME.py` implementing nvchecker's
-`async get_version(name, conf, *, cache, **kwargs)` interface. Reuse its cache and
-HTTP session; no project monitor registration or frontend work is required.
+Prefer native nvchecker sources/options. A missing reusable protocol can implement
+`async get_version(name, conf, *, cache, **kwargs)` in
+`backend/nvchecker_source/NAME.py`; use nvchecker's cache/session. TOML owns package
+identities and release lines; nvchecker owns common filtering/normalization.
+Provider ordering still matters: Anitya's first stable value is not unordered history.
 
-The source supplies candidates; nvchecker applies common filters, normalization
-and comparison. Provider selection semantics still matter: `anitya_stable`
-returns the provider's first stable value, not an unordered history for
-a different comparator. Package identities and maintenance lines stay in TOML.
-
-`identity.request_url()` is shared by native collection and identity projection.
-For `crates_index` use `cratesio`; for `anitya_stable` use `anitya_id`. A custom
-`url` replaces the identity field; supplying both is rejected. Go proxy sources
-use an explicit URL. If another monitor needs an identity from the new protocol,
-extend and test `identity.from_native()` rather than importing the source plugin.
-
-Test the actual nvchecker CLI against local HTTP fixtures, including malformed
-and empty responses, filtering order and cache isolation. The wheel test must
-find the plugin beside nvchecker's built-in namespace. Release plugin rules with
-the corresponding installed code, not as standalone built-in nvchecker rules.
+Extend `identity.from_native()` only if other monitors consume the new identity;
+never import the source plugin into readers. `identity.request_url()` shares URL
+resolution with collection. Test the real CLI against loopback fixtures: empty,
+malformed, ordering, line changes and cache isolation. The wheel must contain the
+plugin. Release its rules with the installed code.
 
 ## Change presentation
 
-The aggregate list composes each presenter's `preview` beneath the version.
-`RuntimeDeps:` previews show resolved mismatches, or declaration changes when
-selected from Version. Conditions and evidence stay in the detail. Dependency
-kind controls the prefix; build assessments are not currently projected. Build notes span the
-status columns. `presentation/labels.toml` owns compact display names and category
-colors. Query IDs and saved provider assertions are not renamed for display.
-
-The collection and reading paths meet only at saved facts:
-
-```text
-collector → snapshot → readmodel.monitors → /api/v2/packages
-                              ↓
-                    presentation.Presenter → /api/ui/packages
-                                                     ↓
-                                           Astro document renderer
-```
-
 | Change | Owner |
 |---|---|
-| Stored facts → typed payload and filter dimensions | `backend/tracker/readmodel/monitors.py` |
-| Filter intersections and facet counts | `backend/tracker/readmodel/packages.py` |
-| Facts → fields, tables, entries and links | `backend/tracker/presentation/` |
-| Spacing, responsive layout, themes and keyboard behavior | `frontend/src/components/document/` and `pages/` |
-| Public schema and generated TypeScript | `backend/tracker/api.py` and `frontend/src/lib/api.generated.ts` |
+| Saved facts → typed payload/dimensions | `readmodel/monitors.py` |
+| Membership and facet counts | `readmodel/packages.py` |
+| Visible facts, order, grouping and links | `presentation/` |
+| Layout, themes, keyboard behavior | Astro document components and styles |
+| API contract → TypeScript | `api.py`, then `scripts/api-types.py` |
 
-Evidence adapters already use the `evidence` payload and presenter. A different
-shape needs a typed read payload, its projection and a pure `Presenter` using
-existing document primitives. Add a rendering primitive only if fields, tables
-and entries cannot express the information. Collectors do not supply HTML,
-component names or executable presentation rules.
+The common evidence shape needs no new renderer. A genuinely different shape needs
+a typed payload and pure `Presenter`, using fields/tables/entries first. Add a
+primitive only when those cannot express it. Every presenter supplies detail
+sections; a Results page needs both `columns` and `cells`. Source is context,
+not a duplicate Version table. Collectors never emit HTML or component names.
 
-A presenter always supplies detail sections. A standalone Results page additionally
-needs both `columns` and `cells`; a context-only monitor need not have a second
-list. Source is such a context, rather than another Version table. Choose which
-facts a reading view combines in the presenter, without merging collectors.
-
-Filter choices and counts come from `PackageList`; the website submits the GET
-query rather than repeating the arithmetic. The UI API keeps only filters the
-selected page can display. The fact API permits cross-monitor combinations.
-Coverage includes packages without findings; Uncovered and Failed select specific
-check states, not every non-success state or OBS build failure. Keep collection
-status distinguishable from the observed fact in both APIs.
+Aggregate `preview` shows all matching items, folding identical assertions only.
+RuntimeDeps shows mismatches, plus changes when selected; conditions stay in detail.
+Build reasons appear beneath their target statuses. The backend owns filter links
+and counts; Astro submits the GET query and renders the returned document.

@@ -2,216 +2,177 @@
 
 ## Ownership
 
-| Responsibility | Owner | Boundary |
+```text
+configured identities → collectors → SQLite → readmodel → fact API
+                                                ↓
+                                          presentation → UI API → Astro
+```
+
+| Responsibility | Owner | Contract |
 |---|---|---|
-| Operator settings and package policy | `config.py` | Loads explicit files; does not inspect observations |
-| Native version rules | `monitors/version/` | Discovery proposes candidates; only reviewed configuration runs |
-| Provider collection | `monitors/`, `providers/` | Produces attributed observations, not maintainer dispositions |
-| Snapshot publication | `state.py`, `storage.py`, `collector.py` | Serializes writers and enforces phase-owned fields |
-| Read models and filtering | `readmodel/` | Uses saved observations; never invokes collectors |
-| Reading documents | `presentation/` | Selects and formats facts for a view |
-| Layout and interaction | `frontend/` | Renders documents and submits selections; does not infer monitor results |
+| Settings and package policy | `config.py` | Explicit file references, no observation-dependent loading |
+| Version discovery | `monitors/version/` | Proposes candidates; reviewed native rules execute |
+| External protocols | `monitors/`, `providers/` | Attributed facts, not maintainer decisions |
+| Writes | `collector.py`, `state.py`, `storage.py` | Phase-owned fields, one serialized transaction |
+| Derived facts and selection | `readmodel/` | Saved input only; no collection |
+| Reading order and grouping | `presentation/` | Pure fields, tables, entries and links |
+| Layout and interaction | `frontend/` | Renders documents, submits queries; no monitor inference |
 
-[Configuration](../config/README.md) describes editing and promotion.
-[Monitor porting](monitor-porting.md) describes adapter contracts and registration.
-[CONTRIBUTING](../CONTRIBUTING.md) lists development checks.
+Executable adapters register in `monitors/registry.py`; readers consume the saved
+catalog instead. Package initializers are inert. `scripts/check-architecture.py`
+checks import boundaries; `scripts/api-types.py --check` checks generated types
+against OpenAPI. [Porting](monitor-porting.md) describes extension contracts;
+[Configuration](../config/README.md) owns editing and promotion.
 
-Executable adapters are registered in `monitors/registry.py`. Readers consume the
-saved catalog, not the executable registry. Package initializers are inert; pure
-models and comparisons can be shared without importing collection. The recursive
-import check in `scripts/check-architecture.py` enforces this boundary. Generated
-frontend API types are checked against OpenAPI by `scripts/api-types.py --check`.
+## Persistence and publication
 
-## Snapshot consistency
+Collectors fetch outside the writer lock, then merge onto the latest snapshot.
+`state.merge` rejects fields outside a phase's ownership; only a complete inventory
+removes packages. OBS status and history share an identity but not ownership:
 
-Collector phases fetch outside the snapshot writer lock, then merge their results
-onto the latest snapshot. `state.merge` rejects fields outside each phase's
-ownership. Only a complete source inventory removes packages.
+| Phase | Writes |
+|---|---|
+| `builds` | Project-wide `_result` status, errors and poll timestamps |
+| `obs` | Inventory, source identity and successful-build history |
 
-OBS status and successful-build history share a build identity, but have separate
-cadences and owners. The `builds` phase makes a project-wide `_result` request and
-owns status, errors and their timestamps. The `obs` phase owns source inventory
-and build history. `state.BUILD_FIELDS` limits writes within a build record: slow
-history work cannot rewind current status, and a status poll cannot overwrite
-success provenance. Changing a target repository or architecture invalidates its
-old observations; responses collected for the old scope are discarded.
+`state.BUILD_FIELDS` prevents slow history responses from rewinding current
+status. Changed target repository/architecture invalidates old evidence and
+in-flight responses for that scope.
 
-### Content revision and observation clock
+SQLite stores source, track, SPEC, build and monitor observations as keyed rows.
+Transactions write changed rows, deletions and the snapshot header. Equal rows
+retain their storage revision without JSON re-encoding. Incremental commits must
+match the database revision and heartbeat they read; stale bases are rejected.
+`state.read_cached` captures header, clock and row revisions in one transaction,
+then decodes changed JSON outside the lock. Borrowed unchanged data is read-only.
 
-A complete, successful OBS status poll with unchanged facts updates only SQLite's
-`snapshot_clock` row. Payload and content generation remain unchanged. Partial,
-failed or changed vectors update their affected records; missing observations cannot
-become fresh through a clock update.
+A complete successful OBS poll with identical facts updates `snapshot_clock`, not
+content generation or all build records. Partial/failed vectors cannot freshen
+missing observations this way. Independent phase merges preserve the latest clock;
+importing even equal content gets a new storage identity.
 
-`storage.py` stores source, track, SPEC, build and monitor observations as keyed
-rows. A transaction publishes changed rows, deletions and a small snapshot header;
-unchanged row revisions remain stable. Collectors pass the unmodified read result
-back to commit; the stored revision and heartbeat must still match. Equal rows
-then need neither JSON encoding nor hashing. Stale incremental bases are rejected. `state.read_cached` captures the header,
-clock and row revisions in one read transaction, then decodes changed JSON outside
-the lock. Unchanged observations are borrowed read-only. A background projection
-still presents one complete snapshot, not partially updated pages.
-
-Collectors read, merge and commit under the writer lock. Phase merging preserves independent mutable snapshots. A successful, unchanged build clock can
-survive another phase's commit without rewriting all build timestamps. An imported
-snapshot receives a new storage revision even if its content generation is equal.
-Cache reuse requires the same database identity and matching row revisions.
-
-SQLite `user_version` versions storage independently of the public snapshot
-`schema`. Readers accept the deployed legacy snapshot for migration; writers and
-startup preflight require the current storage format. `deploy/migrate-state.py`
-backs up, migrates transactionally, and compares complete observations before and
-after. Unknown formats fail closed. No upgrade deletes the database or silently
-creates a replacement. See [release upgrades](deployment.md#upgrade-and-recovery).
+Storage `user_version` is independent of public snapshot `schema`. Writers require
+the current format; the migration tool backs up, migrates transactionally and
+compares observations. Unknown formats fail closed. Compatible image upgrades keep
+the same data and query fingerprints; they do not reset evidence. Operational
+commands and rollback limits belong in [Deployment](deployment.md#upgrade-and-recovery).
 
 Writes use rollback journals and `synchronous=FULL`. API connections are read-only.
-On startup, under the writer lock, SQLite may recover an interrupted transaction;
-the application does not delete journals, replace corrupt data or create a fake
-successful snapshot. Standalone preflight is read-only against an existing database.
+Startup recovery holds the writer lock and lets SQLite recover a hot journal;
+it never deletes journals or replaces corrupt data. Standalone preflight does not
+write an existing database.
 
-### Read-model publication
+### Prepared reads
 
-One background task checks the database once per second. It prepares a complete
-projection and filter index when the database changes, a freshness deadline is
-reached, or the wall clock moves backwards. If no freshness boundary is crossed, a clock-only update refreshes build
-timestamps without recomputing unrelated evidence. Publication swaps the prepared
-model under a lock; requests can keep reading the previous complete model during
-preparation.
+A background task checks storage once per second. Changes, semantic freshness
+deadlines or a backward clock jump rebuild the projection/index. A fresh clock-only
+update can reuse evidence and update build timestamps alone. Publication atomically
+swaps a complete model; concurrent readers keep the previous complete one.
 
-Before the first model exists, readiness fails. A failed refresh or overdue
-freshness calculation retains the previous model with a notice and degraded
-readiness. Liveness checks only the web-to-API HTTP chain, not collection health.
+Before initial publication, readiness fails. A failed or overdue refresh retains
+the last model with a notice and degraded readiness. Liveness tests only the
+Node → FastAPI chain. Neither endpoint proves provider coverage.
 
-### Fact API queries
-
-`api.py` owns HTTP validation and response schemas. `PackageList` owns selection,
-facet counts and the observation-value search index, built with the background
-projection. Filtering never triggers collection. `include` changes representation,
-not membership; list, detail and batch share `package_response` and the same typed
-monitor models. A batch borrows one projection rather than issuing internal HTTP
-requests. Full lists and batches have tighter bounds than summaries.
-
-The [website API reference](../frontend/src/pages/api/index.astro) documents
-response choices and consistency limits. Query parameters and response models
-produce OpenAPI directly; there is no separately maintained field schema.
+The fact API borrows one projection per request. List, detail and batch share typed
+monitor responses; `include` changes representation, not selection. Pagination,
+full-list and batch limits bound response work. OpenAPI is generated from the
+request/response models; the site's `/api` page owns usage examples.
 
 ## Selection and presentation
 
-`monitors.build.status` defines OBS status meaning; `readmodel.monitors` folds
-build flavors into target observations. `readmodel.packages` indexes each prepared
-projection. Package membership and facet counts use intersections of the same
-sets before pagination. A facet excludes its own selection when calculating its
-choices. Build selections are ANDed across targets; observed status and staleness
-remain independent.
+`readmodel.packages.PackageList` intersects indexed sets before pagination. Rows
+and counts use the same membership. BuildSystem and each build target exclude
+their own selection when counting alternatives. Targets combine with AND;
+maintenance labels combine with AND, including zero-count alternatives.
+The UI admits only filters visible in its destination; the fact API permits
+cross-monitor combinations. Astro does not repeat this arithmetic.
 
-The UI API validates selections and returns controls, tables and fields. Astro
-renders them without provider-specific interpretation. Search and selections
-share a GET form; a same-origin script submits changed selections immediately.
-Without JavaScript the submit button remains available.
+Untracked means no configured upstream version track, excluding packages explicitly
+marked not applicable. Other monitors do not change this classification.
+CheckFailed counts packages, once each, with failed collection subchecks. Partial
+results, watch-track and build-history failures retain their reasons in Checks.
+An OBS failed build is a result, not a failed collection request. Unsupported,
+unconfigured and stale checks keep their distinct meanings.
 
-## Evidence and freshness
+The aggregate page shows every matching dependency or build reason, grouping only
+identical facts. Full provider fields and dependency conditions remain in detail.
+Issue styles are declared once in `presentation/labels.toml`; BuildSystem identity
+styles live in operator config.
 
-`monitors.version.compare.evaluate` supplies one version decision to readers and
-collectors. `evaluate_all` shares it across adapters for a pass. Historical
-`last_known_relation` is evidence, not permission to run an upgrade check. Upgrade
-checks require a confirmed newer, comparable release and published version policy;
-current-version checks do not depend on an available upgrade.
+## Observation identity and time
 
-The runner owns scheduling and storage; adapters own provider inputs and factual
-interpretation. An adapter may supply a pure refresh policy; otherwise the runner
-uses its default. Input changes queue work immediately; unchanged inputs receive
-periodic checks. Failed or partial checks use persisted retry counts. Work runs in
-bounded batches and HTTP cache age is capped by the effective policy. A heartbeat
-with no provider jobs may still publish input invalidations
-or catalog changes; unchanged stored observations and settings require no write.
-Collection schedules and operator overrides are defined in `monitors/schedule.py`
-and each collector's `polling()` or adapter's `refresh()`.
+`monitors.version.compare.evaluate` owns the version decision; `evaluate_all`
+shares it across a pass. Historical `last_known_relation` is evidence, not permission
+to run upgrade checks. Upgrade-only adapters need a confirmed comparable newer
+release; current-version security checks do not.
 
-A pending or failed replacement keeps one `last_result`, with its original
-query, interpretation version and time. Only evidence matching the current query
-can enter its projection, and evidence awaiting reinterpretation is marked stale.
-Different-query history is retained but cannot be asserted for the new subject.
-A completed result, including a verified empty result, replaces this saved result.
-Retries do not create a history chain. Combined current/upgrade
-checks reuse each exact upstream release independently; their
-[scope contract](monitor-porting.md#module-contract) excludes revision-dependent
-facts. Rebinding source context does not refresh external evidence. Invalid saved
-findings produce `schema_changed`, not invented replacement facts.
+The runner owns scheduling, persistence and retries. Adapters own inputs and
+interpretation. Changed fingerprints queue work; unchanged inputs wait for their
+refresh interval. Failure retries are bounded, and HTTP cache age cannot exceed
+the effective policy. A heartbeat with unchanged observations/settings does not
+write; it can still publish changed input eligibility or catalog information.
 
-Timestamp and revision fields have distinct meanings:
+A failed replacement retains one `last_result`, not a history chain. Only matching
+query evidence can reappear; incompatible interpretations are stale. A completed
+result, including empty success, replaces the saved result. Combined release scopes
+reuse each exact release independently; revision-sensitive checks cannot use that
+shortcut. The [adapter contract](monitor-porting.md#module-contract) defines scope.
 
 | Field | Meaning |
 |---|---|
-| `attempted_at` | Last attempted check, including failure |
-| `checked_at` | Observation time of the oldest HTTP input used by a result; cached bytes keep their original time. Checks without HTTP use execution time. Failures retain dated evidence. |
-| Scope `checked_at` | Last successful result for that scope; the combined observation uses the latest successful scope time |
-| `evidence_revision` / `changed_at` | Revision and time of query-input or normalized finding changes, not polling time or result order |
+| `attempted_at` | Last attempt, including failure |
+| `checked_at` | Oldest HTTP input time; cached bytes retain their age. Without HTTP, execution time. |
+| Scope `checked_at` | Last successful check for that scope; a combined result uses the latest successful scope time |
+| `evidence_revision`, `changed_at` | Query-input or normalized-fact changes, not poll time/order |
 
-A packaging-only source rebind need not change the query fingerprint or evidence
-revision. An EPSS value/date update changes evidence, but not advisory identity. `/api/v2/status` groups identical provider errors for triage; the groups
-do not establish a common cause, and package-level evidence remains available.
+Packaging-only revision changes need not invalidate upstream queries. EPSS changes
+revise evidence, not advisory identity. Status error groups aid triage; identical
+messages do not establish a common cause.
 
-### Interpretation limits
+## Interpretation limits
 
-| Observation | What it does not establish |
+| Observation | Does not establish |
 |---|---|
-| OSV query result for an ecosystem identity/version | Applicability to openRuyi patches, bundled dependencies or binary artifacts |
-| OSV matching-package `fixed` events | An openRuyi fix or a recommended upgrade branch |
-| CISA KEV membership | A project-assigned urgency |
-| FIRST EPSS probability and model date | A complete risk score |
-| Upstream EOL | The distribution's support commitment |
-| Changed same-project SPDX metadata | A legal assessment or a comparison with RPM's aggregate License |
+| OSV identity/version or commit match | Local-patch, bundled-component or binary applicability |
+| OSV `fixed` event | An openRuyi fix or recommended branch |
+| CISA KEV / FIRST EPSS | Project urgency / complete risk score |
+| Upstream EOL | Distribution support commitment |
+| Same-project SPDX difference | Legal assessment or a comparison with RPM's aggregate License |
 
-Security aliases are deduplicated. Enrichment failures preserve base advisory
-results without manufacturing KEV/EPSS values. Missing comparable license metadata
-is unsupported, not unchanged. ABI comparison is not implemented.
+Security aliases are deduplicated. Failed enrichment preserves base advisories,
+not invented KEV/EPSS values. Missing comparable license metadata is unsupported,
+not unchanged. ABI comparison is absent. The optional CPE adapter uses a fixed
+`/opt/cve` scanner and `$TRACKER_CVE_HOME/.cache/cve-bin-tool/` (default home
+`/data/cve`); missing or older-than-two-days data is an error. Operators provision
+it; web requests neither scan nor update it.
 
-The optional CPE component-list adapter runs a fixed, read-only `cve-bin-tool`
-installation under `/opt/cve`, using `$TRACKER_CVE_HOME/.cache/cve-bin-tool/` (default home: `/data/cve`). Missing or
-failed scanner/database checks, including a database older than two days, are
-errors rather than zero CVEs. Operators provision the scanner and database
-separately. The adapter does not extract source archives or expose arbitrary
-commands. Web requests never scan or update that database.
+## Native and network boundaries
 
-## Native SPEC confinement
+SPEC shell/Lua macros execute code. Each parse uses a new Linux worker, clean
+environment, private result socket and scratch. Landlock permits installed runtime
+and pinned inputs, not database/config/app files. The seccomp allow-list blocks
+network sockets, process inspection/signals, namespace and mount operations.
+Missing confinement fails parsing; there is no unrestricted fallback.
 
-SPEC shell and Lua macros execute code. Each parse runs in a new Linux worker with
-a clean environment, no inherited application files, and a private result socket.
-It cannot create network sockets. Landlock permits reads of the installed runtime
-and pinned inputs; only private scratch is writable. The collector database,
-operator configuration and application source are outside its allowed paths.
-A seccomp allow-list blocks process inspection, signals to other processes,
-namespace and mount changes. Missing confinement fails the parse.
-
-The parent permits four concurrent workers and kills the whole process group on
-timeout or excess output. Bounds are:
-
-| Resource | Bound |
+| Bound | Value |
 |---|---|
-| Parent wall-clock deadline | 5 seconds |
-| Worker address space / CPU | 256 MiB / 3 seconds |
-| File descriptors / individual file size | 32 / 2 MiB |
+| Concurrent workers / wall deadline | 4 / 5 s |
+| Address space / CPU | 256 MiB / 3 s |
+| FDs / file size | 32 / 2 MiB |
 | Result / diagnostic output | 256 KiB / 16 KiB |
-| Processes | 256, shared by the real UID, not a private worker quota |
+| Processes | 256, shared by real UID, not a private worker quota |
 
-The deployment template bounds aggregate scratch storage with a 128 MiB `/tmp`.
-These limits do not eliminate every denial-of-service risk. Landlock restricts
-access but does not hide all filesystem metadata; the runtime and kernel remain
-trusted. See `monitors/source/rpm.py` and `spec_sandbox.py` for enforcement.
+The parent kills the process group on timeout/output excess. Deployment bounds
+scratch to 128 MiB. These limits do not eliminate denial of service or hide all
+filesystem metadata; kernel/runtime remain trusted. Enforcement is in
+`monitors/source/rpm.py`, `spec_worker.py` and `spec_sandbox.py`.
+RPM `_tmppath` is pinned after macro loading; `TMPDIR` alone is insufficient.
+Recorded target context precedes SPEC parsing, not proof against macro redefinition.
+Expanded metadata is not an OBS build or binary validation.
 
-RPM's `_tmppath` is set to private scratch after loading pinned macros; `TMPDIR`
-alone does not constrain declarative BuildSystem parsing. Recorded native target
-fields come from the initialized RPM context before parsing. They do not prove a
-SPEC cannot redefine macros. Versions come from the expanded RPM header: this is
-metadata parsing, not an OBS target build or binary validation.
-
-## Network and browser boundaries
-
-Monitor HTTP is scoped to each adapter's declared HTTPS hosts. The optional
-`TRACKER_MONITOR_PROXY` is consumed only by that client, not OBS or Git; it belongs
-in operator settings, not package identity data.
-
-BuildSystem colors are served through a conditionally revalidated same-origin
-stylesheet. CSP requires `style-src 'self'`; the list page permits same-origin
-scripts for form submission, while other pages use `script-src 'none'`. Inline
-scripts and external script origins are not enabled.
+Adapter HTTP is confined to declared HTTPS hosts. Shared IO owns caching, pacing
+and exclusive reusable connections; a failed transport retires only its connection.
+Caller-injected clients remain caller-owned. The operator proxy applies only to
+monitor HTTP. Browser CSP permits same-origin styles and list-page scripts, not
+inline or external scripts; other pages disable scripts. BuildSystem CSS is
+same-origin and conditionally revalidated.
