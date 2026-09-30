@@ -79,7 +79,7 @@ def plan(config, snapshot, name, provider, *, version=None):
     # Adapters only see their package context, not snapshot/config/storage handles.
     try:
         revision = pinned_revision(version.source)
-        inputs = adapter.inputs({**current, 'identity': identity,
+        inputs = None if configured is False else adapter.inputs({**current, 'identity': identity,
                                  'source_commit': {'repository': revision.repository, 'commit': revision.current}
                                                   if revision else None,
                                  'source_tag': pinned_tag(version.source),
@@ -94,6 +94,8 @@ def plan(config, snapshot, name, provider, *, version=None):
     note, status = None, 'pending'
     if input_error:
         status, note = 'error', 'Monitor input configuration could not be prepared.'
+    elif configured is False:
+        status, note = 'not_applicable', 'Monitor disabled by package policy.'
     elif inputs is None:
         status, note = 'not_configured', 'No reliable monitor identity/configuration.'
     elif (version.identity_conflict or (version.release

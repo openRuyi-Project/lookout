@@ -7,13 +7,45 @@
 | Upstream identity, release filter, version line | [`versions/nvchecker.toml`](versions/nvchecker.toml), by track name |
 | Compare/watch policy or monitor identity exception | [`packages.toml`](packages.toml), by package name |
 | OBS targets, SPEC repository, intervals, enabled monitors | [`tracker.toml`](tracker.toml) |
-| BuildSystem colors and icons | `[openruyi.buildsystems]`; icons reference the local asset catalog |
-| Dependency → source-package mappings | `[openruyi.dependencies]` |
-| Dependency target environments | `[openruyi.dependency_environments]` |
+| BuildSystem colors and icons | [`distribution.toml`](distribution.toml), `[buildsystems]` |
+| Dependency → source-package mappings | `distribution.toml`, `[dependencies]` |
+| Dependency target environments | `distribution.toml`, `[dependency_environments]` |
 
-`collector.nvchecker_config` and `packages_config` resolve relative to
-`tracker.toml`. Only explicitly referenced files are loaded. Keep operator config
-and credentials outside the checkout; see [deployment](../docs/deployment.md).
+Catalog references resolve relative to `tracker.toml`; absolute paths are allowed.
+Installation references the image's `/app/config/` catalogs, rather than copying
+them into `/config`. Release updates therefore supply new identities, rules and
+distribution mappings without replacing operator settings.
+Absolute references use the application container's filesystem. The installer
+initializes them inside the selected image; do not import host-checkout absolute
+paths as container paths.
+
+Administrator exceptions use separately named files:
+
+```toml
+# /config/tracker.toml (root settings, before table headers)
+package_overrides = "package-overrides.toml"
+
+[collector]
+version_overrides = "version-overrides.toml"
+exclude_tracks = ["intentionally-disabled-track"]
+```
+
+`version-overrides.toml` uses the same nvchecker syntax: a track replaces its whole
+default rule; `__config__` overrides individual checker options. A relative
+`keyfile` resolves beside the file that declares it. `package-overrides.toml`
+overrides individual policy fields and complete monitor identities:
+
+```toml
+widget = { monitors = { security = { vendor = "verified_vendor", product = "verified_product" }, eol = false } }
+```
+
+This leaves other widget monitors intact. `false` disables that monitor, including
+automatic identity derivation. Local `[openruyi]` tables override individual entries
+from `distribution.toml`. Unreferenced sibling files are never loaded.
+
+Keep operator config and credentials outside the checkout. Old copied catalogs
+need the [one-time ownership migration](../docs/deployment.md#copied-catalog-migration);
+do not replace them with the repository defaults.
 
 Locate the effective rule and identity **without contacting providers**:
 
@@ -181,6 +213,10 @@ dependency mappings, need explicit edits in the new config directory. Apply crea
 a new directory; it does not change the service's mounted configuration. Follow
 [Configuration changes](../docs/deployment.md#configuration-and-ports) to switch to
 that directory.
+
+For installed configurations, plan/apply edits local overrides, not `/app/config`.
+All three inputs must reference the same release catalog. Catalog drift requires a
+new review; contributor changes to the release catalog arrive through the image.
 
 ## SPEC inputs
 

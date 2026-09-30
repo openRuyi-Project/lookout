@@ -16,13 +16,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from deployment import (LABEL, PROTECTION, PYTHON, Docker, Quadlet, healthy, image_command,
                         image_reference, manager, no_data_users, resolve_image, run, service_action, write_exclusive)
 
-PREPARE = '''import os, shutil, sys, tarfile
+PREPARE = '''import os, runpy, shutil, sys, tarfile, tempfile
 from pathlib import Path
 roots = [Path(p) for p in sys.argv[2:]]
 if any(list(p.iterdir()) for p in roots):
     raise SystemExit('refusing nonempty installation volumes')
 if sys.argv[1] == 'image':
-    shutil.copytree('/app/config', '/config', dirs_exist_ok=True)
+    with tempfile.TemporaryDirectory() as temporary:
+        prepared = Path(temporary) / 'config'
+        runpy.run_path('/app/deploy/init-config.py')['initialize']('/app/config', prepared)
+        shutil.copytree(prepared, '/config', dirs_exist_ok=True)
 else:
     with tarfile.open(fileobj=sys.stdin.buffer, mode='r|') as archive:
         archive.extractall('/config', filter='data')
@@ -82,7 +85,8 @@ def install(reference, name, *, config=None, port=18730, network='bridge', envir
         mounts += ['--mount', f'type=volume,src={volume},dst={target},volume-nocopy']
     # Only the three newly created volumes are visible to this one-time root helper.
     run(['docker', 'run', '--rm', '-i', '--network', 'none', *PROTECTION, '--user', '0',
-         '--cap-add=CHOWN', *mounts, '--entrypoint', PYTHON, manifest['image'],
+         '--cap-add=CHOWN', *mounts, *[arg for value in environment for arg in ('-e', value)],
+         '--entrypoint', PYTHON, manifest['image'],
          '-c', PREPARE, 'archive' if config else 'image', '/config', '/data', '/backup'], input=data)
     command = ['docker', 'create', '--name', name, *PROTECTION,
                '--memory', memory, '--cpus', str(cpus), '--pids-limit', str(pids),
@@ -148,8 +152,12 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
     else:
         run(['podman', 'run', '--rm', '--network', 'none', *PROTECTION,
              '--userns=keep-id:uid=10001,gid=10001', '-v', f'{root / "config"}:/bootstrap:Z',
+             *[arg for value in environment for arg in ('-e', value)],
              '--entrypoint', PYTHON, manifest['image'], '-c',
-             'import shutil; shutil.copytree("/app/config", "/bootstrap", dirs_exist_ok=True)'])
+             'import runpy,shutil,tempfile; from pathlib import Path; '
+             'd=tempfile.TemporaryDirectory(); p=Path(d.name)/"config"; '
+             'runpy.run_path("/app/deploy/init-config.py")["initialize"]("/app/config",p); '
+             'shutil.copytree(p,"/bootstrap",dirs_exist_ok=True)'])
     for path in (root / 'config').rglob('*'):
         path.chmod(0o700 if path.is_dir() else 0o600)
     template = Path(__file__).parent / 'quadlet/openruyi-lookout.container.in'

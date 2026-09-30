@@ -26,6 +26,9 @@ no Astro branch or new API endpoint.
 3. Resolve identity with `identity.from_package()`, letting explicit monitor
    settings override saved Source0/native-rule identity. Put package exceptions
    in `[NAME.monitors.ID]`, not Python name branches.
+   Released identities belong in `config/packages.toml`; installation reads that
+   catalog from the image. Administrator exceptions use `package_overrides`.
+   Replace one complete adapter identity, never merge individual provider fields.
 4. Fetch through supplied `io`; return attributed facts using `finding()` and
    `evidence()` from `monitors.model`. Reuse existing provider protocols.
 5. Test the runner → storage → API path, inspect a sample and release code with config.

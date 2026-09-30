@@ -5,6 +5,7 @@
 import argparse
 import json
 from pathlib import Path
+import tomllib
 
 from tracker import config as cfg, config_change, state
 from tracker.monitors.version import nvchecker as nv
@@ -21,11 +22,25 @@ def location(path, keys):
 
 
 def package_location(config, name, *keys):
+    override = config.get('package_overrides_path')
+    if override:
+        value = tomllib.loads(Path(override).read_text())
+        for key in (name, *keys):
+            if not isinstance(value, dict) or key not in value:
+                break
+            value = value[key]
+        else:
+            return location(override, (name, *keys))
     path = config.get('packages_path')
     return location(path, (name, *keys)) if path else None
 
 
 def rule_location(config, name):
+    override = config.get('version_overrides_path')
+    if override:
+        from tracker.monitors.version import rules
+        if name in rules.load(override).entries:
+            return location(override, (name,))
     return location(config['nvpath'], (name,))
 
 
@@ -113,14 +128,15 @@ def check(config_path, name, db=None):
     }
 
 
-def human_result(action, result, report=None):
+def human_result(action, result, report=None, config_path=None):
     lines = []
     if result.get("name"):
         lines.append("Package: " + result["name"])
     if action == "explain":
         rules = result["rules"]
         for rule in rules or [result["version_rule_location"]]:
-            lines.append(f"Edit: {rule['file']}:{rule.get('line') or '?'}")
+            shared = config_path and not Path(rule['file']).is_relative_to(Path(config_path).resolve().parent)
+            lines.append(f"{'Catalog' if shared else 'Edit'}: {rule['file']}:{rule.get('line') or '?'}")
             lines.append("Rule: explicit rule" if rules else "Rule: untracked")
         policy = result.get("binding_location")
         if policy and not result["binding_is_implicit"]:
@@ -196,7 +212,7 @@ def main(argv=None):
     if args.command == "plan":
         report = str(Path(args.output) / "review.json")
     print(
-        human_result(args.command, result, report)
+        human_result(args.command, result, report, args.config if hasattr(args, 'config') else None)
         if args.format == "human"
         else json.dumps(result, ensure_ascii=False, indent=2)
     )

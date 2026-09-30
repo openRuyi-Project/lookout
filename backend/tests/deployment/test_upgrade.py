@@ -207,6 +207,36 @@ def test_installer_rejects_conflicting_environment_before_engine_call(tmp_path, 
             install.install(NEW, 'fixture', environment=[value])
 
 
+@pytest.mark.parametrize('engine', ['docker', 'podman'])
+def test_default_config_initialization_uses_operator_environment(tmp_path, monkeypatch, engine):
+    install = module('install')
+    monkeypatch.setattr(install.os, 'geteuid', lambda: 10001)
+    monkeypatch.setattr(install.Path, 'home', lambda: tmp_path)
+    monkeypatch.setattr(install.Path, 'is_file', lambda _: True)
+    monkeypatch.setattr(install, 'resolve_image', lambda *_: {'image': NEW})
+    calls = []
+
+    class Prepared(Exception):
+        pass
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:2] == ['podman', 'info']:
+            return 'true'
+        if argv[:2] == [engine, 'run']:
+            raise Prepared
+        return ''
+
+    monkeypatch.setattr(install, 'run', run)
+    with pytest.raises(Prepared):
+        install.install(NEW, 'fixture', engine=engine,
+                        directory=tmp_path / 'instance' if engine == 'podman' else None,
+                        network='none', environment=['TRACKER_SPEC_REPO='])
+    helper = calls[-1]
+    assert helper[:2] == [engine, 'run']
+    assert helper[helper.index('-e') + 1] == 'TRACKER_SPEC_REPO='
+
+
 def test_config_archive_preserves_bytes_and_rejects_symlinks(tmp_path):
     import io
     import tarfile

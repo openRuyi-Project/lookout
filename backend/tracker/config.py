@@ -1,15 +1,15 @@
-"""Operator-owned configuration, never supplied by an HTTP request."""
+"""Trusted deployment settings and release catalogs; never supplied by HTTP."""
 import hashlib
 import json
 import os
-import stat
 from pathlib import Path
 import re
 import tomllib
 from urllib.parse import parse_qs, quote, urlsplit, urlunsplit
 
 from tracker.identity import request_url
-from tracker.monitors.version import rules as version_rules
+from tracker import catalog
+from tracker.catalog import read_input
 
 def load(path):
     path = Path(path).absolute()
@@ -33,36 +33,9 @@ def load(path):
                                       ('nvchecker_interval_seconds', 'stale_after_seconds', 86400)):
         if config['collector'].get(stale, default) <= config['collector'][interval]:
             raise ValueError(f'{stale} must exceed {interval}')
-    nvpath = path.parent / config['collector'].get('nvchecker_config', 'nvchecker.toml')
-    if nvpath.exists() and nvpath.samefile(path):
-        raise ValueError('native rules and tracker configuration must be distinct files')
-    rules = version_rules.load(nvpath)
-    nvpath = nvpath.resolve()
-    input_hashes[str(nvpath)] = rules.digest
-    config['nvpath'] = str(nvpath)
-    config['native'] = rules.entries
-    config['native_options'] = rules.options
-    config['packages_path'] = None
-    config['packages'] = {}
-    if 'packages_config' in config:
-        reference = config['packages_config']
-        if not isinstance(reference, str) or not reference:
-            raise ValueError('packages_config must name a package policy file')
-        packages_path = path.parent / reference
-        raw = read_input(packages_path)
-        if any(packages_path.samefile(loaded) for loaded in input_hashes):
-            raise ValueError('package policies must use a distinct file from tracker and native rules')
-        packages_path = packages_path.resolve()
-        config['packages'] = tomllib.loads(raw.decode())
-        allowed = {'compare', 'watch', 'comparable', 'not_applicable', 'track_label', 'monitors'}
-        for name, policy in config['packages'].items():
-            if not name or not isinstance(policy, dict) or set(policy) - allowed:
-                raise ValueError(f'{name}: expected a root package policy table')
-        config['packages_path'] = str(packages_path)
-        input_hashes[str(packages_path)] = hashlib.sha256(raw).hexdigest()
+    catalog.load(config, path, input_hashes)
     config['input_hashes'] = input_hashes
     config['config_digest'] = input_hashes[str(path)]
-    config['nv_digest'] = input_hashes[str(nvpath)]
     # Distribution presentation data has one owner; the frontend knows no
     # BuildSystem categories. CSS values are deliberately limited to hex colors.
     config.setdefault('openruyi', {}).setdefault('buildsystems', {})
@@ -153,18 +126,6 @@ def load(path):
     if template is not None and not spec_source_url({'url': config['spec']['url'], 'source_url_template': template}, 'PACKAGE', 'REF'):
         raise ValueError('spec.source_url_template must be a public HTTP(S) URL containing {ref} and {path}')
     return config
-
-
-def read_input(path):
-    """Read a regular configuration file, rejecting symlinks at the input path."""
-    path = Path(path)
-    try:
-        mode = path.lstat().st_mode
-    except FileNotFoundError as error:
-        raise ValueError('configuration input does not exist: ' + str(path)) from error
-    if not stat.S_ISREG(mode):
-        raise ValueError('configuration input must be a regular file: ' + str(path))
-    return path.read_bytes()
 
 
 def require_unchanged(config, path=None):

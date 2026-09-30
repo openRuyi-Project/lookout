@@ -61,5 +61,28 @@ def prepare(mode, config_dir=Path('/config'), data_dir=Path('/data')):
         data_dir.chmod(0o500)
 
 
+def release_catalog(phase):
+    """Build-only catalog fixture; never consumes operator configuration/data."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as directory:
+        config_dir, data_dir = Path(directory) / 'config', Path(directory) / 'data'
+        config_dir.mkdir()
+        data_dir.mkdir()
+        prepare('empty', config_dir, data_dir)
+        document = tomlkit.parse((config_dir / 'tracker.toml').read_text())
+    document['packages_config'] = 'packages.toml'
+    document['collector']['nvchecker_config'] = 'nvchecker.toml'
+    document['monitors']['enabled'] = ['security']
+    names = ['catalog-stable', 'catalog-changed'] + (['catalog-added'] if phase == 'next' else [])
+    entries = {name: {'source': 'cmd', 'cmd': "printf '1.2.3\\n'"} for name in names}
+    policies = {name: {'monitors': {'security': {'vendor': 'fixture', 'product': name}}} for name in names}
+    if phase == 'next':
+        policies['catalog-changed']['monitors']['security']['product'] = 'corrected-fixture'
+    root = Path('/app/config')
+    (root / 'tracker.toml').write_text(tomlkit.dumps(document))
+    (root / 'nvchecker.toml').write_text(tomlkit.dumps(entries))
+    (root / 'packages.toml').write_text(tomlkit.dumps(policies))
+
+
 if __name__ == '__main__':
     prepare(sys.argv[1])

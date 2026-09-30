@@ -44,7 +44,11 @@ def digest(path):
 
 def load(path):
     raw = files(path)[0].read_bytes()
-    tables = tomllib.loads(raw.decode())
+    return parse(tomllib.loads(raw.decode()), hashlib.sha256(raw).hexdigest())
+
+
+def parse(tables, digest):
+    tables = dict(tables)
     options = tables.pop('__config__', {})
     if not isinstance(options, dict):
         raise ValueError('__config__ must be a native nvchecker options table')
@@ -52,4 +56,4 @@ def load(path):
         if (not name or name.startswith('__') or not isinstance(entry, dict)
                 or not isinstance(entry.get('source'), str) or not entry['source']):
             raise ValueError(f'{name}: expected a native nvchecker rule with source')
-    return RuleSet(tables, options, hashlib.sha256(raw).hexdigest())
+    return RuleSet(tables, options, digest)

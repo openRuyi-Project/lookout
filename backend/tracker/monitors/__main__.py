@@ -72,8 +72,11 @@ def human_result(action, result, config_path):
     location = result['configuration']
     if location:
         suffix = ':' + str(location['line']) if location['line'] else ' (add package monitor settings)'
-        label = 'Edit: ' if result['mapping'] == 'explicit' else 'Optional override: '
+        shared = not Path(location['file']).is_relative_to(Path(config_path).resolve().parent)
+        label = 'Catalog: ' if shared else 'Edit: ' if result['mapping'] == 'explicit' else 'Optional override: '
         lines.append(label + location['file'] + suffix)
+        if shared:
+            lines.append('Override: package_overrides in ' + str(Path(config_path).resolve()))
     elif result['mapping'] != 'derived':
         lines.append('Override: set packages_config in ' + str(Path(config_path).resolve()))
     lines.append('Code: ' + result['code'])

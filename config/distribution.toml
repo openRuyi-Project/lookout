@@ -1,0 +1,64 @@
+[dependencies]
+perl = "perl"
+python = "python"
+rust = "rust"
+# Registry identities for source packages tracked through their upstream forge.
+# SPEC Source0 repositories: pytorch/{pytorch,vision,audio}, pypa/wheel, jcrist/msgspec.
+"pypi.torch" = "python-torch"
+"pypi.torchvision" = "python-torchvision"
+"pypi.torchaudio" = "python-torchaudio"
+"pypi.wheel" = "python-wheel"
+"pypi.msgspec" = "python-msgspec"
+
+[dependency_environments.pep508]
+sys_platform = "linux"
+os_name = "posix"
+platform_system = "Linux"
+implementation_name = "cpython"
+platform_python_implementation = "CPython"
+
+[buildsystems.rustcrates]
+icon = "rust"
+background = "#8c3d19"
+foreground = "#ffffff"
+[buildsystems.golangmodules]
+icon = "gopher"
+background = "#075f72"
+foreground = "#ffffff"
+[buildsystems.pyproject]
+icon = "python"
+background = "#2856a0"
+foreground = "#ffffff"
+[buildsystems.autotools]
+icon = "gnu"
+background = "#555b24"
+foreground = "#ffffff"
+[buildsystems.cmake]
+icon = "cmake"
+background = "#6b3c91"
+foreground = "#ffffff"
+[buildsystems.perlmaker]
+icon = "perl"
+background = "#8d365e"
+foreground = "#ffffff"
+[buildsystems.meson]
+icon = "meson"
+background = "#276544"
+foreground = "#ffffff"
+[buildsystems.perlbuild]
+icon = "perl"
+background = "#664e87"
+foreground = "#ffffff"
+[buildsystems.golang]
+icon = "gopher"
+background = "#36617c"
+foreground = "#ffffff"
+[buildsystems.rust]
+icon = "rust"
+background = "#785329"
+foreground = "#ffffff"
+
+[buildsystems.linux]
+icon = "linux"
+background = "#475569"
+foreground = "#ffffff"

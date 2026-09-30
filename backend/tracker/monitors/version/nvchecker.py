@@ -16,7 +16,7 @@ import tomllib
 
 import tomlkit
 
-from tracker.config import public_source, track_fingerprint
+from tracker.config import public_source, require_unchanged, track_fingerprint
 from tracker.monitors.schedule import Schedule
 from tracker.state import failure, success
 
@@ -164,23 +164,27 @@ def dump_config(tables):
 
 @contextmanager
 def command_config(config, names):
-    if names is None:
+    path = Path(config['nvpath'])
+    if 'input_hashes' in config:
+        require_unchanged(config)
+    elif version_rules.digest(path) != config['nv_digest']:
+        raise ValueError('upstream configuration changed before collection')
+    if names is None and not (config.get('version_overrides_path') or config.get('collector', {}).get('exclude_tracks')):
         yield config['nvpath']
         return
     # nvchecker 2.22 --entry accepts just ONE name; it has no --include list.
     # Use its native CLI once with an ephemeral subset, retaining native selection.
-    path = Path(config['nvpath'])
-    text = path.read_text()
-    if version_rules.digest(config['nvpath']) != config['nv_digest']:
-        raise ValueError('upstream configuration changed before collection')
-    options = dict(tomllib.loads(text).get('__config__', {}))
+    options = dict(config['native_options'] if 'native_options' in config
+                   else tomllib.loads(path.read_text()).get('__config__', {}))
     if options.get('keyfile'):
-        options['keyfile'] = str(path.parent / os.path.expandvars(os.path.expanduser(options['keyfile'])))
+        owner = Path(config.get('native_options_path', path)).parent
+        options['keyfile'] = str(owner / os.path.expandvars(os.path.expanduser(options['keyfile'])))
     # The tracker owns observation state. A subset must not truncate the native
     # checker's whole-batch version files or suppress unchanged-version JSON events.
     options.pop('oldver', None)
     options.pop('newver', None)
-    tables = {'__config__': options, **{name: config['native'][name] for name in names}}
+    tables = {'__config__': options, **{name: config['native'][name] for name in
+                                      (config['native'] if names is None else names)}}
     body = dump_config(tables)
     with tempfile.TemporaryDirectory(prefix='tracker-nv-selected-') as directory:
         selected = Path(directory) / 'nvchecker.toml'

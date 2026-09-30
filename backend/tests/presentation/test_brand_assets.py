@@ -2,7 +2,6 @@
 import hashlib
 import json
 from pathlib import Path
-import tomllib
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -26,7 +25,8 @@ def test_declared_logos_are_complete_local_assets():
                 assert not key.startswith('on')
                 if key.rsplit('}', 1)[-1] == 'href':
                     assert value.startswith('#')
-    settings = tomllib.loads((ROOT / 'config/tracker.toml').read_text())
+    from tracker import config
+    settings = config.load(ROOT / 'config/tracker.toml')
     for style in settings['openruyi']['buildsystems'].values():
         if style.get('icon'):
             assert style['icon'] in catalog

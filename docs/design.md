@@ -2,6 +2,15 @@
 
 ## Ownership
 
+Installation references the image's version, identity and distribution catalogs;
+`/config` contains operating settings and explicit overrides. A native override
+replaces one complete track; a package override replaces one policy field or
+complete monitor identity. All parsed files participate in publication and review
+guards. Observation keys contain the effective rule/query, not its path or image
+revision, so unrelated catalog changes preserve evidence. Migrating old copied
+catalogs requires the original initialization baseline to distinguish defaults
+from operator edits.
+
 ```text
 configured identities → collectors → SQLite → readmodel → fact API
                                                 ↓
@@ -10,7 +19,7 @@ configured identities → collectors → SQLite → readmodel → fact API
 
 | Responsibility | Owner | Contract |
 |---|---|---|
-| Settings and package policy | `config.py` | Explicit file references, no observation-dependent loading |
+| Settings and catalogs | `config.py`, `catalog.py` | Explicit references, unit-level overrides, no observation-dependent loading |
 | Version discovery | `monitors/version/` | Proposes candidates; reviewed native rules execute |
 | External protocols | `monitors/`, `providers/` | Attributed facts, not maintainer decisions |
 | Writes | `collector.py`, `state.py`, `storage.py` | Phase-owned fields, one serialized transaction |

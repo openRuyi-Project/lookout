@@ -20,7 +20,7 @@ import tomllib
 import tomlkit
 from tomlkit.items import Comment, InlineTable, Table, Whitespace
 
-from tracker import config as cfg
+from tracker import catalog, config as cfg
 from tracker.monitors.version import rules as version_rules
 
 
@@ -179,10 +179,29 @@ def inputs(path):
     path = Path(path).resolve()
     config = cfg.load(path)
     native = Path(config["nvpath"])
-    if any(not Path(name).is_relative_to(path.parent) or Path(name).suffix != '.toml'
-           for name in config['input_hashes']):
-        raise ValueError("promotion requires TOML inputs inside the configuration directory")
+    shared = catalog.shared_inputs(config, path.parent)
+    catalogs = {config.get(key) for key in ('nvpath', 'packages_path', 'distribution_path')}
+    if set(shared) - catalogs or any(Path(name).suffix != '.toml' for name in config['input_hashes']):
+        raise ValueError("promotion requires local TOML settings/overrides and explicitly referenced release catalogs")
     return path, native, config
+
+
+def editable_file(config, root, kind):
+    base, override = (('nvpath', 'version_overrides_path') if kind == 'native'
+                      else ('packages_path', 'package_overrides_path'))
+    path = config.get(base)
+    if path and Path(path).is_relative_to(root):
+        return Path(path)
+    return Path(config[override]) if config.get(override) else None
+
+
+def editable_tables(config, root, kind):
+    path = editable_file(config, root, kind)
+    if not path:
+        return {}
+    if kind == 'native':
+        return version_rules.load(path).entries
+    return tomllib.loads(path.read_text())
 
 
 def merge_text(base, candidate, runtime, name):
@@ -220,12 +239,18 @@ def plan(base_path, candidate_path, runtime_path, output):
     base_file, _, base = inputs(base_path)
     candidate_file, _, candidate = inputs(candidate_path)
     runtime_file, native_file, runtime = inputs(runtime_path)
+    shared = catalog.shared_inputs(runtime, runtime_file.parent)
+    if (shared != catalog.shared_inputs(base, base_file.parent)
+            or shared != catalog.shared_inputs(candidate, candidate_file.parent)):
+        raise ValueError('release catalogs differ; update the image separately and re-plan operator overrides')
     output = Path(output).resolve()
     if any(output.is_relative_to(path.parent) for path in (base_file, candidate_file, runtime_file)):
         raise ValueError("review output must be outside the input configuration directories")
+    if any(output.is_relative_to(Path(name).parent) for name in shared):
+        raise ValueError('review output must be outside the release catalog')
     # This command promotes package rules, not unrelated operator/site settings.
     a, b = tomllib.loads(base_file.read_text()), tomllib.loads(candidate_file.read_text())
-    for key in ("packages_config", "monitors"):
+    for key in ("packages_config", "package_overrides", "monitors"):
         a.pop(key, None)
         b.pop(key, None)
     for document in (a, b):
@@ -234,15 +259,23 @@ def plan(base_path, candidate_path, runtime_path, output):
             document.pop("openruyi")
     a.get("collector", {}).pop("nvchecker_config", None)
     b.get("collector", {}).pop("nvchecker_config", None)
+    a.get("collector", {}).pop("version_overrides", None)
+    b.get("collector", {}).pop("version_overrides", None)
     if not version_rules.same_values(a, b):
         raise ValueError("change site settings separately; plan promotes version rules, package policies, "
                          "monitor settings and build-system colors")
-    base_options = tomllib.loads(Path(base["nvpath"]).read_text()).get("__config__", {})
-    candidate_options = tomllib.loads(Path(candidate["nvpath"]).read_text()).get("__config__", {})
+    if not version_rules.same_values(
+            {k: v for k, v in base.get('openruyi', {}).items() if k != 'buildsystems'},
+            {k: v for k, v in candidate.get('openruyi', {}).items() if k != 'buildsystems'}):
+        raise ValueError('change site settings separately; dependency mappings are not style changes')
+    base_options = base['native_options']
+    candidate_options = candidate['native_options']
     if not version_rules.same_values(base_options, candidate_options):
         raise ValueError("change native operator options separately from package rules")
-    native_changes = rebase(base["native"], candidate["native"], runtime["native"])
-    binding_changes = rebase(base["packages"], candidate["packages"], runtime["packages"])
+    native_changes = rebase(*(editable_tables(config, file.parent, 'native')
+                              for config, file in ((base, base_file), (candidate, candidate_file), (runtime, runtime_file))))
+    binding_changes = rebase(*(editable_tables(config, file.parent, 'packages')
+                               for config, file in ((base, base_file), (candidate, candidate_file), (runtime, runtime_file))))
     appearance_changes = rebase(
         base.get("openruyi", {}).get("buildsystems", {}),
         candidate.get("openruyi", {}).get("buildsystems", {}),
@@ -254,31 +287,44 @@ def plan(base_path, candidate_path, runtime_path, output):
         {"monitors": runtime.get("monitors")},
     )
     tracker_text = runtime_file.read_text()
-    tracker_text = edit_tables(tracker_text, appearance_changes, ("openruyi", "buildsystems"))
+    distribution = runtime.get('distribution_path')
+    inline_styles = tomllib.loads(tracker_text).get('openruyi', {}).get('buildsystems', {})
+    distribution_styles = {name: value for name, value in appearance_changes.items()
+                           if distribution and Path(distribution).is_relative_to(runtime_file.parent)
+                           and name not in inline_styles}
+    tracker_text = edit_tables(tracker_text, {name: value for name, value in appearance_changes.items()
+                                            if name not in distribution_styles}, ("openruyi", "buildsystems"))
     tracker_text = edit_tables(tracker_text, monitor_changes)
-    output_native = str(native_file.relative_to(runtime_file.parent))
-    native_text = merge_text(
-        Path(base["nvpath"]).read_text(), Path(candidate["nvpath"]).read_text(),
-        native_file.read_text(), output_native,
-    )
-    texts = {output_native: native_text, runtime_file.name: tracker_text}
-    package_file = Path(runtime['packages_path']) if runtime['packages_path'] else None
-    if package_file is not None:
-        texts[str(package_file.relative_to(runtime_file.parent))] = edit_tables(package_file.read_text(), binding_changes)
-    elif binding_changes:
-        # A first override requires one explicitly named package file, not a
-        # search path or an implicit second source. Never overwrite an unowned file.
-        reference = candidate.get('packages_config')
-        if not reference or Path(reference).is_absolute() or '..' in Path(reference).parts:
-            raise ValueError('first package policies require a relative packages_config')
-        reference = str(Path(reference))
-        package_file = runtime_file.parent / reference
-        if package_file.exists() or package_file.is_symlink():
-            raise ValueError('package policy destination already exists outside the loaded inputs')
-        texts[reference] = edit_tables('', binding_changes)
-        texts[runtime_file.name] = edit_tables(tracker_text, {'packages_config': reference})
-    baseline_hashes = {str(Path(name).relative_to(runtime_file.parent)): digest
-                       for name, digest in runtime['input_hashes'].items()}
+    local = catalog.local_inputs(runtime, runtime_file.parent)
+    texts = {str(Path(name).relative_to(runtime_file.parent)): Path(name).read_text() for name in local}
+    texts[runtime_file.name] = tracker_text
+    if distribution_styles:
+        name = str(Path(distribution).relative_to(runtime_file.parent))
+        texts[name] = edit_tables(texts[name], distribution_styles, ('buildsystems',))
+    for kind, changes in (('native', native_changes), ('packages', binding_changes)):
+        file = editable_file(runtime, runtime_file.parent, kind)
+        if file:
+            name = str(file.relative_to(runtime_file.parent))
+            if kind == 'native':
+                sources = [editable_file(config, path.parent, kind)
+                           for config, path in ((base, base_file), (candidate, candidate_file), (runtime, runtime_file))]
+                texts[name] = merge_text(*(p.read_text() if p else None for p in sources), name)
+            else:
+                texts[name] = edit_tables(file.read_text(), changes)
+        elif changes:
+            source = editable_file(candidate, candidate_file.parent, kind)
+            if not source:
+                raise ValueError('first override requires an explicitly named candidate file')
+            reference = str(source.relative_to(candidate_file.parent))
+            if (runtime_file.parent / reference).exists() or (runtime_file.parent / reference).is_symlink():
+                raise ValueError('override destination already exists outside the loaded inputs')
+            texts[reference] = source.read_text()
+            if kind == 'native':
+                texts[runtime_file.name] = edit_tables(texts[runtime_file.name], {'version_overrides': reference}, ('collector',))
+            else:
+                key = 'package_overrides' if runtime['packages_path'] in shared else 'packages_config'
+                texts[runtime_file.name] = edit_tables(texts[runtime_file.name], {key: reference})
+    baseline_hashes = {str(Path(name).relative_to(runtime_file.parent)): digest for name, digest in local.items()}
     for path, loaded in ((base_file, base), (candidate_file, candidate), (runtime_file, runtime)):
         cfg.require_unchanged(loaded, path)
 
@@ -288,28 +334,43 @@ def plan(base_path, candidate_path, runtime_path, output):
         (output / name).write_text(text)
         (output / name).chmod(0o600)
     prepared_config = cfg.load(output / runtime_file.name)
-    expected_native = dict(runtime["native"])
+    expected_native = editable_tables(runtime, runtime_file.parent, 'native')
     for name, entry in native_changes.items():
         if entry is None:
             expected_native.pop(name, None)
         else:
             expected_native[name] = entry
-    expected_bindings = dict(runtime["packages"])
+    if runtime['nvpath'] in shared:
+        expected_native = {**version_rules.load(runtime['nvpath']).entries, **expected_native}
+        for name in runtime['collector'].get('exclude_tracks', []):
+            expected_native.pop(name, None)
+    expected_bindings = editable_tables(runtime, runtime_file.parent, 'packages')
     for name, entry in binding_changes.items():
         if entry is None:
             expected_bindings.pop(name, None)
         else:
             expected_bindings[name] = entry
+    if runtime['packages_path'] in shared:
+        expected_bindings = catalog.merge_policies(tomllib.loads(Path(runtime['packages_path']).read_text()), expected_bindings)
     if not version_rules.same_values(prepared_config["packages"], expected_bindings):
         raise ValueError("text promotion differs from reviewed package bindings")
     if not version_rules.same_values(prepared_config["native"], expected_native):
         raise ValueError("text promotion differs from reviewed effective rules")
     if not version_rules.same_values(prepared_config["native_options"], runtime["native_options"]):
         raise ValueError("text promotion changed native operator options")
-    if set(prepared_config['input_hashes']) != {str(output / name) for name in texts}:
+    expected_styles = dict(runtime['openruyi'].get('buildsystems', {}))
+    for name, value in appearance_changes.items():
+        if value is None:
+            expected_styles.pop(name, None)
+        else:
+            expected_styles[name] = value
+    if not version_rules.same_values(prepared_config['openruyi'].get('buildsystems', {}), expected_styles):
+        raise ValueError('style promotion differs from reviewed effective styles')
+    if set(prepared_config['input_hashes']) != {str(output / name) for name in texts} | set(shared):
         raise ValueError('reviewed files differ from the effective configuration inputs')
     record = {
-        "schema": 1,
+        "schema": 2,
+        "shared_hashes": shared,
         "runtime_config": str(runtime_file),
         "baseline_hashes": baseline_hashes,
         "proposed_hashes": {n: digest(output / n) for n in texts},
@@ -328,9 +389,13 @@ def apply(review_dir, runtime_path, destination):
     review_dir = Path(review_dir).resolve()
     record = json.loads((review_dir / "review.json").read_text())
     runtime_file, _, runtime = inputs(runtime_path)
-    if record.get("schema") != 1 or str(runtime_file) != record["runtime_config"]:
+    if record.get("schema") != 2 or str(runtime_file) != record["runtime_config"]:
         raise ValueError("review belongs to a different runtime configuration")
-    names = {str(Path(name).relative_to(runtime_file.parent)) for name in runtime['input_hashes']}
+    shared = catalog.shared_inputs(runtime, runtime_file.parent)
+    if shared != record['shared_hashes']:
+        raise ValueError('release catalog drift; re-plan and review')
+    local = catalog.local_inputs(runtime, runtime_file.parent)
+    names = {str(Path(name).relative_to(runtime_file.parent)) for name in local}
     proposed = set(record["proposed_hashes"])
 
     def safe(n):
@@ -359,10 +424,11 @@ def apply(review_dir, runtime_path, destination):
     if any(digest(review_dir / n) != record["proposed_hashes"][n] for n in proposed):
         raise ValueError("reviewed candidate changed; re-plan and review")
     _, _, reviewed = inputs(review_dir / runtime_file.name)
-    if set(reviewed['input_hashes']) != {str(review_dir / name) for name in proposed}:
+    if set(reviewed['input_hashes']) != {str(review_dir / name) for name in proposed} | set(shared):
         raise ValueError('unexpected reviewed input file set')
     destination = Path(destination).resolve()
-    if destination.exists() or destination.is_relative_to(runtime_file.parent):
+    if (destination.exists() or destination.is_relative_to(runtime_file.parent)
+            or any(destination.is_relative_to(Path(name).parent) for name in shared)):
         raise ValueError("destination must be a fresh directory outside the runtime config")
     destination.parent.mkdir(parents=True, exist_ok=True)
     # Preserve keys/other operator files privately. Never include them in reports.
@@ -379,7 +445,7 @@ def apply(review_dir, runtime_path, destination):
             (prepared / name).chmod(0o600)
         prepared_config = cfg.load(prepared / runtime_file.name)
         prepared_hashes = {str(Path(name).relative_to(prepared)): value
-                           for name, value in prepared_config['input_hashes'].items()}
+                           for name, value in catalog.local_inputs(prepared_config, prepared).items()}
         if prepared_hashes != record['proposed_hashes']:
             raise ValueError('prepared configuration differs from reviewed inputs')
         cfg.require_unchanged(reviewed, review_dir / runtime_file.name)

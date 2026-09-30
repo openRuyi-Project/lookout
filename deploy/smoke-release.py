@@ -11,7 +11,7 @@ import sys
 import tempfile
 import uuid
 
-from deployment import Docker, PROTECTION, PYTHON, healthy, resolve_image, run
+from deployment import Docker, PROTECTION, PYTHON, healthy, image_command, resolve_image, run
 from install import install
 from maintain import backup, configure, status
 from upgrade import upgrade
@@ -28,6 +28,69 @@ def free_port():
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         return sock.getsockname()[1]
+
+
+def catalog_upgrade(smoke, base, root, extra_images, volumes):
+    images = []
+    for phase in ('before', 'next'):
+        tag = smoke.prefix + ':catalog-' + phase
+        extra_images.append(tag)
+        definition = (f'FROM {base}\nUSER 0\nRUN TRACKER_SPEC_REPO= /opt/venv/bin/python -c '
+                      f'"from tests.container_smoke_fixture import release_catalog; release_catalog(\'{phase}\')"\n'
+                      'USER 10001:10001\n')
+        subprocess.run(['docker', 'build', '--network', 'none', '--pull=false', '-t', tag, '-'],
+                       input=definition, text=True, check=True)
+        images.append(resolve_image('docker', json.loads(run(['docker', 'image', 'inspect', tag]))[0]['Id'])['image'])
+    name = smoke.prefix + '-catalog'
+    smoke.containers.append(name)
+    volumes.update(name + '-' + role for role in ('config', 'data', 'backups'))
+    install(images[0], name, network='none', memory='4g', cpus=2, environment=['TRACKER_SPEC_REPO='])
+    before = Docker(name)
+    before.stop()
+    # Seed dated, synthetic observations through the real writer. Subsequent
+    # entrypoint heartbeats must reuse the unchanged query and refresh the edit.
+    seed = '''from pathlib import Path
+import json
+from tracker import config, state
+from tracker.monitors import runner
+c=config.load('/config/tracker.toml')
+p=Path('/data/state/tracker.sqlite3'); s=state.read(p); now=state.utcnow()
+s.update(bindings=c['packages'], native_ids=list(c['native']), stale_after_seconds=7200)
+for name in c['native']:
+    s['inventory'][name]=name
+    s['sources'][name]=state.success({}, {'version':'1.2.3', 'srcmd5':'fixture'}, now)
+    s['specs'][name]=state.success({}, {'metadata':{'version':'1.2.3'},
+        'native_query':{'spec_sha256':'a'*64}, 'head':'b'*40}, now)
+    observation=runner.plan(c,s,name,'security')
+    observation.update(status='ok', checked_at=now, observed_at=now, fetched_at=now, error=None, input_note=None)
+    s['monitors'].setdefault(name,{})['security']=observation
+state.commit(p,s)
+print(json.dumps({'stable':s['monitors']['catalog-stable']['security'],
+ 'files':{str(f):f.read_text() for f in Path('/config').rglob('*') if f.is_file()}}))
+'''
+    saved = json.loads(run(image_command(before, images[0], '-c', seed)))
+    before.start()
+    healthy('docker', name, images[0])
+    result = upgrade(images[1], None, root, container=name, apply=True)
+    assert result['status'] == 'ready'
+    after = Docker(name)
+    assert after.settings['data'] == before.settings['data']
+    assert after.settings['config'] == before.settings['config']
+    check = '''import json
+from pathlib import Path
+from tracker import config,state
+c=config.load('/config/tracker.toml'); s=state.read('/data/state/tracker.sqlite3')
+assert 'catalog-added' in c['native'] and 'catalog-added' in c['packages']
+assert c['packages']['catalog-changed']['monitors']['security']['product']=='corrected-fixture'
+assert not Path('/config/packages.toml').exists()
+assert not Path('/config/nvchecker.toml').exists()
+print(json.dumps({'stable':s['monitors']['catalog-stable']['security'],
+ 'files':{str(f):f.read_text() for f in Path('/config').rglob('*') if f.is_file()}}))
+'''
+    observed = json.loads(run(['docker', 'exec', name, PYTHON, '-c', check]))
+    assert observed['files'] == saved['files']
+    assert observed['stable'] == saved['stable']
+    print('PASS catalog upgrade: added/corrected identities and rules; unchanged config/data volumes and stable observation', flush=True)
 
 
 def exercise(image, root):
@@ -145,6 +208,7 @@ state.commit(p,s)
              '--mount', f'type=volume,src={restore},dst=/data,readonly,volume-nocopy',
              '--entrypoint', PYTHON, image, '-c', restore_code])
         print('PASS restore: independent volume, SQLite integrity and source observation retained', flush=True)
+        catalog_upgrade(smoke, base, root, extra_images, volumes)
     finally:
         for container in smoke.containers:
             log = subprocess.run(['docker', 'logs', container], capture_output=True, text=True)

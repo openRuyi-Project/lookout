@@ -131,8 +131,10 @@ after logout and reboot recovery need acceptance on the target host.
 
 ### Configuration and ports
 
-**Image updates do not update operator configuration or packaged version rules.**
-Review and promote those changes separately using [Configuration](../config/README.md).
+**Image updates replace release catalogs, not operator configuration.** The default
+installation references `/app/config/` for version rules, monitor identities and
+distribution mappings. Explicit operator overrides remain in `/config`; see
+[Configuration](../config/README.md). A deliberately local catalog remains local.
 SQLite stays in the same data directory; compatible updates reuse observations
 and indexes. Supported storage-format changes are backed up and migrated;
 unsupported changes refuse the upgrade.
@@ -143,7 +145,9 @@ unsupported changes refuse the upgrade.
 | Resource limits | `--memory 8g --cpus 4 --pids-limit 512`; later edit the Quadlet |
 | Monitor proxy | `--env TRACKER_MONITOR_PROXY=URL` |
 | Host-local proxy | `--network pasta:-T,7890 --env TRACKER_MONITOR_PROXY=http://127.0.0.1:7890` |
-| OBS, Git, monitor schedules and identities | `$ROOT/config/` |
+| OBS, Git and monitor schedules | `$ROOT/config/tracker.toml` |
+| Default upstream rules and monitor identities | Image `/app/config/` catalogs |
+| Administrator identity/rule exceptions | Explicit override files in `$ROOT/config/` |
 | Provider credentials | Private keyfiles, not frontend `PUBLIC_*` values |
 
 Before changing the Quadlet or application configuration,
@@ -192,6 +196,60 @@ a local vulnerability database. Reviewed CPE identities are in `packages.toml`.
 Provider errors remain errors, not a claim of no advisories. The existing monitor
 heartbeat refreshes unchanged versions too; operators can override refresh timing
 in `[monitors.refresh.security]` without changing query identities.
+
+### Copied catalog migration
+
+Older installations copied default rules into `/config`. Their image updates cannot
+identify which copied entries an administrator changed. Migrate once using the
+**original configuration from the image used to initialize that installation**.
+Do not substitute the current running image or guess that all differences are
+defaults. If that baseline is unavailable, retain the local catalog until its
+ownership can be reviewed.
+
+With `SELECTED_IMAGE` set to the tested new image, first extract the original catalog:
+
+```sh
+read -r -p 'Original installation image reference: ' ORIGINAL_IMAGE
+podman pull "$ORIGINAL_IMAGE"
+BASELINE="$ROOT/catalog-baseline"
+test ! -e "$BASELINE"
+HELPER="lookout-baseline-$$"
+podman create --name "$HELPER" --network none --entrypoint /bin/true "$ORIGINAL_IMAGE"
+trap 'podman rm "$HELPER" >/dev/null' EXIT
+podman cp "$HELPER:/app/config" "$BASELINE"
+podman rm "$HELPER"
+trap - EXIT
+```
+
+[Pause scheduled jobs](#pause-scheduled-jobs), take a backup, then stop the application
+before mounting its private SELinux directories in the migration helper.
+`PREPARED/config` must not exist:
+
+```sh
+python3 "$ROOT/tools/maintain.py" --unit "$UNIT" --backup-dir "$ROOT/backups"
+systemctl --user stop "$NAME.service"
+PREPARED=$(mktemp -d "$ROOT/catalog-migration.XXXXXXXX")
+podman run --rm --network none --read-only --cap-drop=all \
+  --security-opt=no-new-privileges --userns=keep-id:uid=10001,gid=10001 \
+  --tmpfs /tmp:rw,nosuid,nodev,size=128m,mode=1777 \
+  -v "$BASELINE:/baseline:ro,Z" -v "$ROOT/config:/previous:ro,Z" \
+  -v "$PREPARED:/prepared:Z" --entrypoint /opt/venv/bin/python "$SELECTED_IMAGE" \
+  /app/deploy/migrate-config.py --baseline /baseline --source /previous \
+  --destination /prepared/config
+```
+
+The helper writes only the new directory. Review its override names and TOML;
+credentials and the original configuration remain private and unchanged. Default
+rules are no longer copied; local differences become explicit overrides. Removed
+tracks stay excluded, removed monitor identities become `false`. Ambiguous deletions
+of checker/distribution settings reject migration instead of guessing.
+
+Select both the tested image and `PREPARED/config` in the Quadlet, keep `/data`
+unchanged, then use the configuration restart/acceptance commands above. On a
+migration error, reselect the old image/config and restart it. Docker can import the
+prepared directory with `maintain.py --config` after selecting the tested image.
+Resume the previously active timers after acceptance. Subsequent catalog updates
+require no further copying or ownership migration.
 
 ### Image upgrades
 

@@ -205,7 +205,6 @@ def verify(config, proposals):
     """Reuse the actual native collector, including fingerprints and failures."""
     if not proposals:
         return {}, None
-    text = Path(config['nvpath']).read_text()
     cfg.require_unchanged(config)
     entries = {p['name']: p['entry'] for p in proposals}
     candidate = {**config, 'native': {**config['native'], **entries}}
@@ -339,7 +338,9 @@ def main(argv=None):
                 accepted[row['name']] = row['entry']
             if row.get('comparable') is False:
                 bindings.setdefault(row['name'], {})['comparable'] = False
-    text = Path(config['nvpath']).read_text()
+    text = (nv.dump_config({'__config__': config['native_options'], **config['native']})
+            if config.get('version_overrides_path') or config.get('collector', {}).get('exclude_tracks')
+            else Path(config['nvpath']).read_text())
     cfg.require_unchanged(config)
     if args.verify:
         (output / 'candidate.nvchecker.toml').write_text(add_entries(text, accepted))
