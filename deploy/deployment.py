@@ -33,7 +33,7 @@ def run(argv, *, timeout=120, input=None, env=None):
 
 
 def image_reference(reference):
-    local = re.fullmatch(r'sha256:[0-9a-f]{64}', reference)
+    local = re.fullmatch(r'(?:sha256:)?[0-9a-f]{64}', reference)
     registry = re.fullmatch(r'[a-z0-9][a-z0-9.-]*(?::[0-9]+)?/[a-z0-9_./-]+(?::[A-Za-z0-9_.-]+|@sha256:[0-9a-f]{64})', reference)
     host = reference.split('/', 1)[0]
     if registry and host != 'localhost' and '.' not in host and ':' not in host:

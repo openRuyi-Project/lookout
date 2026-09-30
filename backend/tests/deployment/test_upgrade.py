@@ -396,8 +396,10 @@ def test_rootless_installer_requires_linger_before_creating_directories(tmp_path
     assert not destination.exists()
 
 
-def test_podman_bare_image_ids_are_normalized(monkeypatch):
+@pytest.mark.parametrize('reference', [NEW, NEW.removeprefix('sha256:')])
+def test_podman_bare_image_ids_are_normalized(monkeypatch, reference):
     def run(argv, **kwargs):
+        assert argv[1] != 'pull'
         if 'inspect' in argv:
             return json.dumps([{'Id': NEW.removeprefix('sha256:'), 'Os': 'linux', 'Architecture': 'amd64',
                 'Config': {'User': '10001:10001', 'Labels': {
@@ -405,4 +407,4 @@ def test_podman_bare_image_ids_are_normalized(monkeypatch):
                     'org.opencontainers.image.revision': 'a' * 40}}}])
         return '["0.1.0", 2]'
     monkeypatch.setattr(operations, 'run', run)
-    assert operations.resolve_image('podman', NEW)['image'] == NEW
+    assert operations.resolve_image('podman', reference)['image'] == NEW
