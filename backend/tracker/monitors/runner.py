@@ -295,7 +295,7 @@ def execute(provider, proposed, io, previous=None, *, schedule=None):
 
 
 def check(config, snapshot, name, provider, io):
-    if provider not in REGISTRY or name not in snapshot.get('sources', {}):
+    if provider not in REGISTRY or name not in state.package_names(snapshot):
         raise ValueError('unknown package or monitor')
     proposed = plan(config, snapshot, name, provider)
     return execute(provider, proposed, io, schedule=refresh_policy(provider, proposed, {}, settings(config)))
@@ -358,7 +358,7 @@ def collect(config, config_path, db, *, io=None):
                     valid = {}
                     versions = version_status.evaluate_all(latest)
                     for name, providers in observations.items():
-                        if name not in latest.get('sources', {}):
+                        if name not in versions:
                             continue
                         valid[name] = {}
                         for provider, fact in providers.items():

@@ -6,10 +6,34 @@ simplification and trailer extraction; these lock the bucketing of its
 `git log --name-status` stream into per-package changelogs. Live equivalence with
 per-package `git log` was cross-checked over the whole repo (0 mismatch, 2s)."""
 import hashlib
+import subprocess
 
 import pytest
 
 from tracker.monitors.source import git as sg
+
+
+@pytest.mark.parametrize(('stderr', 'category'), [
+    ('Could not resolve host: private.example', 'dns'),
+    ('SSL certificate problem for https://secret@example.invalid', 'tls'),
+    ('Failed to connect to internal.example port 22', 'connection'),
+    ('Authentication failed for https://user:token@example.invalid', 'authentication'),
+    ('The requested URL returned error: 503', 'http'),
+    ('unexpected error includes private source path', None),
+])
+def test_git_failures_report_operation_and_category_without_private_details(monkeypatch, stderr, category):
+    monkeypatch.setattr(sg.subprocess, 'run', lambda *args, **kwargs:
+                        subprocess.CompletedProcess(args[0], 128, '', stderr))
+    value, error = sg._git_text(['-C', '/private/secret/repo', 'fetch', 'origin'])
+    suffix = f' ({category})' if category else ''
+    assert value is None and error == 'git fetch exited 128' + suffix
+
+
+def test_git_timeout_names_the_operation_not_a_path(monkeypatch):
+    def timeout(*args, **kwargs):
+        raise subprocess.TimeoutExpired(args[0], 1)
+    monkeypatch.setattr(sg.subprocess, 'run', timeout)
+    assert sg._git_text(['-C', '/secret/repo', 'fetch']) == (None, 'git fetch timeout')
 
 
 def test_local_sources_require_regular_pinned_blobs(monkeypatch):

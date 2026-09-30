@@ -151,12 +151,18 @@ class Resolver:
     def __init__(self, snapshot, now):
         self.snapshot, self.now = snapshot, now
         self.identities, self.observations, self.components = {}, {}, {}
-        self.packages = set(snapshot.get('sources', {})) | set(snapshot.get('inventory', {}).values())
-        inventory = snapshot.get('components', {}).get('inventory', {})
+        self.packages = set(state.package_names(snapshot))
+        components = snapshot.get('components', {})
+        catalogued = components.get('spec_git', {}).get('catalog_head')
+        inventory = components.get('spec_git' if catalogued else 'inventory', {})
+        if not catalogued:
+            self.packages.update(snapshot.get('inventory', {}).values())
         ttl = snapshot.get('obs_stale_after_seconds', snapshot.get('stale_after_seconds', 86400))
+        if catalogued:
+            ttl = max(ttl, snapshot.get('spec_interval_seconds', 60) * 2)
         self.inventory_current = not inventory.get('error') and not state.stale(inventory, now, ttl)
         ids = frozenset(snapshot.get('native_ids', ()))
-        for package in snapshot.get('sources', {}):
+        for package in self.packages:
             binding = cfg.resolve_binding(package, ids, snapshot.get('bindings', {}).get(package, {}))
             native = snapshot.get('tracks', {}).get(binding['compare'], {}).get('source') or {}
             release = source_release.from_source(state.current_source(snapshot, package))

@@ -67,7 +67,8 @@ def candidates(config, snapshot):
     result = []
     urls = Counter(identity_url((v.get('metadata') or {}).get('url'))
                    for v in snapshot.get('specs', {}).values())
-    for name, source in sorted(snapshot['sources'].items()):
+    for name in sorted(state.package_names(snapshot)):
+        source = snapshot.get('sources', {}).get(name, {})
         binding = cfg.binding(config, name)
         explicit = config.get('packages', {}).get(name, {})
         if binding['compare'] or binding.get('not_applicable') or 'compare' in explicit:
@@ -83,7 +84,7 @@ def candidates(config, snapshot):
         elif urls[url] > 1:
             # SDL2/SDL3, monorepos, KDE families: a homepage alone cannot pick a line.
             reason = 'shared_homepage_requires_mapping_review'
-        elif source.get('error') or source.get('version') != metadata.get('version'):
+        elif source and (source.get('error') or source.get('version') != metadata.get('version')):
             reason = 'obs_spec_version_disagrees'
         elif not version(metadata.get('version')):
             reason = 'version_normalization_unsupported'
@@ -103,7 +104,8 @@ def shared_release_entries(config, snapshot, rows):
     wanted = {sources.release_directory(r) for r in rows} - {None}
     anchors = {}
     wanted_homepages = {r['homepage'] for r in rows if sources.release_directory(r) in wanted}
-    for name, fact in snapshot.get('sources', {}).items():
+    for name in state.package_names(snapshot):
+        fact = state.current_source(snapshot, name)
         track = cfg.binding(config, name)['compare']
         spec = snapshot.get('specs', {}).get(name, {})
         metadata = spec.get('metadata') or {}
@@ -236,7 +238,7 @@ def main(argv=None):
     for row in rows:
         if row['reason'] in (None, 'shared_homepage_requires_mapping_review', 'homepage_identity_unsupported'):
             row.update(sources.hints(row, snapshot.get('specs', {}).get(row['name'], {})))
-            source = snapshot['sources'][row['name']]
+            source = state.current_source(snapshot, row['name'])
             registry = sources.registry_entry(row)
             if registry and not source.get('error') and source.get('version') == row['current']:
                 row.update(reason=None, entry=registry, expected_version=None,

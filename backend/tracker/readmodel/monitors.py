@@ -79,7 +79,7 @@ def component_ttl(snapshot, key):
 
     A SPEC phase publishes its configured interval with its observation.
     Two periods allow one scheduled refresh to finish;
-    explicit fetch/parse failures remain errors regardless of this age allowance.
+    Explicit observation failures remain errors regardless of this age allowance.
     """
     upstream = snapshot.get('stale_after_seconds', 86400)
     obs = snapshot.get('obs_stale_after_seconds', upstream)
@@ -120,7 +120,7 @@ class Context:
 
     @property
     def obs_source(self):
-        source = dict(self.snapshot['sources'][self.name])
+        source = dict(self.snapshot.get('sources', {}).get(self.name, {}))
         if source.get('version') and not state.usable_version(source['version']):
             source.update(raw_version=source['version'], version=None,
                           version_error='OBS source version is unresolved; see raw_version')
@@ -168,6 +168,8 @@ def source(context):
                 changelog=spec.get('changelog') or [], head=spec.get('head'), error=spec.get('error'),
                 obs=context.obs_source)
     check = check_state([current], context.now, current['stale_after_seconds'])
+    if refresh_error := snapshot.get('components', {}).get('spec_git', {}).get('error'):
+        check['note'] = 'Repository refresh: ' + refresh_error
     check['failures'] = list(dict.fromkeys(str(current[k]) for k in ('error', 'version_error') if current.get(k)))
     return dict(check=check,
                 data=data, dimensions={'buildsystem': [system or '_not_detected']})

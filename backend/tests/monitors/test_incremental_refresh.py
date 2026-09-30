@@ -134,10 +134,12 @@ def test_git_delta_rename_retry_macros_and_rewritten_history(config, snapshot, t
     broken[0]=False
     retried=collector.check_specs(config,db,describe)
     assert not retried['specs']['binutils']['error'] and parsed['2.0']==2
-    # Rename leaves the old OBS inventory member explicit/missing, not silently removed.
+    # Git owns package identity; an OBS object left behind by a rename stays raw only.
     git('mv','SPECS/foo3','SPECS/foo4');commit()
     renamed=collector.check_specs(config,db,describe)
-    assert renamed['specs']['foo3']['error']=='SPEC not found in clone'
+    assert 'foo3' not in renamed['specs']
+    assert renamed['specs']['foo4']['metadata']['version']=='1.0'
+    assert 'foo3' not in state.package_names(renamed)
     assert 'foo3' in renamed['sources']
     renamed['sources']['foo4']=deepcopy(renamed['sources']['foo3']);state.commit(db,renamed)
     added=collector.check_specs(config,db,describe)

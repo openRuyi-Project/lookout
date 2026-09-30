@@ -110,4 +110,4 @@ def evaluate_all(snapshot, now=None):
     now = now or datetime.now(timezone.utc)
     native_ids = frozenset(snapshot.get('native_ids', ()))
     return {name: evaluate(snapshot, name, now, native_ids=native_ids)
-            for name in snapshot.get('sources', {})}
+            for name in state.package_names(snapshot)}

@@ -162,6 +162,17 @@ def next_stale_change(observation, now, ttl):
     return None
 
 
+def package_names(snapshot):
+    """The confirmed SPEC catalogue owns package identity; OBS owns build objects.
+
+    Before a complete Git catalogue (or when Git is disabled), use the OBS source
+    inventory. A failed refresh retains the last confirmed SPEC catalogue, including
+    packages whose metadata cannot be parsed and packages not yet registered in OBS.
+    """
+    catalogued = snapshot.get('components', {}).get('spec_git', {}).get('catalog_head')
+    return snapshot.get('specs' if catalogued else 'sources', {}).keys()
+
+
 def current_source(snapshot, name):
     """Select the same source observation for display, comparison and monitors.
 
@@ -181,7 +192,7 @@ def current_source(snapshot, name):
         ttl = max(obs_ttl, snapshot['spec_interval_seconds'] * 2) if 'spec_interval_seconds' in snapshot else obs_ttl
         return {**spec, 'version': value if usable_version(value) else None,
                 'revision': revision, 'origin': 'spec', 'stale_after_seconds': ttl,
-                'error': spec.get('error') or snapshot.get('components', {}).get('spec_git', {}).get('error')}
+                'error': spec.get('error')}
     source = snapshot.get('sources', {}).get(name, {})
     value = source.get('version')
     return {**source, 'version': value if usable_version(value) else None,

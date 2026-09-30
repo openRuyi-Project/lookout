@@ -63,7 +63,12 @@ def test_spec_expiry_has_cache_deadline_and_fetch_failure_stays_visible(config, 
     assert next(r for r in rows if r['name'] == 'binutils')['monitors']['version']['data']['relation'] == 'unknown'
     snapshot['specs']['binutils']['fetched_at'] = now.isoformat()
     snapshot['components']['spec_git'] = {'error': 'fetch failed'}
-    assert state.current_source(snapshot, 'binutils')['error'] == 'fetch failed'
+    assert state.current_source(snapshot, 'binutils')['error'] is None
+    rows, collection = view.project_monitors(snapshot, now)
+    check = next(r for r in rows if r['name'] == 'binutils')['monitors']['source']['check']
+    assert check['status'] == 'ok'
+    assert check['note'] == 'Repository refresh: fetch failed'
+    assert 'fetch failed' in collection['errors']
 
 
 def test_no_spec_preserves_obs_fallback(snapshot):
@@ -71,14 +76,14 @@ def test_no_spec_preserves_obs_fallback(snapshot):
     assert subject['version'] == '3.9.0' and subject['revision'] == 'h-binutils'
 
 
-def test_failed_refresh_retains_matching_evidence_without_rechecking(config, snapshot):
+def test_failed_source_retains_matching_evidence_without_rechecking(config, snapshot):
     spec(snapshot)
     config['packages']['binutils'] = {'monitors': {'eol': {'product': 'fixture', 'cycle_parts': 2}}}
     good = monitor.plan(config, snapshot, 'binutils', 'eol')
     previous = {**good, 'status': 'ok', 'checked_at': state.utcnow(),
                 'findings': [monitor_model.finding('old', 'EOL', 'Old fact', [], 'https://example.org/')],
                 'changed_at': 'original-change', 'evidence_revision': 'original-evidence'}
-    snapshot['components']['spec_git'] = {'error': 'offline'}
+    snapshot['specs']['binutils']['error'] = 'SPEC unavailable'
     unavailable = monitor.plan(config, snapshot, 'binutils', 'eol')
     assert unavailable['status'] == 'unsupported'
     result = monitor.execute('eol', unavailable, None, previous)

@@ -301,7 +301,6 @@ def check_specs(config, db, describe=native_spec.describe):
             retries=config['collector'].get('spec_fetch_retries', 2),
         )
         old = state.read(db)
-        names = list(old.get('sources', {}))
         specs = old.get('specs', {})
         error = fetch_error
         context = None
@@ -309,21 +308,26 @@ def check_specs(config, db, describe=native_spec.describe):
         if ok:
             head, error = spec_git.head(repo, git=git)
             if not error and head:
+                prior = old['components'].get('spec_git', {})
+                if prior.get('catalog_head') == head:
+                    names = list(specs)
+                else:
+                    names, error = spec_git.packages(repo, head, git)
+                names = names if names is not None else []
                 fingerprint = cfg.track_fingerprint({
                     'resolver': native_spec.RESOLVER,
                     **{key: spec.get(key) for key in ('url', 'branch', 'source_url_template',
                                                      'macro_package', 'extra_macro_packages', 'local_sources', 'changelog_limit')},
                 })
-                prior = old['components'].get('spec_git', {})
                 incremental = (prior.get('input_fingerprint') == fingerprint
                                and spec_git.is_ancestor(repo, prior.get('head'), head, git))
                 logs = {}
-                if incremental and prior['head'] != head:
+                if not error and incremental and prior['head'] != head:
                     logs, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
                                                      since=prior['head'])
                 if incremental and any(package in logs for package in spec_git.macro_packages(spec)):
                     incremental = False
-                if not incremental:
+                if not error and not incremental:
                     logs, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git)
                     selected = set(names)
                 else:
@@ -346,7 +350,7 @@ def check_specs(config, db, describe=native_spec.describe):
                     else:
                         specs = {name: refreshed[name] if name in refreshed else
                                  state.success(specs[name], {}, now) for name in names}
-                        context = {'head': head, 'input_fingerprint': fingerprint,
+                        context = {'head': head, 'catalog_head': head, 'input_fingerprint': fingerprint,
                                    'mode': 'incremental' if incremental else 'full',
                                    'selected_packages': len(selected)}
             elif not error:
@@ -357,7 +361,6 @@ def check_specs(config, db, describe=native_spec.describe):
         with state.writer_lock(db, timeout=60):
             previous = state.read_cached(db)
             latest = previous[0]
-            specs = {name: fact for name, fact in specs.items() if name in latest['sources']}
             snapshot = merge_specs(config, latest, specs, error, now, context=context)
             state.commit(db, snapshot, previous=previous)
     return snapshot
@@ -530,7 +533,7 @@ def main():
     owners = {'obs': ('obs', 'builds'), 'obs-metadata': ('obs',)}.get(args.only, (args.only,))
     errors = [v['error'] for key, v in snapshot['components'].items() if v.get('error')
               and (args.only == 'all' or any(state.owns_component(owner, key) for owner in owners))]
-    result = dict(generation=snapshot['generation'], packages=len(snapshot['sources']),
+    result = dict(generation=snapshot['generation'], packages=len(state.package_names(snapshot)),
                   source_versions=sum(bool(s.get('version')) and not s.get('error') for s in snapshot['sources'].values()),
                   tracks=len(snapshot['tracks']), errors=errors)
     if selected is not None or args.due:

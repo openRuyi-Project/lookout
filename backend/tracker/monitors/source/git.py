@@ -9,6 +9,7 @@ or a changed parser environment requires a full reconciliation.
 Following nv.py, subprocess calls and pure parsing are separate for testability.
 """
 import hashlib
+import re
 import subprocess
 
 from tracker.monitors.schedule import Schedule
@@ -31,6 +32,28 @@ def head(repo, git='git'):
     return value.strip() if value else None, error
 
 
+def packages(repo, revision='HEAD', git='git'):
+    """Complete source-package directory names from regular SPEC blobs at one revision."""
+    listing, error = _git_text(['-C', repo, 'ls-tree', '-r', '-z', '--full-tree',
+                                revision, '--', 'SPECS'], git)
+    if error:
+        return None, error
+    names = set()
+    for record in listing.split('\0'):
+        if not record:
+            continue
+        metadata, separator, path = record.partition('\t')
+        fields = metadata.split()
+        if not separator or len(fields) != 3:
+            return None, 'SPEC package tree is malformed'
+        parts = path.split('/')
+        if (fields[0] in ('100644', '100755') and fields[1] == 'blob'
+                and len(parts) == 3 and parts[0] == 'SPECS'
+                and parts[1] and parts[2].endswith('.spec')):
+            names.add(parts[1])
+    return sorted(names), None
+
+
 def is_ancestor(repo, previous, current, git='git'):
     if not previous:
         return False
@@ -41,13 +64,26 @@ def is_ancestor(repo, previous, current, git='git'):
 def _git_text(args, git='git', timeout=300):
     """Run git and capture text stdout; return (stdout, error). Never surface URLs,
     credentials, or raw stderr."""
+    operation = args[2] if len(args) > 2 and args[0] == '-C' else args[0] if args else 'command'
+    if operation not in ('fetch', 'rev-parse', 'merge-base', 'log', 'ls-tree'):
+        operation = 'command'
     try:
         p = subprocess.run([git, *args], capture_output=True, text=True, timeout=timeout, check=False)
         if p.returncode != 0:
-            return None, f'git {args[0]} exited {p.returncode}'
+            categories = (
+                ('authentication', r'Authentication failed|Permission denied \(publickey\)|could not read Username'),
+                ('dns', r'Could not resolve (?:host|proxy)|Could not resolve hostname'),
+                ('tls', r'SSL|TLS|certificate'),
+                ('connection', r'Failed to connect|Connection (?:refused|timed out)|Connection reset'),
+                ('http', r'requested URL returned error: [45][0-9]{2}'),
+            )
+            category = next((name for name, pattern in categories
+                             if re.search(pattern, p.stderr[:16384], re.IGNORECASE)), None)
+            suffix = f' ({category})' if category else ''
+            return None, f'git {operation} exited {p.returncode}{suffix}'
         return p.stdout, None
     except subprocess.TimeoutExpired:
-        return None, f'git {args[0]} timeout'
+        return None, f'git {operation} timeout'
     except OSError:
         return None, 'git executable unavailable'
 

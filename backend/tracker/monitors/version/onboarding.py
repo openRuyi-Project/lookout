@@ -1,7 +1,7 @@
 """Offline proposals from confined RPM facts; never a runtime version authority."""
 from pathlib import Path
 
-from tracker import config as cfg
+from tracker import config as cfg, state
 from tracker.monitors.version import candidates as discover_sources
 
 
@@ -9,14 +9,16 @@ def propose(config_path, name, snapshot, *, config=None):
     config = cfg.load(config_path) if config is None else config
     if cfg.binding(config, name)['compare']:
         raise ValueError('package already has a version rule; use explain/check')
-    if name not in snapshot.get('sources', {}):
+    if name not in state.package_names(snapshot):
         raise ValueError('package is not present in the source inventory')
     spec = snapshot.get('specs', {}).get(name, {})
     meta = spec.get('metadata') or {}
     row = {'current': meta.get('version'), 'spec_sha256': spec.get('native_query', {}).get('spec_sha256')}
     hint = discover_sources.hints(row, spec)
     current = row['current']
-    if hint.get('hint_error') or snapshot['sources'][name].get('error') or snapshot['sources'][name].get('version') != current:
+    observed = snapshot.get('sources', {}).get(name)
+    if (spec.get('error') or hint.get('hint_error')
+            or observed is not None and (observed.get('error') or observed.get('version') != current)):
         raise ValueError('matching native SPEC/source version evidence is required')
     source = hint.get('source_url', '')
     result = {'name': name, 'current': current, 'source0': source, 'spec_sha256': row['spec_sha256'],

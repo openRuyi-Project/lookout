@@ -15,7 +15,7 @@ from tracker.providers.client import IO
 
 def describe(config, snapshot, name, monitor):
     adapter = REGISTRY[monitor]
-    observed = name in snapshot.get('sources', {}) or name in snapshot.get('specs', {})
+    observed = name in state.package_names(snapshot)
     if not observed:
         # Configuration supplies identity, not observations. The ordinary planner
         # still reports missing source/version inputs; no synthetic success exists.

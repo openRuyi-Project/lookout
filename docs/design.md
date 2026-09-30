@@ -27,8 +27,11 @@ against OpenAPI. [Porting](monitor-porting.md) describes extension contracts;
 ## Persistence and publication
 
 Collectors fetch outside the writer lock, then merge onto the latest snapshot.
-`state.merge` rejects fields outside a phase's ownership; only a complete inventory
-removes packages. OBS status and history share an identity but not ownership:
+`state.merge` rejects fields outside a phase's ownership. A complete Git tree of
+regular `SPECS/*/*.spec` files defines the package catalogue, including failed
+parses and packages absent from OBS. Failed refreshes retain the confirmed catalogue.
+OBS inventories describe build objects; they cannot add or remove source packages.
+OBS status and history share an identity but not ownership:
 
 | Phase | Writes |
 |---|---|

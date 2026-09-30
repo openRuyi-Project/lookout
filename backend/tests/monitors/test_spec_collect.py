@@ -158,6 +158,7 @@ def test_macro_failure_retains_prior_evidence_and_success_times(config, tmp_path
     state.commit(db, old)
     monkeypatch.setattr(spec_git, 'fetch', lambda *_a, **_kw: (True, None))
     monkeypatch.setattr(spec_git, 'head', lambda *_a, **_kw: ('new-head', None))
+    monkeypatch.setattr(spec_git, 'packages', lambda *_a, **_kw: (['bash'], None))
     monkeypatch.setattr(spec_git, 'changelogs', lambda *_a, **_kw: ({'bash': [cl('new-head')]}, None))
     def broken_macros(*_a, **_kw):
         raise spec_git.MacroReadError(failure)
