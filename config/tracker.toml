@@ -121,4 +121,6 @@ branch = "main"
 extra_macro_packages = ["openruyi-linux-build"]
 
 [spec.local_sources]
+clang-wrap = ["macros.clang-wrap"]
 linux-lts-kmhv2 = ["series"]
+pam = ["macros.pam"]

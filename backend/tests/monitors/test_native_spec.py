@@ -96,6 +96,29 @@ def test_local_source_include_is_native_and_hash_checked():
     with pytest.raises(ValueError, match='filename'):
         native_spec.describe(body, local_sources=[({**provenance, 'name': '../secret'}, data)])
 
+
+@pytest.mark.parametrize('macro', ['systemd_requires', 'systemd_ordering'])
+def test_runtime_systemd_macros_do_not_discard_source_metadata(macro):
+    body = SPEC.replace(b'%description', ('%' + macro + '\n%description').encode())
+    result = native_spec.describe(body)
+    assert result['metadata_error'] is None
+    assert result['metadata']['version'] == '0+git20260202.f60e50e'
+
+
+def test_local_macro_source_loads_without_replacing_the_spec():
+    data = b'%fixture_home https://fixture.example/\n'
+    provenance = {'path': 'SPECS/sample/macros.sample', 'name': 'macros.sample',
+                  'sha256': hashlib.sha256(data).hexdigest()}
+    body = SPEC.replace(b'%description',
+        b'Source1: macros.sample\n%{load:%{SOURCE1}}\nURL: %{fixture_home}\n%description')
+    assert native_spec.describe(body)['metadata'] is None
+    result = native_spec.describe(body, local_sources=[(provenance, data)])
+    assert result['metadata']['version'] == '0+git20260202.f60e50e'
+    assert result['metadata']['url'] == 'https://fixture.example/'
+    assert result['native_query']['context']['local_sources'] == [provenance]
+    assert result['native_query']['context']['sandbox']['seccomp'] == 'allow-list'
+
+
 def test_concurrent_parsing_does_not_corrupt_macro_state():
     # librpm macro state is global; the module lock must keep parallel callers correct.
     import concurrent.futures

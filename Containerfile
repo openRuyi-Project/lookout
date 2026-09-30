@@ -43,7 +43,7 @@ FROM ${FEDORA_IMAGE}
 # Keep native rpm and the existing Python RPM macro surface for SPEC parsing.
 # pycurl needs the shared curl/OpenSSL libraries, not their development headers.
 RUN dnf install -y \
-        python3 python3-rpm rpm-build \
+        python3 python3-rpm rpm-build systemd-rpm-macros \
         python-rpm-macros python3-rpm-macros pyproject-rpm-macros python3-rpm-generators \
         git nodejs libcurl openssl-libs libseccomp catatonit \
     && dnf clean all
