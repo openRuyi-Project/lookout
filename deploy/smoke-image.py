@@ -25,15 +25,16 @@ class Smoke:
         return result
 
     def fixture(self, mode):
+        generation = mode + '-' + uuid.uuid4().hex[:8]
         volumes = []
         for role in ('config', 'data'):
-            name = f'{self.prefix}-{mode}-{role}'
+            name = f'{self.prefix}-{generation}-{role}'
             self.run('volume', 'create', name)
             self.volumes.append(name)
             volumes.append(name)
         # The fixture owns even an empty volume's permissions; engine copy-up
         # must not replace them with the image directory's ownership/mode.
-        helper = f'{self.prefix}-{mode}-prepare'
+        helper = f'{self.prefix}-{generation}-prepare'
         self.containers.append(helper)
         self.run('run', '--rm', '--name', helper, '--network', 'none', *self.mapping, '--user', '0',
                  '-e', 'TRACKER_SPEC_REPO=', '-e', 'PYTHONDONTWRITEBYTECODE=1',

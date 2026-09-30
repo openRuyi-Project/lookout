@@ -20,6 +20,19 @@ spec.loader.exec_module(entrypoint)
 from tracker.monitors.schedule import Schedule
 
 
+def test_smoke_fixtures_allocate_independent_volumes():
+    spec = importlib.util.spec_from_file_location('smoke_image', ROOT / 'deploy/smoke-image.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result = subprocess.CompletedProcess([], 0, stdout='true', stderr='')
+    with patch.object(module.Smoke, 'run', return_value=result):
+        smoke = module.Smoke('podman', 'fixture-image')
+        first = smoke.fixture('cold')
+        second = smoke.fixture('cold')
+    assert not set(first).intersection(second)
+    assert smoke.volumes == first + second
+
+
 class ContainerTests(unittest.TestCase):
     def setUp(self):
         entrypoint._stop = threading.Event()
