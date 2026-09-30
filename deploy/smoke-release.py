@@ -34,8 +34,11 @@ def exercise(image, root):
     image = json.loads(run(['docker', 'image', 'inspect', image]))[0]['Id']
     smoke = module('smoke-image').Smoke('docker', image)
     name = smoke.prefix + '-installed'
-    extra_images, volumes = [], set()
+    base = smoke.prefix + ':base'
+    extra_images, volumes = [base], set()
     try:
+        # Dockerfile FROM resolves image references, not the engine's image ID.
+        run(['docker', 'tag', image, base])
         fixture = smoke.fixture('seeded')
         helper = smoke.start('source', fixture)
         smoke.wait_live(helper)
@@ -96,8 +99,8 @@ state.commit(p,s)
                                     ('failed', 'ENTRYPOINT ["/bin/sh", "-c", "exit 2"]')]:
             tag = smoke.prefix + ':' + label
             extra_images.append(tag)
-            run(['docker', 'build', '--network', 'none', '-t', tag, '-'],
-                input=f'FROM {image}\n{instruction}\n')
+            subprocess.run(['docker', 'build', '--network', 'none', '--pull=false', '-t', tag, '-'],
+                           input=f'FROM {base}\n{instruction}\n', text=True, check=True)
             ident = json.loads(run(['docker', 'image', 'inspect', tag]))[0]['Id']
             manifest = resolve_image('docker', ident)
             if label == 'next':
