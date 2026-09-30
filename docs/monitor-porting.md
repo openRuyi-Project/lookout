@@ -118,6 +118,12 @@ identity only when the omitted field cannot affect a query or its meaning:
 | Lifecycle | Derived product/cycle |
 | Local-patch-sensitive check | Relevant source revision retained |
 
+A source-version or upgrade-target change invalidates dependent results immediately
+and queues a check; it does not wait for the normal interval. An in-flight response
+for the old query stays historical. Fixed security tags must match the queried
+version; fixed commits must agree with confined Source0. A patch update within the
+same lifecycle cycle can reuse that cycle's evidence.
+
 A successful poll advances check time, not unchanged evidence revision. Cached
 bytes keep their original time. Source unavailability gates evidence; it does not
 freshen it. Persistence and publication details are in [Design](design.md).

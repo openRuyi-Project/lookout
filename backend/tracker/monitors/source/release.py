@@ -209,6 +209,53 @@ def pinned_revision(source):
     return Revision(repository, '', commit, date, forge)
 
 
+def tag_matches_version(tag, version):
+    if (not isinstance(tag, str) or not re.fullmatch(r'[A-Za-z0-9_.+-]{1,200}', tag)
+            or not isinstance(version, str) or not version or len(version) > 200
+            or commit_hash(tag)):
+        return False
+    endings = (version, version.replace('.', '_'), version.replace('.', '-'))
+    return any(re.search(r'(?<![0-9.])' + re.escape(end) + r'$', tag) for end in endings)
+
+
+def pinned_tag(source):
+    """Bind archive identity to a release tag, never a floating branch/homepage."""
+    value = primary_source_url(source)
+    if not isinstance(value, str):
+        return None
+    try:
+        url = urlsplit(value)
+        if (url.scheme != 'https' or not url.hostname or url.username or url.password
+                or url.port not in (None, 443) or url.query or url.fragment or '%' in url.path):
+            return None
+    except ValueError:
+        return None
+    extension = r'\.(?:tar\.(?:gz|xz|bz2)|tgz|zip)'
+    host = url.hostname
+    if host == 'codeload.github.com':
+        pattern = r'(?P<repo>/[^/]+/[^/]+)/(?:tar\.gz|zip)/(?:refs/tags/)?(?P<tag>[^/]+)'
+        host = 'github.com'
+    elif '/-/archive/' in url.path:
+        pattern = r'(?P<repo>/.+?)/-/archive/(?P<tag>[^/]+)/[^/]+' + extension
+    elif host == 'github.com' and '/releases/download/' in url.path:
+        pattern = r'(?P<repo>/[^/]+/[^/]+)/releases/download/(?P<tag>[^/]+)/[^/]+' + extension
+    else:
+        pattern = r'(?P<repo>/.+?)/archive/(?:refs/tags/)?(?P<tag>[^/]+?)(?:' + extension + r'|/[^/]+' + extension + ')'
+    match = re.fullmatch(pattern, url.path)
+    if not match:
+        return None
+    parts = match['repo'].split('/')[1:]
+    if (any(not re.fullmatch(r'[A-Za-z0-9_.-]+', p) or p in ('.', '..') for p in parts)
+            or (host == 'github.com' and len(parts) != 2)):
+        return None
+    tag, version = match['tag'], source.get('version')
+    # curl-8_5_0 and v8.5.0 identify the same numeric release; main/master and
+    # unrelated component tags cannot acquire an identity from an archive URL.
+    if not tag_matches_version(tag, version):
+        return None
+    return {'repository': 'https://' + host + match['repo'].removesuffix('.git'), 'tag': tag}
+
+
 def revision(source, entry):
     """Bind exact source identity to a reviewed native branch rule, without I/O."""
     if not tracks_commits(entry) or entry.get('path'):

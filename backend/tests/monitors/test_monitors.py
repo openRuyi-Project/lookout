@@ -236,20 +236,6 @@ def test_real_license_adapter_compares_same_pair_and_requires_spdx():
     assert monitor_license.check(subject, {'pypi': 'fixture'}, io)['status'] == 'unsupported'
 
 
-def test_scanner_report_requires_fresh_database_and_exact_identity():
-    from tracker.monitors.security.cve import parse_report
-    from tracker.monitors.security.cve import ScannerDatabaseExpired
-    now = datetime(2026, 9, 20, tzinfo=timezone.utc)
-    report = {'metadata': {'tool': {'name': 'cve-bin-tool'}},
-              'database_info': {'last_updated': '2026-09-20 00:00:00'},
-              'vulnerabilities': {'report': [{'entries': [{'vendor': 'gnu', 'product': 'bash',
-                  'version': '5.3', 'cve_number': 'CVE-2026-12345'}]}]}}
-    assert parse_report(report, {'vendor': 'gnu', 'product': 'bash'}, '5.3', now)[0]['id'] == 'CVE-2026-12345'
-    with pytest.raises(ValueError): parse_report(report, {'vendor': 'gnu', 'product': 'bash'}, '5.2', now)
-    report['database_info']['last_updated'] = '2026-01-01 00:00:00'
-    with pytest.raises(ScannerDatabaseExpired): parse_report(report, {'vendor': 'gnu', 'product': 'bash'}, '5.3', now)
-
-
 def test_maintenance_tags_follow_same_single_word_contract():
     with pytest.raises(ValueError):
         monitor_model.finding("test", "Review", "Review", [], "https://example.org/", tags=["two words"])
@@ -441,17 +427,17 @@ def test_invalid_saved_schema_is_preserved_but_not_presented(snapshot):
     assert snapshot == before
 
 
-def test_scanner_findings_do_not_claim_osv_query_or_fixed_events(monkeypatch):
-    from tracker.monitors.security import cve as monitor_cve
+def test_nvd_findings_do_not_claim_osv_query_or_fixed_events(monkeypatch):
+    from tracker.monitors.security import nvd
 
     monkeypatch.setattr(
-        monitor_cve, "scan", lambda subject, settings: [{"id": "CVE-2026-12345", "aliases": [], "affected": []}]
+        nvd, "read", lambda subject, settings, io: [{"id": "CVE-2026-12345", "aliases": [], "affected": [], "cpe_matches": []}]
     )
     io = FixtureIO({"cisa.gov": {"vulnerabilities": []}, "first.org": {"data": []}})
     out = monitor_security.check({"version": "5.3"}, {"vendor": "gnu", "product": "bash"}, io)
     facts = out["findings"][0]["facts"]
     assert next(f for f in facts if f["key"] == "Query product")["value"] == "bash"
-    assert next(f for f in facts if f["key"] == "Returned advisory")["source"] == "cve-bin-tool"
+    assert next(f for f in facts if f["key"] == "Returned advisory")["source"] == "NVD"
     assert all(f["key"] != "Fixed events" and f["source"] != "OSV" for f in facts)
 
 

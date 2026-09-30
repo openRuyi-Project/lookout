@@ -112,6 +112,20 @@ widget = { monitors = { license = { pypi = "upstream-widget" } } }
 | Go module | Security, deps.dev license, proxy withdrawal; the build graph is not runtime requirements |
 | CPAN distribution | License and static runtime prerequisites; module and distribution versions differ |
 | Complete Source0 commit | OSV commit query; repository matches do not establish subpackage applicability |
+| Version-matched Source0 archive tag | OSV GIT repository/tag query |
+| Reviewed CPE part/vendor/product | NVD CVE API; the provider matches current-version ranges |
+
+For traditional software without a registry identity, configure the CPE explicitly:
+
+```toml
+widget = { monitors = { security = { vendor = "verified_vendor", product = "verified_product" } } }
+```
+
+The default CPE part is `a` (application); use `part = "o"` for an OS kernel.
+Verify identity against upstream sources and the NVD CPE dictionary; package-name
+equality is not evidence. NVD rejects unresolved/snapshot versions instead of
+stripping them to a release. Public API requests are paced at 6.5 seconds;
+checks use the shared dated cache and retry automatically after errors.
 
 Missing mappings remain unknown. `NotPackaged` requires a reviewed mapping absent
 from a fresh inventory. PEP 508 conditions use the configured target, never the

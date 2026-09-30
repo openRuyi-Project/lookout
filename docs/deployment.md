@@ -187,9 +187,11 @@ Only web port 8080 is published, on host loopback; API 18731 stays internal. The
 [Caddy example](../deploy/Caddyfile.example) is for a host proxy. Port or ingress
 changes do not require a frontend rebuild.
 
-The base image omits the optional `/opt/cve` scanner. Vendor/product coverage
-requires its scanner and a fresh `/data/cve` database; otherwise it remains
-unavailable/error. OSV-backed checks work independently.
+Security uses public OSV and NVD APIs; it needs neither a scanner installation nor
+a local vulnerability database. Reviewed CPE identities are in `packages.toml`.
+Provider errors remain errors, not a claim of no advisories. The existing monitor
+heartbeat refreshes unchanged versions too; operators can override refresh timing
+in `[monitors.refresh.security]` without changing query identities.
 
 ### Image upgrades
 

@@ -3,8 +3,13 @@
 
 avahi = {comparable = false}
 bash = {monitors = {security = {vendor = "gnu",product = "bash"}}}
+binutils = {monitors = {security = {vendor = "gnu", product = "binutils"}}}
 cloud-hypervisor = {compare = "cloud-hypervisor@commits", watch = ["cloud-hypervisor"]}
+curl = {monitors = {security = {vendor = "haxx", product = "curl"}}}
+dbus = {monitors = {security = {vendor = "freedesktop", product = "dbus"}}}
+expat = {monitors = {security = {vendor = "libexpat_project", product = "libexpat"}}}
 gcc16 = {track_label = "16.x"}
+git = {monitors = {security = {vendor = "git-scm", product = "git"}}}
 glibc = {compare = "glibc@commits", watch = ["glibc"]}
 # Product identities and cycle granularity verified against SPEC URLs and the
 # provider's release-cycle catalog. A missing future cycle remains unsupported.
@@ -37,14 +42,23 @@ go-github-syndtr-goleveldb = {compare = "go-github-syndtr-goleveldb@commits", wa
 go-github-xo-terminfo = {compare = "go-github-xo-terminfo@commits", watch = ["go-github-xo-terminfo"], monitors = {security = {ecosystem = "Go",name = "github.com/xo/terminfo"}}}
 go-rsc-pdf = {compare = "go-rsc-pdf@commits", watch = ["go-rsc-pdf"], monitors = {security = {ecosystem = "Go",name = "rsc.io/pdf"}}}
 httpd = {monitors = {eol = {product = "apache-http-server",cycle_parts = 2}}}
+libarchive = {monitors = {security = {vendor = "libarchive", product = "libarchive"}}}
 libiberty = {track_label = "16.x"}
 kubernetes = {monitors = {eol = {product = "kubernetes",cycle_parts = 2}}}
+libjpeg-turbo = {monitors = {security = {vendor = "libjpeg-turbo", product = "libjpeg-turbo"}}}
+libpng = {monitors = {security = {vendor = "libpng", product = "libpng"}}}
+libssh = {monitors = {security = {vendor = "libssh", product = "libssh"}}}
+libssh2 = {monitors = {security = {vendor = "libssh2", product = "libssh2"}}}
+libtiff = {monitors = {security = {vendor = "libtiff", product = "libtiff"}}}
 libxml2 = {monitors = {security = {vendor = "xmlsoft",product = "libxml2"}}}
+linux = {monitors = {security = {vendor = "linux", product = "linux_kernel", part = "o"}}}
+linux-lts = {monitors = {security = {vendor = "linux", product = "linux_kernel", part = "o"}}}
 mariadb = {monitors = {eol = {product = "mariadb",cycle_parts = 2}}}
 mkosi = {compare = "mkosi@commits", watch = ["mkosi"]}
 nginx = {monitors = {eol = {product = "nginx",cycle_parts = 2}}}
 nodejs = {monitors = {eol = {product = "nodejs",cycle_parts = 1}}}
 openssl = {track_label = "3.x", monitors = {eol = {product = "openssl",cycle_parts = 2},security = {vendor = "openssl",product = "openssl"}}}
+pcre2 = {monitors = {security = {vendor = "pcre", product = "pcre2"}}}
 perl = {monitors = {eol = {product = "perl",cycle_parts = 2}}}
 php = {monitors = {eol = {product = "php",cycle_parts = 2}}}
 postgresql = {monitors = {eol = {product = "postgresql",cycle_parts = 1}}}
@@ -65,5 +79,5 @@ shim = {compare = "shim@commits", watch = ["shim"]}
 # TODO(drop): openRuyi SPECS/go-github-dmarkham-enumer has Name=enumer.
 # TODO(drop): openRuyi SPECS/python-annotated-types has Name=python-annotated_types.
 # TODO(drop): openRuyi SPECS/python-discord has Name=python-discord.py.
-sqlite = {monitors = {eol = {product = "sqlite",cycle_parts = 1}}}
+sqlite = {monitors = {eol = {product = "sqlite",cycle_parts = 1},security = {vendor = "sqlite", product = "sqlite"}}}
 valkey = {monitors = {eol = {product = "valkey",cycle_parts = 2}}}

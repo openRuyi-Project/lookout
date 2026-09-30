@@ -136,7 +136,7 @@ messages do not establish a common cause.
 
 | Observation | Does not establish |
 |---|---|
-| OSV identity/version or commit match | Local-patch, bundled-component or binary applicability |
+| OSV identity/tag/commit or NVD CPE/version match | Local-patch, bundled-component or binary applicability |
 | OSV `fixed` event | An openRuyi fix or recommended branch |
 | CISA KEV / FIRST EPSS | Project urgency / complete risk score |
 | Upstream EOL | Distribution support commitment |
@@ -144,10 +144,12 @@ messages do not establish a common cause.
 
 Security aliases are deduplicated. Failed enrichment preserves base advisories,
 not invented KEV/EPSS values. Missing comparable license metadata is unsupported,
-not unchanged. ABI comparison is absent. The optional CPE adapter uses a fixed
-`/opt/cve` scanner and `$TRACKER_CVE_HOME/.cache/cve-bin-tool/` (default home
-`/data/cve`); missing or older-than-two-days data is an error. Operators provision
-it; web requests neither scan nor update it.
+not unchanged. ABI comparison is absent. Reviewed CPE part/vendor/product mappings
+query NVD's CVE API with the current source version; NVD owns range matching.
+Git archive tags come only from confined Source0 evidence consistent with RPM
+Version. Floating branches and unresolved versions do not become release identities.
+Both providers use the existing heartbeat and dated HTTP cache; NVD requests are
+paced at 6.5 seconds per host and failures back off from 15 minutes to one hour.
 
 ## Native and network boundaries
 

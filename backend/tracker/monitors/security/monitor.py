@@ -9,32 +9,47 @@ from urllib.parse import quote, urlsplit
 from tracker.monitors.model import evidence, finding, version_query as query_subject
 from tracker.monitors.issues import Issue
 from tracker.monitors.schedule import Schedule
-from tracker.monitors.source.release import commit_hash
+from tracker.monitors.source.release import commit_hash, tag_matches_version
+from tracker.monitors.security import nvd
 
 
 TITLE = Issue.ADVISORY
 VERSION = 7
-HOSTS = {"api.osv.dev", "www.cisa.gov", "api.first.org"}
+HOSTS = {"api.osv.dev", "services.nvd.nist.gov", "www.cisa.gov", "api.first.org"}
 CVE = re.compile(r"CVE-\d{4}-\d{4,}")
 
 
 def refresh(subject, inputs, previous):
     # New advisories/KEV entries can arrive without any source-version change.
-    return Schedule(interval_seconds=21600)
+    retry = 900 if inputs and inputs.get('source') == 'nvd' else 300
+    return Schedule(interval_seconds=21600, retry_seconds=retry)
 
 
 def inputs(package, configured):
     if configured is not None and 'vendor' in configured:
-        return configured
+        return {'source': 'nvd', **configured}
     from tracker.identity import from_package
     identity = configured if configured is not None else from_package(package)
     if identity and 'commit' in identity:
+        if configured is not None:
+            pinned = package.get('source_commit')
+            repository = str(identity.get('repository', '')).rstrip('/').removesuffix('.git')
+            if (not pinned or identity['commit'] != pinned['commit']
+                    or repository != pinned['repository'].rstrip('/').removesuffix('.git')):
+                raise ValueError('Configured security commit does not match confined Source0 evidence')
         return identity
-    if identity and identity.get('ecosystem') in ('PyPI', 'crates.io', 'Go', 'npm'):
+    if identity and identity.get('ecosystem') in ('PyPI', 'crates.io', 'Go', 'npm', 'GIT'):
         if query_version(package.get('version'), identity['ecosystem']):
             return identity
         return package.get('source_commit') or identity
-    return configured if configured is not None else package.get('source_commit')
+    if configured is not None:
+        return configured
+    if package.get('source_commit'):
+        return package['source_commit']
+    tagged = package.get('source_tag')
+    if tagged and public_reference(tagged['repository']):
+        return {'ecosystem': 'GIT', 'name': tagged['repository'], 'tag': tagged['tag']}
+    return None
 
 
 def query_version(version, ecosystem):
@@ -55,11 +70,19 @@ def query(subject, settings):
         if not commit_hash(settings['commit']) or not public_reference(settings['repository']):
             raise ValueError('security requires a corroborated full commit and public repository')
         return {'commit': settings['commit']}
-    if set(settings) != {'ecosystem', 'name'} or settings['ecosystem'] not in ('PyPI', 'crates.io', 'Go', 'npm'):
+    if (set(settings) - {'ecosystem', 'name', 'tag'} or not {'ecosystem', 'name'} <= set(settings)
+            or settings['ecosystem'] not in ('PyPI', 'crates.io', 'Go', 'npm', 'GIT')):
         raise ValueError('security requires an explicit supported ecosystem/name')
-    if not query_version(subject['version'], settings['ecosystem']):
+    if settings['ecosystem'] == 'GIT' and not public_reference(settings['name']):
+        raise ValueError('security requires a public repository URL')
+    if 'tag' in settings and settings['ecosystem'] != 'GIT':
+        raise ValueError('release tags require a GIT repository identity')
+    if 'tag' in settings and not tag_matches_version(settings['tag'], subject['version']):
         return None
-    return {'package': settings, 'version': subject['version']}
+    version = settings.get('tag', subject['version'])
+    if not query_version(version, settings['ecosystem']):
+        return None
+    return {'package': {key: settings[key] for key in ('ecosystem', 'name')}, 'version': version}
 
 
 def osv(subject, settings, io):
@@ -98,10 +121,10 @@ def group_aliases(entries):
 
 def matching_ranges(affected, settings):
     ranges = affected.get('ranges', [])
-    if 'commit' in settings:
-        repository = settings['repository'].removesuffix('.git').rstrip('/')
+    if 'commit' in settings or settings.get('ecosystem') == 'GIT':
+        repository = (settings['repository'] if 'commit' in settings else settings['name']).rstrip('/').removesuffix('.git')
         return [item for item in ranges if item.get('type') == 'GIT'
-                and str(item.get('repo', '')).removesuffix('.git').rstrip('/') == repository]
+                and str(item.get('repo', '')).rstrip('/').removesuffix('.git') == repository]
     package = affected.get('package', {})
     return ranges if (package.get('name'), package.get('ecosystem')) == (
         settings.get('name'), settings.get('ecosystem')) else []
@@ -134,21 +157,21 @@ def public_reference(value):
     return value
 
 
-def attributed_context(member, settings, member_url):
-    """Normalize optional OSV context; provider prose remains untrusted plain text."""
+def attributed_context(member, settings, member_url, *, provider='OSV'):
+    """Normalize optional context; provider prose remains untrusted plain text."""
     facts = []
     summary = member.get('summary')
     if isinstance(summary, str) and summary.strip():
         summary = ' '.join(summary.split())
         facts.append(evidence('Summary', summary[:600] + ('…' if len(summary) > 600 else ''),
-                              'OSV', member_url, code='summary'))
+                              provider, member_url, code='summary'))
         if len(summary) > 600:
             facts.append(evidence('Summary characters omitted', len(summary) - 600,
-                                  'OSV', member_url, code='truncated'))
+                                  provider, member_url, code='truncated'))
     severities = list(member.get('severity') or []) if isinstance(member.get('severity'), list) else []
     for affected in member.get('affected', []):
         package = affected.get('package', {})
-        matches = (bool(matching_ranges(affected, settings)) if 'commit' in settings else
+        matches = (bool(matching_ranges(affected, settings)) if 'commit' in settings or settings.get('ecosystem') == 'GIT' else
                    (package.get('name'), package.get('ecosystem')) == (settings.get('name'), settings.get('ecosystem')))
         if matches:
             if isinstance(affected.get('severity'), list):
@@ -167,11 +190,11 @@ def attributed_context(member, settings, member_url):
             continue
         origin = severity.get('source')
         key = kind + (' · ' + origin if origin in ('NVD', 'CNA', 'SELF') else '')
-        facts.append(evidence(key, vector, 'OSV', member_url, code='cvss_vector'))
+        facts.append(evidence(key, vector, provider, member_url, code='cvss_vector'))
     return facts
 
 
-def reference_facts(members, advisory_url):
+def reference_facts(members, advisory_url, *, provider='OSV'):
     priorities = {'FIX': 0, 'ADVISORY': 1, 'WEB': 2}
     references = {}
     for member in members:
@@ -186,9 +209,9 @@ def reference_facts(members, advisory_url):
             if url and (url not in references or priorities[item['type']] < priorities[references[url]]):
                 references[url] = item['type']
     ordered = sorted(references, key=lambda url: (priorities[references[url]], url))
-    facts = [evidence(references[url], url, 'OSV', url, code='reference') for url in ordered[:12]]
+    facts = [evidence(references[url], url, provider, url, code='reference') for url in ordered[:12]]
     if len(ordered) > 12:
-        facts.append(evidence('Additional references', len(ordered) - 12, 'OSV', advisory_url, code='truncated'))
+        facts.append(evidence('Additional references', len(ordered) - 12, provider, advisory_url, code='truncated'))
     return facts
 
 
@@ -209,10 +232,7 @@ def bounded_facts(facts, provider, advisory_url):
 
 def check(subject, settings, io):
     if "vendor" in settings:
-        # The scanner adapter is isolated from page rendering and OSV transport.
-        from tracker.monitors.security.cve import scan
-
-        entries = scan(subject, settings)
+        entries = nvd.read(subject, settings, io)
     else:
         entries = osv(subject, settings, io)
     if entries is None:
@@ -244,16 +264,20 @@ def check(subject, settings, io):
         ids = sorted(a for a in aliases if CVE.fullmatch(a))
         identity = ids[0] if ids else min(aliases)
         active = bool(set(ids) & set(kev))
-        provider = "cve-bin-tool" if "vendor" in settings else "OSV"
+        provider = "NVD" if "vendor" in settings else "OSV"
         link = (
             "https://nvd.nist.gov/vuln/detail/" + identity
             if ids
             else "https://osv.dev/vulnerability/" + quote(identity, safe="")
         )
         source_url = (
-            "https://cve-bin-tool.readthedocs.io/en/latest/" if "vendor" in settings else "https://api.osv.dev/v1/query"
+            nvd.query_url(settings, subject['version']) if "vendor" in settings else "https://api.osv.dev/v1/query"
         )
-        queried = {'commit': settings['commit']} if 'commit' in settings else {**settings, 'version': subject['version']}
+        if provider == 'NVD':
+            queried = {**{k: v for k, v in settings.items() if k != 'source'}, 'version': subject['version']}
+        else:
+            request = query(subject, settings)
+            queried = {'commit': request['commit']} if 'commit' in request else {**request['package'], 'version': request['version']}
         facts = [
             evidence("Query " + key, value, provider, source_url, code="query")
             for key, value in queried.items()
@@ -262,13 +286,13 @@ def check(subject, settings, io):
             facts.append(evidence('Source repository', settings['repository'], 'RPM Source0',
                                   settings['repository'], code='query'))
         aliases_url = (
-            link if provider == "cve-bin-tool" else "https://osv.dev/vulnerability/" + quote(members[0]["id"], safe="")
+            link if provider == "NVD" else "https://osv.dev/vulnerability/" + quote(members[0]["id"], safe="")
         )
         facts.append(evidence("Aliases", sorted(aliases - {identity}), provider, aliases_url))
         for member in members:
             member_url = (
                 "https://nvd.nist.gov/vuln/detail/" + member["id"]
-                if "vendor" in settings
+                if provider == 'NVD'
                 else "https://osv.dev/vulnerability/" + quote(member["id"], safe="")
             )
             facts.append(evidence("Returned advisory", member["id"], provider, member_url))
@@ -280,9 +304,10 @@ def check(subject, settings, io):
                             fixed.add(str(event["fixed"]))
             if provider == "OSV":
                 facts.append(evidence("Fixed events", sorted(fixed), provider, member_url, code="fixed_events"))
-                facts.extend(attributed_context(member, settings, member_url))
-        if provider == "OSV":
-            facts.extend(reference_facts(members, aliases_url))
+            if provider == 'NVD':
+                facts.append(evidence('Vulnerable CPE criteria', member['cpe_matches'], 'NVD', member_url, code='cpe_match'))
+            facts.extend(attributed_context(member, settings, member_url, provider=provider))
+        facts.extend(reference_facts(members, aliases_url, provider=provider))
         kev_url = "https://www.cisa.gov/known-exploited-vulnerabilities-catalog"
         if not ids:
             facts.append(evidence("KEV (no CVE alias)", None, "CISA", kev_url, status="not_applicable"))
@@ -323,7 +348,8 @@ def check(subject, settings, io):
     return {
         "status": "partial" if errors else "ok",
         "findings": findings,
-        "note": ("Repository commit query; subpackage applicability is not evaluated."
-                 if 'commit' in settings else "Current source component only; bundled dependencies and binary artifacts are not covered.")
+        "note": ("Repository query; subpackage and local-patch applicability are not evaluated."
+                 if 'commit' in settings or settings.get('ecosystem') == 'GIT' else
+                 "Current source component only; local patches, build options, bundled dependencies and binary artifacts are not evaluated.")
         + (" Enrichment incomplete: " + "; ".join(errors) if errors else ""),
     }
