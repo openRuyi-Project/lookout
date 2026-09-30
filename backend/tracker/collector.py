@@ -424,7 +424,7 @@ def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt
                              'error': error or ('some upstream tracks failed' if not complete or
                                                any(fact.get('error') for fact in retained.values()) else None)}
                 if complete:
-                    component['fetched_at'] = min(successes, key=datetime.fromisoformat)
+                    component['fetched_at'] = min(successes, key=datetime.fromisoformat, default=now)
                 snapshot['components']['nvchecker'] = component
             else:
                 snapshot = merge_upstreams(config, latest, tracks, error, now, selected)

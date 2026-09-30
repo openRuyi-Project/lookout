@@ -19,6 +19,23 @@ from tracker.monitors.version import nvchecker as nv
 from tracker.readmodel import snapshot as view
 
 
+@pytest.mark.parametrize('seeded', [False, True])
+def test_automatic_upstream_empty_rules_converge(config, snapshot, tmp_path, monkeypatch, seeded):
+    config.update(native={}, packages={}, nv_digest='empty', config_digest='cfg')
+    monkeypatch.setattr(cfg, 'require_unchanged', lambda config, path: None)
+    db = tmp_path / 'snapshot.db'
+    state.commit(db, snapshot if seeded else state.empty())
+    def run(*args, **kwargs):
+        pytest.fail('empty rules must not invoke nvchecker')
+    first = collector.check_upstreams(config, 'unused', db, run_nv=run, due=True)
+    assert first['tracks'] == {} and first['native_ids'] == []
+    assert first['components']['nvchecker']['error'] is None
+    assert first['components']['nvchecker']['selected_track_count'] == 0
+    datetime.fromisoformat(first['components']['nvchecker']['fetched_at'])
+    idle = collector.check_upstreams(config, 'unused', db, run_nv=run, due=True)
+    assert idle['generation'] == first['generation']
+
+
 def test_automatic_upstream_subset_retries_and_noop(config, snapshot, tmp_path, monkeypatch):
     now = datetime.now(timezone.utc).replace(microsecond=0)
     clock = [now]
