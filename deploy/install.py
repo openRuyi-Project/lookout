@@ -152,11 +152,11 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
              'import shutil; shutil.copytree("/app/config", "/bootstrap", dirs_exist_ok=True)'])
     for path in (root / 'config').rglob('*'):
         path.chmod(0o700 if path.is_dir() else 0o600)
-    template = Path(__file__).parent / 'quadlet/openruyi-monitor.container.in'
+    template = Path(__file__).parent / 'quadlet/openruyi-lookout.container.in'
     text = template.read_text()
     for key, value in {'IMAGE': manifest['image'], 'CONFIG_DIR': str(root / 'config'), 'DATA_DIR': str(data)}.items():
         text = text.replace('@' + key + '@', value)
-    text = (text.replace('ContainerName=openruyi-monitor', 'ContainerName=' + name)
+    text = (text.replace('ContainerName=openruyi-lookout', 'ContainerName=' + name)
             .replace('127.0.0.1:18730:8080', f'127.0.0.1:{port}:8080')
             .replace('Memory=8g', 'Memory=' + memory).replace('PidsLimit=512', 'PidsLimit=' + str(pids))
             .replace('CPUQuota=400%', 'CPUQuota=' + str(cpus * 100) + '%'))

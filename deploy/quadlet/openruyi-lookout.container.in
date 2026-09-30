@@ -4,7 +4,7 @@ Description=openRuyi Lookout
 [Container]
 Image=@IMAGE@
 Pull=never
-ContainerName=openruyi-monitor
+ContainerName=openruyi-lookout
 UserNS=keep-id:uid=10001,gid=10001
 User=10001
 Group=10001

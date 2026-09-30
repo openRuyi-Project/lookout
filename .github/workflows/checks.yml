@@ -19,21 +19,21 @@ jobs:
       - name: Build frontend and native runtime
         run: |
           VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"])')
-          docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --build-arg RELEASE_VERSION="$VERSION" -t openruyi-monitor:test -f Containerfile .
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-monitor:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --build-arg RELEASE_VERSION="$VERSION" -t openruyi-lookout:test -f Containerfile .
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-lookout:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
       - name: Native RPM, confinement, backend, API contract and SSR
         env:
           CONTAINER_ENGINE: docker
-        run: deploy/check-image.sh openruyi-monitor:test
+        run: deploy/check-image.sh openruyi-lookout:test
       - name: Smoke-test the production entrypoint
         env:
           CONTAINER_ENGINE: docker
-        run: python3 deploy/smoke-image.py openruyi-monitor:test
+        run: python3 deploy/smoke-image.py openruyi-lookout:test
       - name: Installation, configuration, upgrade and restore
-        run: python3 deploy/smoke-release.py openruyi-monitor:test
+        run: python3 deploy/smoke-release.py openruyi-lookout:test
       - name: Save the tested image
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        run: docker save --output /tmp/tested-image.tar openruyi-monitor:test
+        run: docker save --output /tmp/tested-image.tar openruyi-lookout:test
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         with:
@@ -58,21 +58,21 @@ jobs:
         run: |
           set -eu
           docker load --input tested-image.tar
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' openruyi-monitor:test)" = "$GITHUB_SHA"
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-monitor:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' openruyi-lookout:test)" = "$GITHUB_SHA"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-lookout:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           IMAGE="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          docker tag openruyi-monitor:test "$IMAGE:sha-$GITHUB_SHA"
+          docker tag openruyi-lookout:test "$IMAGE:sha-$GITHUB_SHA"
           docker push "$IMAGE:sha-$GITHUB_SHA"
           if [ "$GITHUB_REF" = refs/heads/main ]; then
             HEAD=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
             if [ "$HEAD" = "$GITHUB_SHA" ]; then
-              docker tag openruyi-monitor:test "$IMAGE:main"
+              docker tag openruyi-lookout:test "$IMAGE:main"
               docker push "$IMAGE:main"
             fi
           else
-            VERSION=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' openruyi-monitor:test)
+            VERSION=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' openruyi-lookout:test)
             test "$GITHUB_REF_NAME" = "v$VERSION"
-            docker tag openruyi-monitor:test "$IMAGE:$GITHUB_REF_NAME"
+            docker tag openruyi-lookout:test "$IMAGE:$GITHUB_REF_NAME"
             docker push "$IMAGE:$GITHUB_REF_NAME"
           fi

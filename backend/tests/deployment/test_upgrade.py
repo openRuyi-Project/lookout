@@ -29,7 +29,7 @@ def deployment(tmp_path, monkeypatch):
         path.mkdir()
     (data / 'state').mkdir()
     (data / 'state/tracker.sqlite3').write_bytes(b'operator data')
-    text = (ROOT / 'deploy/quadlet/openruyi-monitor.container.in').read_text()
+    text = (ROOT / 'deploy/quadlet/openruyi-lookout.container.in').read_text()
     for key, value in (('IMAGE', OLD), ('CONFIG_DIR', str(config)), ('DATA_DIR', str(data))):
         text = text.replace('@' + key + '@', value)
     unit = tmp_path / 'fixture.container'

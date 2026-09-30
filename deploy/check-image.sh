@@ -11,7 +11,7 @@ if [ "$ENGINE" = podman ] && [ "$(podman info --format '{{.Host.Security.Rootles
 fi
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 # A disposable test layer leaves the application image free of test tooling.
-TEST_IMAGE="localhost/openruyi-monitor-check:$$"
+TEST_IMAGE="localhost/openruyi-lookout-check:$$"
 trap '"$ENGINE" image rm "$TEST_IMAGE" >/dev/null 2>&1 || true' EXIT
 if [ "$ENGINE" = podman ]; then
   "$ENGINE" build --format docker --build-arg "RUNTIME_IMAGE=$IMAGE" -t "$TEST_IMAGE" -f "$ROOT/deploy/Containerfile.check" "$ROOT"
