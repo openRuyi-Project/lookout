@@ -22,7 +22,7 @@ from urllib.parse import urlencode, urlsplit
 
 import httpx
 
-from tracker import config as cfg, state
+from tracker import config as cfg, config_change, state
 from tracker.monitors.version import candidates as sources, nvchecker as nv, rules as version_rules
 from tracker.providers.http import read_response
 
@@ -191,13 +191,11 @@ def fetch_project(name, client):
     return record
 
 
-def append_entries(text, entries):
-    raw = tomllib.loads(text)
-    original = raw
+def add_entries(text, entries):
+    original = tomllib.loads(text)
     if set(original) & set(entries):
         raise ValueError('discovery must never overwrite an existing native track')
-    addition = '\n' + nv.dump_config(dict(sorted(entries.items()))) if entries else ''
-    output = text + ('' if text.endswith('\n') else '\n') + addition
+    output = config_change.edit_tables(text, dict(sorted(entries.items())))
     if not version_rules.same_values(tomllib.loads(output), {**original, **entries}):
         raise ValueError('discovery output differs from the requested native rules')
     return output
@@ -344,7 +342,7 @@ def main(argv=None):
     text = Path(config['nvpath']).read_text()
     cfg.require_unchanged(config)
     if args.verify:
-        (output / 'candidate.nvchecker.toml').write_text(append_entries(text, accepted))
+        (output / 'candidate.nvchecker.toml').write_text(add_entries(text, accepted))
     (output / 'candidate-bindings.json').write_text(json.dumps(bindings,indent=2)+'\n')
     # URL mismatch is review evidence, not proof that either URL is wrong.
     for row in rows:

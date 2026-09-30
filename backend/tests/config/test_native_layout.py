@@ -8,7 +8,7 @@ from nvchecker.core import load_file
 
 from tests.helpers.config import setup_config
 from tracker import config, config_change, package
-from tracker.monitors.version import rules
+from tracker.monitors.version import nvchecker as nv, rules
 
 COMPACT = r'''# Source identity, independent of the downstream name.
 "alpha.with.dot" = {source = "pypi", pypi = "upstream-alpha"}
@@ -40,6 +40,31 @@ def test_inline_edit_keeps_other_rules_and_comments_byte_identical():
     assert config_change.edit_tables(result, {'alpha.with.dot': entry}) == result
 
 
+def test_added_rule_is_one_root_inline_table_even_after_existing_sections():
+    entry = {'source': 'pypi', 'pypi': 'upstream-new', 'include_regex': r'^2\.[0-9]+$'}
+    result = config_change.edit_tables(COMPACT, {'new"name': entry})
+    assert rules.same_values(tomllib.loads(result), {**tomllib.loads(COMPACT), 'new"name': entry})
+    assert len(result.splitlines()) == len(COMPACT.splitlines()) + 1
+    assert result.endswith(COMPACT[COMPACT.index('[__config__]'):])
+    for line in COMPACT.splitlines():
+        if line:
+            assert line in result
+    positions, lines = config_change.table_positions(result)
+    start, end = positions[('new"name',)]
+    assert end == start + 1
+    assert tomllib.loads(lines[start]) == {'new"name': entry}
+
+
+def test_new_package_policy_keeps_nested_monitor_settings_in_one_line():
+    policies = {'widget': {'compare': 'widget@stable', 'watch': ['widget@preview'],
+                           'monitors': {'eol': {'product': 'upstream-widget', 'cycle_parts': 2},
+                                        'security': {'ecosystem': 'PyPI', 'name': 'upstream-widget'}}}}
+    result = config_change.edit_tables('', policies)
+    assert len(result.splitlines()) == 1
+    assert rules.same_values(tomllib.loads(result), policies)
+    assert config_change.edit_tables(result, policies) == result
+
+
 def test_inline_promotion_roundtrip_preserves_operator_options(tmp_path):
     paths = [setup_config(tmp_path / name) for name in ('base', 'candidate', 'runtime')]
     for path in paths:
@@ -61,6 +86,20 @@ def test_duplicate_inline_and_block_rule_is_rejected(tmp_path):
     path.write_text(COMPACT + '\n["alpha.with.dot"]\nsource="pypi"\npypi="other"\n')
     with pytest.raises(ValueError):
         rules.load(path)
+
+
+def test_equivalent_rule_spelling_retains_observation_when_provider_fails():
+    block = '[widget]\nsource="pypi"\npypi="upstream-widget"\n'
+    inline = 'widget = { source="pypi", pypi="upstream-widget" }\n'
+    old = {'version': '1.2', 'fetched_at': '2026-01-01T00:00:00+00:00',
+           'configuration_fingerprint': config.track_fingerprint(tomllib.loads(block)['widget'])}
+    facts, error = nv.import_events('', tomllib.loads(inline), {'widget': old},
+                                   '2026-01-02T00:00:00+00:00', 'provider timeout')
+    assert error == 'provider timeout'
+    assert facts['widget']['version'] == old['version']
+    assert facts['widget']['fetched_at'] == old['fetched_at']
+    assert facts['widget']['configuration_fingerprint'] == old['configuration_fingerprint']
+    assert 'previous_configuration' not in facts['widget']
 
 
 @pytest.mark.parametrize('inline', [False, True])

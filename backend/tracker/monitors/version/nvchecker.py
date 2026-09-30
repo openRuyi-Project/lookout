@@ -147,7 +147,12 @@ def dump_config(tables):
     TOML Kit may support newer syntax than Python's tomllib (also used by
     nvchecker). Validate before creating a candidate or invoking the checker.
     """
-    text = tomlkit.dumps(tables)
+    document = tomlkit.document()
+    for name, fields in tables.items():
+        table = tomlkit.inline_table()
+        table.update(fields)
+        document[name] = table
+    text = tomlkit.dumps(document)
     try:
         parsed = tomllib.loads(text)
     except tomllib.TOMLDecodeError as error:

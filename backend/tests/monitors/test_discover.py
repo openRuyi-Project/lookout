@@ -99,14 +99,26 @@ def test_unverified_local_facts_are_not_identity_proof(mutation, reason):
     assert discover.candidates({'native': {}, 'packages': {}}, data)[0]['reason'] == reason
 
 
-def test_append_preserves_operator_rules_and_rejects_collision():
+def test_add_preserves_operator_rules_and_rejects_collision():
     text = '# operator comment\n[existing]\nsource="pypi"\npypi="example"\n\n'
     rule = discover.match(candidate(), response())['entry']
-    output = discover.append_entries(text, {'new"name': rule})
-    assert output.startswith(text)
+    output = discover.add_entries(text, {'new"name': rule})
+    assert output.endswith(text[text.index("[existing]"):])
+    assert output.count("# operator comment") == 1
+    assert sum(tomllib.loads(line) == {'new"name': rule} for line in output.splitlines()) == 1
     assert tomllib.loads(output) == {**tomllib.loads(text), 'new"name': rule}
     with pytest.raises(ValueError, match='overwrite'):
-        discover.append_entries(text, {'existing': rule})
+        discover.add_entries(text, {'existing': rule})
+
+
+def test_discovery_does_not_reintroduce_sections_into_inline_configuration():
+    text = '# Provider policy\nexisting = { source = "pypi", pypi = "upstream-existing" }\n'
+    rule = {'source': 'pypi', 'pypi': 'upstream-new'}
+    result = discover.add_entries(text, {'new': rule})
+    assert result.startswith(text)
+    assert len(result.splitlines()) == len(text.splitlines()) + 1
+    assert tomllib.loads(result) == {**tomllib.loads(text), 'new': rule}
+    assert discover.add_entries(text, {}) == text
 
 
 def test_verification_reuses_native_selected_cli_without_relocating_keyfile(tmp_path, monkeypatch):

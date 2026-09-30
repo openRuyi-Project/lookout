@@ -29,16 +29,11 @@ check and due-time context. Edit provider code via [Contributing](../CONTRIBUTIN
 
 ## Version rules
 
-Use native nvchecker entries. An inline entry belongs before the first table;
-a multiline entry can appear after other tables. Define each track once:
+Use one native inline table per track. Quoted keys retain dots and `@` in names:
 
 ```toml
 python-requests = { source = "pypi", pypi = "requests" }
-
-["widget@3"]
-source = "pypi"
-pypi = "widget"
-include_regex = '^3\.[0-9]+\.[0-9]+$'
+"widget@3" = { source = "pypi", pypi = "widget", include_regex = '^3\.[0-9]+\.[0-9]+$' }
 ```
 
 Package name defaults to track name. Compare formal releases; preserve explicit
@@ -49,7 +44,7 @@ changing the main comparison:
 
 | `versions/nvchecker.toml` | `packages.toml` |
 |---|---|
-| `["widget@prerelease"]`<br>`source = "pypi"`<br>`pypi = "widget"`<br>`use_pre_release = true` | `[widget]`<br>`watch = ["widget@prerelease"]` |
+| `"widget@prerelease" = { source = "pypi", pypi = "widget", use_pre_release = true }` | `widget = { watch = ["widget@prerelease"] }` |
 
 Run a single-package provider check without writing the production snapshot:
 
@@ -78,6 +73,13 @@ field. Common nvchecker filters/normalization still apply. To filter an Anitya
 maintenance line **before** taking the first result, use native `jq`; filtering
 after `anitya_stable` would discard the provider's other candidates.
 
+```toml
+"widget@3" = { source = "jq", url = "https://release-monitoring.org/api/v2/versions/?project_id=PROJECT_ID", filter = 'first(.stable_versions[] | select(test("^v?3[.]")))', prefix = "v" }
+```
+
+Replace `PROJECT_ID` with a verified identity. Keep the provider's ordering;
+do not sort Anitya history with nvchecker's generic comparator.
+
 ### Git snapshots
 
 A complete Source0 commit must agree with the RPM `+gitDATE.shortsha` identity;
@@ -85,7 +87,7 @@ a name or prefix alone is insufficient. Confirm the branch from repository refs:
 
 | `versions/nvchecker.toml` | `packages.toml` |
 |---|---|
-| `["widget@commits"]`<br>`source = "git"`<br>`git = "https://github.com/example/widget"`<br>`use_commit = true`<br>`branch = "main"` | `[widget]`<br>`compare = "widget@commits"`<br>`watch = ["widget"]` |
+| `"widget@commits" = { source = "git", git = "https://github.com/example/widget", use_commit = true, branch = "main" }` | `widget = { compare = "widget@commits", watch = ["widget"] }` |
 
 The old release rule stays as a watch. Different commits mean `changed`, not a
 proven newer release. The list uses `YYYYMMDD.xxxxxx`; target dates come only from
@@ -99,13 +101,8 @@ Registry-backed monitors reuse saved Source0 identity, then native-rule identity
 explicit settings take precedence. EOL needs a product and cycle policy:
 
 ```toml
-# packages.toml
-[openssl.monitors.eol]
-product = "openssl"
-cycle_parts = 2
-
-[widget.monitors.license]
-pypi = "upstream-widget"
+openssl = { monitors = { eol = { product = "openssl", cycle_parts = 2 } } }
+widget = { monitors = { license = { pypi = "upstream-widget" } } }
 ```
 
 | Identity | Reused by |

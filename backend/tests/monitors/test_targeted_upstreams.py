@@ -46,6 +46,17 @@ def test_generated_native_input_roundtrips_quoted_keys_nested_options_and_escape
     assert tomllib.loads(nv.dump_config(tables)) == tables
 
 
+def test_generated_native_rules_are_one_root_inline_table_per_track():
+    tables = {'__config__': {'max_concurrency': 4, 'source': {'fixture': {'items': [1, 'x']}}},
+              'widget@stable': {'source': 'regex', 'url': 'https://fixture.example/releases',
+                                'regex': r'widget-([0-9]+\.[0-9]+)\.tar\.gz'},
+              'quoted"name': {'source': 'cmd', 'cmd': "printf '1.0\\n'"}}
+    text = nv.dump_config(tables)
+    assert len(text.splitlines()) == len(tables)
+    assert tomllib.loads(text) == tables
+    assert all(len(tomllib.loads(line)) == 1 for line in text.splitlines())
+
+
 def test_generated_native_input_rejects_new_toml_syntax_before_writing():
     # TOML Kit emits TOML 1.1's \\e; Python 3.14/nvchecker still read TOML 1.0.
     with pytest.raises(ValueError, match='not supported by the TOML reader'):

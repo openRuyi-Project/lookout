@@ -102,6 +102,10 @@ def edit_tables(text, changes, prefix=()):
             expected_container[name] = value
             if name in container and isinstance(container[name], MutableMapping):
                 update_table(container[name], value)
+            elif isinstance(value, dict):
+                table = tomlkit.inline_table()
+                table.update(value)
+                container[name] = table
             else:
                 container[name] = value
     result = tomlkit.dumps(document)
