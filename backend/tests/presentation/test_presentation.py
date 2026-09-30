@@ -446,3 +446,12 @@ def test_spec_link_uses_the_path_as_its_only_label(snapshot):
     document = presentation_pages.detail(pkg)
     link = next(value for value in document.links if value.href == source['source_url'])
     assert link.text == '/SPECS/aardvark-dns'
+
+
+def test_upstream_link_shows_the_address_without_an_indirect_label(snapshot):
+    pkg = view.project_monitors(snapshot)[0][0]
+    url = 'https://example.invalid/upstream/project'
+    pkg['monitors']['source']['data']['metadata'] = {'url': url}
+    document = presentation_pages.detail(pkg)
+    link, = [value for value in document.links if value.href == url]
+    assert link.text == url

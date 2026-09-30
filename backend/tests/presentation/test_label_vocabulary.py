@@ -90,14 +90,19 @@ def test_same_word_from_another_monitor_is_not_reinterpreted():
     assert observation_label('security', 'CustomAdvisory') == 'CustomAdvisory'
 
 
-def test_unmapped_buildsystem_is_last_and_identity_style_is_separate():
+@pytest.mark.parametrize('selected', [False, True])
+def test_undetected_buildsystem_keeps_its_identity_and_last_position(selected):
     from tracker.presentation.navigation import global_navigation, Links
     from tracker.presentation.values import buildsystem
     payload = {'buildsystems': {'_not_detected': 4, 'cmake': 2, 'meson': 3}}
-    navigation, = global_navigation(payload, {}, Links())
-    assert [choice.label for choice in navigation.choices] == ['cmake', 'meson', 'Undetected']
+    query = {'buildsystem': '_not_detected'} if selected else {}
+    navigation, = global_navigation(payload, query, Links(query))
+    assert [choice.label for choice in navigation.choices] == ['cmake', 'meson', '❔ Undetected']
     assert navigation.choices[-1].count == 4
-    assert parse_qs(urlsplit(navigation.choices[-1].href).query)['buildsystem'] == ['_not_detected']
+    choice = navigation.choices[-1]
+    assert choice.selected is selected
+    assert choice.icon is None
+    assert parse_qs(urlsplit(choice.href).query).get('buildsystem') == (None if selected else ['_not_detected'])
     assert buildsystem('cmake', Links()).variant == 'solid'
 
 

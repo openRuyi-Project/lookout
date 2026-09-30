@@ -225,7 +225,7 @@ const mock = createServer((req, res) => {
       monitors: catalog, check_statuses: {ok: packages.length}, check_groups: {failed: 0, uncovered: 0}, section,
       result_count: resultRows.length, coverage_count: packages.length, retained_count: retainedCount,
       presentation: {buildsystems: appearancePalette},
-      buildsystems: {custom: 1}, maintenance_labels: {CheckFailed: 1, NewSignal: 1, LicenseDiff: 1, DepMismatch: 1},
+      buildsystems: {custom: 1, _not_detected: 4}, maintenance_labels: {CheckFailed: 1, NewSignal: 1, LicenseDiff: 1, DepMismatch: 1},
       requires_counts: {all: 3, unmet: 1, changes: 1},
       version_signals: {security: 1, license: 1, requires: 1},
       build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'failed',label:'Failed',count:2}, {value:'blocked',label:'Blocked',count:1}]])),
@@ -357,6 +357,7 @@ try {
   assert.match(globalNavigation, /<h2>BuildSystem<\/h2>/);
   assert.match(globalNavigation, /aria-label="BuildSystem"/);
   assert.match(globalNavigation, /buildsystem=custom[^]*?>custom<\/span><\/span>\s*<b>1<\/b>/);
+  assert.match(globalNavigation, /buildsystem=_not_detected[^]*?>❔ Undetected<\/span><\/span>\s*<b>4<\/b>/);
   assert.equal((globalNavigation.match(/class="brand-icon/g) || []).length, 1);
   const logoURL = globalNavigation.match(/<img src="([^"]+)"/)[1];
   assert.match(logoURL, /^\/_astro\/gopher[.\w-]*\.svg$/);
@@ -533,6 +534,7 @@ try {
   assert.equal((security.match(/Local patches, bundled dependencies and binary artifacts are not evaluated/g) || []).length, 1);
   assert.match(security, /0\.396%/);
   assert.match(security, /Reported fixes/);
+  assert.match(security, /href="https:\/\/example.org\/upstream"[^>]*>https:\/\/example.org\/upstream<\/a>/);
   assert.match(security, /unavailable/);
   assert.match(security, />No<\/span>/);
   assert.match(security, /<section\b[^>]*id="security"[^>]*>/, 'evidence remains expanded');

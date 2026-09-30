@@ -167,7 +167,7 @@ def detail(pkg):
     identity.extend(sorted(signals, key=lambda value: priority(value.appearance)))
     shortcuts = [text('/' + data['source_path'], href=data.get('source_url'))] if data.get('source_path') else []
     if meta.get('url'):
-        shortcuts.append(text('Upstream', href=meta['url']))
+        shortcuts.append(text(meta['url'], href=meta['url']))
     # Composition order is a reader concern; collectors never encode it.
     results = sorted(pkg['monitors'].values(), key=lambda m: (m['id'] == 'eol', {'build': 0, 'evidence': 1, 'requires': 1, 'version': 2, 'source': 3}[m['data']['kind']]))
     sections, context = [], []

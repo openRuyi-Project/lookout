@@ -57,7 +57,7 @@ text = "Stale"
 text = "BuildSystem"
 
 [labels."Not detected"]
-text = "Undetected"
+text = "❔ Undetected"
 
 [labels."Not mapped"]
 text = "Unmapped"
