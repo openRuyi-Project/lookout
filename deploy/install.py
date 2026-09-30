@@ -14,7 +14,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from deployment import (LABEL, PROTECTION, PYTHON, Docker, Quadlet, healthy, image_command,
-                        image_reference, manager, no_data_users, resolve_image, run, write_exclusive)
+                        image_reference, manager, no_data_users, resolve_image, run, service_action, write_exclusive)
 
 PREPARE = '''import os, shutil, sys, tarfile
 from pathlib import Path
@@ -198,8 +198,10 @@ def install_automation(name, root, unit, channel):
             text = text.replace('@' + key + '@', value)
         write_exclusive(path, text.encode())
     manager('Reload')
-    for role in ('update', 'backup'):
-        run(['systemctl', '--user', 'enable', '--now', name + '-' + role + '.timer'])
+    timers = [name + '-' + role + '.timer' for role in ('update', 'backup')]
+    manager('EnableUnitFiles', 'asbb', str(len(timers)), *timers, 'false', 'false')
+    for timer in timers:
+        service_action(timer, 'StartUnit')
 
 
 def main(argv=None):

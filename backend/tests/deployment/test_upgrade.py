@@ -371,6 +371,7 @@ def test_automation_keeps_host_update_and_backup_separate(tmp_path, monkeypatch)
     calls = []
     monkeypatch.setattr(install, 'run', lambda argv, **kwargs: calls.append(argv))
     monkeypatch.setattr(install, 'manager', lambda *args: calls.append(args))
+    monkeypatch.setattr(install, 'service_action', lambda *args: calls.append(args))
     unit = tmp_path / 'lookout.container'
     install.install_automation('lookout', tmp_path, unit, 'ghcr.io/example/lookout:main')
     user_units = tmp_path / '.config/systemd/user'
@@ -380,7 +381,9 @@ def test_automation_keeps_host_update_and_backup_separate(tmp_path, monkeypatch)
     assert '--unit ' + str(unit) in update and '--quiet' in update
     assert '--backup-dir ' + str(tmp_path / 'backups') in backup
     assert '@' not in update and '@' not in backup
-    assert ['systemctl', '--user', 'enable', '--now', 'lookout-update.timer'] in calls
+    assert ('EnableUnitFiles', 'asbb', '2', 'lookout-update.timer', 'lookout-backup.timer', 'false', 'false') in calls
+    assert ('lookout-update.timer', 'StartUnit') in calls
+    assert ('lookout-backup.timer', 'StartUnit') in calls
     with pytest.raises(ValueError, match='already exist'):
         install.install_automation('lookout', tmp_path, unit, 'ghcr.io/example/lookout:main')
 
