@@ -164,8 +164,9 @@ PYTHONPATH=backend python -m tracker.package apply \
 Conflicts or input drift reject promotion. It handles version rules, package
 policy, BuildSystem styles and monitor settings; other operator settings, including
 dependency mappings, need explicit edits in the new config directory. Apply creates
-a directory, not a service switch. [Preflight and upgrade](../docs/deployment.md#upgrade-and-recovery)
-that configuration without overwriting the running one.
+a new directory; it does not change the service's mounted configuration. Follow
+[Configuration changes](../docs/deployment.md#configuration-and-ports) to switch to
+that directory.
 
 ## SPEC inputs
 

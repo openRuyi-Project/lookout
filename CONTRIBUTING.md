@@ -38,11 +38,7 @@ python3 scripts/api-types.py --check
 (cd frontend && npm ci && npm run check && npm test)
 ```
 
-For the full image and real-entrypoint checks, use the
-[deployment build procedure](docs/deployment.md#build-and-test). The native gate
-runs without provider network access and rejects skipped tests. Building its
-disposable test layer requires the package index; the shipped image omits test
-tools. Live-provider checks are separate from this gate.
+For the full image and real-entrypoint checks, use [Image checks](#image-checks).
 
 After changing response models, run `python3 scripts/api-types.py` and review the
 resulting `frontend/src/lib/api.generated.ts`. Do not hand-edit generated types.
@@ -58,6 +54,32 @@ uv pip compile backend/pyproject.toml --extra test --python-version 3.14 --pytho
 Regression tests fix their inputs, not today's upstream versions or package
 counts. Test shipped configuration against schema and policy. Freeze semantic
 clocks; synchronize concurrent tests with events rather than elapsed sleeps.
+
+### Image checks
+
+Build and test one image, not a running production instance:
+
+```sh
+IMAGE=openruyi-lookout:test
+VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"])')
+docker build --build-arg SOURCE_REVISION="$(git rev-parse HEAD)" \
+  --build-arg RELEASE_VERSION="$VERSION" -t "$IMAGE" -f Containerfile .
+CONTAINER_ENGINE=docker deploy/check-image.sh "$IMAGE"
+CONTAINER_ENGINE=docker python3 deploy/smoke-image.py "$IMAGE"
+python3 deploy/smoke-release.py "$IMAGE"
+```
+
+The native gate runs without provider network access and rejects skipped tests.
+Building its disposable test layer requires the package index; the runtime image
+omits test tools. The entrypoint and release tests cover persistent mounts,
+installation, migration, failed-upgrade rollback and an independent restore.
+
+CI publishes the same tested image after these gates pass. Trusted main/tag runs
+can publish; pull-request jobs cannot. Publication targets linux/amd64; additional
+architectures require their own native and entrypoint checks. Package owners must
+make the GHCR package Public for anonymous pulls. Target-host isolation, real
+providers, HTTPS, reboot recovery and off-host restore drills require separate
+operator acceptance; see [Deployment](docs/deployment.md).
 
 ## Documentation and comments
 
