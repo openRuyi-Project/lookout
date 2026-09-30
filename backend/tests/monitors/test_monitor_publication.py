@@ -5,11 +5,13 @@ from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import httpx
 import pytest
 import tomlkit
 
 from tracker import config as cfg, state
 from tracker.monitors import registry as monitor_registry, runner as monitor
+from tracker.providers.client import IO
 
 
 @pytest.fixture
@@ -57,6 +59,25 @@ def test_single_completed_result_has_no_duplicate_final_publish(collection):
     assert writes.call_count == 2
     assert collection.checked.call_count == 1
     assert result['monitors']['binutils']['fixture']['status'] == 'ok'
+    assert state.read(collection.db) == result
+
+
+def test_cache_failure_still_publishes_successful_monitor_observation(collection, tmp_path):
+    one_package(collection)
+    cache = tmp_path / 'cache'
+    cache.write_text('not a directory')
+    collection.adapter.HOSTS = {'example.org'}
+    def check(subject, inputs, io):
+        assert io.json('GET', 'https://example.org/release') == {'fresh': True}
+        return {'status': 'ok', 'findings': [], 'note': None}
+    collection.adapter.check = check
+    with httpx.Client(transport=httpx.MockTransport(lambda request:
+            httpx.Response(200, json={'fresh': True}))) as client:
+        collection.io = IO(cache, client=client)
+        result = run(collection)
+    fact = result['monitors']['binutils']['fixture']
+    assert fact['status'] == 'ok' and fact['error'] is None
+    assert fact['checked_at'] and fact['failures'] == 0
     assert state.read(collection.db) == result
 
 

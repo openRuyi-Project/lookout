@@ -5,6 +5,7 @@ import gzip
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+from pathlib import Path
 import socket
 import threading
 from urllib.parse import parse_qs
@@ -379,3 +380,50 @@ def test_monitor_failure_memo_is_shared_in_run_but_never_persisted(tmp_path):
         assert monitor_io.IO(tmp_path, client=client).json('GET', url) is None
         assert monitor_io.IO(tmp_path, client=client).json('GET', url) is None
     assert len(calls) == 2
+
+
+@pytest.mark.parametrize('operation', ['stat', 'mkdir', 'write_text', 'replace'])
+def test_monitor_cache_io_failure_does_not_discard_provider_success(tmp_path, monkeypatch, operation):
+    url = 'https://example.org/release'
+    key = hashlib.sha256(json.dumps(['GET', url, None], sort_keys=True).encode()).hexdigest()
+    path = tmp_path / (key + '.json')
+    path.write_text('{broken')
+    calls = []
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(200, json={'fresh': True})
+
+    original = getattr(Path, operation)
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        owner = monitor_io.IO(tmp_path, client=client)
+        scoped = owner.for_hosts({'example.org'})
+        with monkeypatch.context() as fault:
+            def unavailable(self, *args, **kwargs):
+                if self == tmp_path or self.parent == tmp_path:
+                    raise PermissionError('fixture cache unavailable')
+                return original(self, *args, **kwargs)
+            fault.setattr(Path, operation, unavailable)
+            assert scoped.json('GET', url) == {'fresh': True}
+            stamp = scoped.observed_at
+            assert stamp is not None
+            assert scoped.json('GET', url) == {'fresh': True}
+        assert len(calls) == 1 and scoped.observed_at == stamp
+        # Cache availability recovers without reviving a failure memo.
+        assert owner.json('GET', url, max_age=0) == {'fresh': True}
+        assert monitor_io.IO(tmp_path, client=client).json('GET', url) == {'fresh': True}
+    assert len(calls) == 2
+
+
+def test_monitor_non_directory_cache_does_not_discard_provider_success(tmp_path):
+    cache = tmp_path / 'cache'
+    cache.write_text('not a directory')
+    calls = []
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(200, json={'fresh': True})
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        owner = monitor_io.IO(cache, client=client)
+        assert owner.json('GET', 'https://example.org/release') == {'fresh': True}
+        assert owner.json('GET', 'https://example.org/release') == {'fresh': True}
+    assert len(calls) == 1 and cache.read_text() == 'not a directory'

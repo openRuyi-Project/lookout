@@ -118,14 +118,15 @@ class IO:
             now = time.time()
             cached = self.memory.get(key)
             path = self.cache / (key + '.json') if self.cache else None
-            if cached is None and path and path.is_file() and path.stat().st_size <= 32 * 1024 * 1024:
+            if cached is None and path:
                 try:
-                    stored = json.loads(path.read_text())
-                    # Disk is a disposable success cache, not persistent failure state.
-                    if (isinstance(stored, dict) and set(stored) == {'time', 'data'}
-                            and type(stored['time']) in (int, float)
-                            and math.isfinite(stored['time']) and stored['time'] >= 0):
-                        cached = stored
+                    if path.is_file() and path.stat().st_size <= 32 * 1024 * 1024:
+                        stored = json.loads(path.read_text())
+                        # Disk is a disposable success cache, not persistent failure state.
+                        if (isinstance(stored, dict) and set(stored) == {'time', 'data'}
+                                and type(stored['time']) in (int, float)
+                                and math.isfinite(stored['time']) and stored['time'] >= 0):
+                            cached = stored
                 except (OSError, ValueError, OverflowError):
                     pass
             ttl = self.ttl if max_age is None else min(self.ttl, max_age)
@@ -150,10 +151,15 @@ class IO:
                 data = body_bytes.decode('utf-8') if text else json.loads(body_bytes)
                 cached = {'time': now, 'data': data}
                 if path:
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    temp = path.with_suffix('.tmp')
-                    temp.write_text(json.dumps(cached, separators=(',', ':')))
-                    temp.replace(path)
+                    try:
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        temp = path.with_suffix('.tmp')
+                        temp.write_text(json.dumps(cached, separators=(',', ':')))
+                        temp.replace(path)
+                    except OSError:
+                        # Cache persistence is optional; it cannot turn a valid
+                        # provider response into a failed observation.
+                        pass
                 self.memory[key] = cached
                 if observed is not None:
                     observed.append(cached['time'])
