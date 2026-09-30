@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: (C) 2026 Institute of Software, Chinese Academy of Sciences (ISCAS)
 # SPDX-FileCopyrightText: (C) 2026 openRuyi Project Contributors
 # SPDX-License-Identifier: MulanPSL-2.0
+from contextlib import ExitStack
 import os
 import signal
 import subprocess
@@ -22,7 +23,7 @@ from tracker.monitors import runner as monitor
 from tracker.monitors.build import obs
 from tracker.monitors.source import git as spec_git
 from tracker.monitors.version import nvchecker as nv
-from tracker.runtime_checks import load_runtime
+from tracker.runtime_checks import runtime_session
 
 _stop = threading.Event()
 _procs = {}
@@ -149,43 +150,44 @@ def terminate_children():
 def main():
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
-    try:
-        config = load_runtime(CONFIG, DB, recover=True)
-        policies = {**obs.polling(config), "upstreams": nv.polling(config)}
-        monitors = monitor.settings(config)
-        if monitors["enabled"]:
-            policies["monitors"] = monitor.polling(config)
-    except Exception as error:
-        log(f"runtime preflight failed: {error}")
-        return 2
-    base_env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
-    api_env = {**base_env, "TRACKER_DB": DB}
-    web_env = {**base_env, "HOST": os.environ.get("HOST", "0.0.0.0"), "PORT": WEB_PORT,
-               "TRACKER_API_URL": f"http://127.0.0.1:{API_PORT}",
-               "ASTRO_TELEMETRY_DISABLED": "1"}
-    tasks = [
-        (service, ("api", [VENV_PYTHON, "-m", "uvicorn", "tracker.api:app",
-                          "--host", "127.0.0.1", "--port", API_PORT, "--no-access-log"],
-                   api_env, f"{APP}/backend")),
-        (service, ("web", ["node", f"{APP}/frontend/server.mjs"],
-                   web_env, f"{APP}/frontend")),
-    ]
-    tasks.extend((periodic, (phase, policy)) for phase, policy in policies.items())
-    if config["spec"]["repo"]:
-        tasks.append((specs, (config["spec"],)))
-    threads = [threading.Thread(target=fn, args=args, daemon=True) for fn, args in tasks]
-    for thread in threads:
-        thread.start()
-    log(f"supervising {len(threads)} tasks; web on :{WEB_PORT}, api on 127.0.0.1:{API_PORT}")
-    try:
-        _stop.wait()
-    finally:
-        _stop.set()
-        log("shutting down")
-        terminate_children()
+    with ExitStack() as stack:
+        try:
+            config = stack.enter_context(runtime_session(CONFIG, DB))
+            policies = {**obs.polling(config), "upstreams": nv.polling(config)}
+            monitors = monitor.settings(config)
+            if monitors["enabled"]:
+                policies["monitors"] = monitor.polling(config)
+        except Exception as error:
+            log(f"runtime preflight failed: {error}")
+            return 2
+        base_env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        api_env = {**base_env, "TRACKER_DB": DB}
+        web_env = {**base_env, "HOST": os.environ.get("HOST", "0.0.0.0"), "PORT": WEB_PORT,
+                   "TRACKER_API_URL": f"http://127.0.0.1:{API_PORT}",
+                   "ASTRO_TELEMETRY_DISABLED": "1"}
+        tasks = [
+            (service, ("api", [VENV_PYTHON, "-m", "uvicorn", "tracker.api:app",
+                              "--host", "127.0.0.1", "--port", API_PORT, "--no-access-log"],
+                       api_env, f"{APP}/backend")),
+            (service, ("web", ["node", f"{APP}/frontend/server.mjs"],
+                       web_env, f"{APP}/frontend")),
+        ]
+        tasks.extend((periodic, (phase, policy)) for phase, policy in policies.items())
+        if config["spec"]["repo"]:
+            tasks.append((specs, (config["spec"],)))
+        threads = [threading.Thread(target=fn, args=args, daemon=True) for fn, args in tasks]
         for thread in threads:
-            thread.join(timeout=1)
-    return 0
+            thread.start()
+        log(f"supervising {len(threads)} tasks; web on :{WEB_PORT}, api on 127.0.0.1:{API_PORT}")
+        try:
+            _stop.wait()
+        finally:
+            _stop.set()
+            log("shutting down")
+            terminate_children()
+            for thread in threads:
+                thread.join(timeout=1)
+        return 0
 
 
 if __name__ == "__main__":

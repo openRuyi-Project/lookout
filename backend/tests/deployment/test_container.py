@@ -1,4 +1,5 @@
 """Supervisor contract tests; no container runtime or network required."""
+from contextlib import nullcontext
 import importlib.util
 import os
 from pathlib import Path
@@ -55,7 +56,7 @@ class ContainerTests(unittest.TestCase):
                   'spec': {'repo': '/data/spec-full.git', 'url': 'https://example.invalid/spec.git',
                            'branch': 'main', 'interval_seconds': 3600}}
         entrypoint._stop.set()
-        with patch.object(entrypoint, 'load_runtime', return_value=config), \
+        with patch.object(entrypoint, 'runtime_session', return_value=nullcontext(config)), \
              patch.object(entrypoint.threading, 'Thread', Thread), \
              patch.object(entrypoint.os, 'makedirs'), patch.object(entrypoint.signal, 'signal'), \
              patch.object(entrypoint.subprocess, 'Popen') as popen, \
@@ -81,7 +82,7 @@ class ContainerTests(unittest.TestCase):
         config = {'collector': {'obs_interval_seconds':60, 'build_interval_seconds':15, 'nvchecker_interval_seconds':3600},
                   'spec': {'repo':None}, 'monitors': {'enabled':['security'], 'refresh': {'security': {'interval_seconds':1800}}}}
         entrypoint._stop.set()
-        with patch.object(entrypoint, 'load_runtime', return_value=config), \
+        with patch.object(entrypoint, 'runtime_session', return_value=nullcontext(config)), \
              patch.object(entrypoint.threading, 'Thread', Thread), \
              patch.object(entrypoint.os, 'makedirs'), patch.object(entrypoint.signal, 'signal'):
             entrypoint.main()

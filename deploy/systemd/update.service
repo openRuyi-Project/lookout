@@ -1,0 +1,8 @@
+[Unit]
+Description=Upgrade Lookout from the tested registry channel
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 @TOOLS@/upgrade.py --image @IMAGE@ --unit @UNIT@ --backups @BACKUPS@ --apply --quiet
+TimeoutStartSec=15min

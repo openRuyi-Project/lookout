@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upgrade a Docker container or rootless Quadlet; preserve configuration and data."""
+"""Upgrade a registry image; preserve the instance's configuration and data."""
 import argparse
 import json
 from pathlib import Path
@@ -9,30 +9,38 @@ import sys
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from deployment import (Docker, Quadlet, healthy, image_command, load_image,
-                        no_data_users, read_release, run, upgrade_lock, write_exclusive)
+from deployment import (Docker, Quadlet, healthy, image_command, instance_lock,
+                        no_data_users, resolve_image, run, upgrade_lock, write_exclusive)
 
 
-def upgrade(directory, unit, backups, *, container=None, apply=False):
+def upgrade(reference, unit, backups, *, container=None, apply=False):
     service = Docker(container) if container else Quadlet(unit)
-    manifest = read_release(directory)
-    result = dict(version=manifest['version'], image=manifest['image'], data=str(service.settings['data']))
+    result = dict(reference=reference, data=str(service.settings['data']))
     if not apply:
         return {**result, 'status': 'plan'}
     if not backups.is_dir():
         raise ValueError('backup directory must already exist')
-    with upgrade_lock(backups / '.upgrade.lock'):
-        load_image(service.engine, directory, manifest)
+    with upgrade_lock(instance_lock(service)):
         if isinstance(service, Quadlet):
             service.check()
-        old_image = json.loads(run([service.engine, 'image', 'inspect', service.settings['image']]))[0]['Id']
+        # Capture the running identity before pulling a mutable registry channel.
+        running = json.loads(run([service.engine, 'inspect', service.name]))[0]
+        if running.get('State', {}).get('Status') != 'running':
+            raise ValueError('instance must be running before upgrade')
+        old_image = running['Image']
+        if not old_image.startswith('sha256:'):
+            old_image = 'sha256:' + old_image
         service.settings['image'] = old_image
-        # Missing state is not a fresh install. Query before stopping or changing anything.
-        check = ('from pathlib import Path; from tracker import state; '
+        manifest = resolve_image(service.engine, reference)
+        result.update(version=manifest['version'], image=manifest['image'], revision=manifest['revision'])
+        if manifest['image'] == old_image:
+            healthy(service.engine, service.name, old_image)
+            return {**result, 'status': 'unchanged'}
+        check = ('from pathlib import Path; '
                  'p=Path("/data/state/tracker.sqlite3"); '
                  'assert p.is_file(), "existing database required"; '
                  'print(p.stat().st_size)')
-        # Do not relabel a live Podman :Z mount merely to inspect it.
+        # Inspect host files rather than relabelling a live Podman :Z mount.
         if isinstance(service, Quadlet):
             db = service.settings['data'] / 'state/tracker.sqlite3'
             if not db.is_file():
@@ -48,18 +56,18 @@ def upgrade(directory, unit, backups, *, container=None, apply=False):
         meta = {**manifest, 'previous_image': old_image, 'engine': service.engine,
                 'container': service.name, 'unit': str(unit) if unit else None,
                 'data': str(service.settings['data'])}
-        write_exclusive(transaction / 'release.json', json.dumps(meta, indent=2).encode())
-        service.stop()
+        write_exclusive(transaction / 'image.json', json.dumps(meta, indent=2).encode())
         before = transaction.name + '-before.sqlite3' if container else 'before.sqlite3'
         migrated = transaction.name + '-migration.sqlite3' if container else 'pre-migration.sqlite3'
         try:
+            service.stop()
             no_data_users(service)
-            run(image_command(service, manifest['image'], '-c',
+            run(image_command(service, old_image, '-c',
                 'from tracker import state; state.recover("/data/state/tracker.sqlite3")'))
-            run(image_command(service, manifest['image'], '/app/deploy/backup-snapshot.py',
+            run(image_command(service, old_image, '/app/deploy/backup-snapshot.py',
                 '--db', '/data/state/tracker.sqlite3', '--output', '/backup/' + before,
                 backup_dir=transaction))
-            service.export_backup(manifest['image'], before, transaction / 'before.sqlite3')
+            service.export_backup(old_image, before, transaction / 'before.sqlite3')
             run(image_command(service, manifest['image'], '/app/deploy/migrate-state.py',
                 '--db', '/data/state/tracker.sqlite3', '--backup', '/backup/' + migrated,
                 backup_dir=transaction))
@@ -68,17 +76,19 @@ def upgrade(directory, unit, backups, *, container=None, apply=False):
             service.stage(manifest['image'])
             service.start()
             healthy(service.engine, service.name, manifest['image'])
-        except BaseException:
-            service.stop()
-            no_data_users(service)
+        except BaseException as failure:
             try:
+                service.stop()
+                no_data_users(service)
                 run(image_command(service, old_image, '-m', 'tracker.runtime_checks',
                     '--config', '/config/tracker.toml', '--db', '/data/state/tracker.sqlite3'))
-            except (RuntimeError, subprocess.SubprocessError) as error:
-                raise RuntimeError(f'upgrade stopped; old image preflight failed; inspect {transaction}') from error
-            service.rollback()
-            healthy(service.engine, service.name, old_image)
-            raise
+                service.rollback()
+                healthy(service.engine, service.name, old_image)
+            except Exception as error:
+                write_exclusive(transaction / 'result.json', b'{"status":"stopped","rollback":"failed"}\n')
+                raise RuntimeError(f'upgrade stopped; rollback/preflight failed; inspect {transaction}') from error
+            write_exclusive(transaction / 'result.json', b'{"status":"failed","rollback":"ready"}\n')
+            raise failure
         service.finish()
         write_exclusive(transaction / 'result.json', json.dumps({**result, 'status': 'ready'}, indent=2).encode())
         return {**result, 'status': 'ready', 'backup': str(transaction / 'before.sqlite3')}
@@ -86,20 +96,22 @@ def upgrade(directory, unit, backups, *, container=None, apply=False):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--release', type=Path, default=Path(__file__).resolve().parent)
+    parser.add_argument('--image', required=True, help='registry channel, digest, or tested local image ID')
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument('--unit', type=Path)
     target.add_argument('--container')
     parser.add_argument('--backups', type=Path, required=True)
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--quiet', action='store_true', help='suppress unchanged-image output')
     args = parser.parse_args(argv)
     try:
-        result = upgrade(args.release.resolve(), args.unit.absolute() if args.unit else None,
+        result = upgrade(args.image, args.unit.absolute() if args.unit else None,
                          args.backups.resolve(), container=args.container, apply=args.apply)
     except (OSError, ValueError, KeyError, TypeError, RuntimeError, subprocess.SubprocessError) as error:
         print(f'upgrade failed: {error}', file=sys.stderr)
         return 2
-    print(json.dumps(result, indent=2))
+    if not args.quiet or result['status'] != 'unchanged':
+        print(json.dumps(result, indent=2))
     return 0
 
 

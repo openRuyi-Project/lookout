@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up the Lookout instance
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 @TOOLS@/maintain.py --unit @UNIT@ --backup-dir @BACKUPS@
+TimeoutStartSec=2min
+Restart=on-failure
+RestartSec=5min

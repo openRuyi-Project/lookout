@@ -1,8 +1,10 @@
 """Fail-closed checks performed before the supervisor starts children."""
 import argparse
-from contextlib import closing
+from contextlib import closing, contextmanager
+import fcntl
 import os
 from pathlib import Path
+import re
 import sqlite3
 import sys
 import tempfile
@@ -33,6 +35,47 @@ def _writable(directory):
 def _check_identity():
     if os.geteuid() == 0:
         raise RuntimeError('runtime must run as a non-root UID')
+
+
+def check_mounts(path, db, *, mountinfo=Path('/proc/self/mountinfo')):
+    """The production entrypoint requires explicit persistent mounts, not image layers."""
+    def decode(value):
+        return re.sub(r'\\([0-7]{3})', lambda match: chr(int(match[1], 8)), value)
+    mounts = {}
+    for line in mountinfo.read_text().splitlines():
+        left, right = line.split(' - ', 1)
+        fields = left.split()
+        mounts[decode(fields[4])] = (set(fields[5].split(',')), right.split()[0])
+    root = mounts.get('/')
+    config = mounts.get('/config')
+    data = mounts.get('/data')
+    if not root or 'ro' not in root[0]:
+        raise RuntimeError('mount the container root read-only')
+    if not config or 'ro' not in config[0] or not Path(path).resolve().is_relative_to('/config'):
+        raise RuntimeError('mount the instance configuration at /config read-only')
+    if (not data or 'rw' not in data[0] or data[1] in {'tmpfs', 'ramfs', 'overlay', 'nfs', 'nfs4', 'cifs', '9p', 'fuse.sshfs'}
+            or not Path(db).resolve().is_relative_to('/data')):
+        raise RuntimeError('mount persistent local storage at /data read-write; image layers/tmpfs are not persistent')
+
+
+@contextmanager
+def runtime_session(path, db):
+    _check_identity()
+    check_mounts(path, db)
+    with instance_lease(Path('/data')):
+        yield load_runtime(path, db, recover=True)
+
+
+@contextmanager
+def instance_lease(directory):
+    # This lifetime lease is separate from the short SQLite commit lock.
+    with (directory / '.instance.lock').open('a') as stream:
+        os.fchmod(stream.fileno(), 0o600)
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError('another Lookout instance owns this data directory') from error
+        yield
 
 
 def load_runtime(path, db, *, recover=False):

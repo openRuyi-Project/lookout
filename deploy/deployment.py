@@ -22,9 +22,9 @@ PROTECTION = ['--read-only', '--cap-drop=all', '--security-opt=no-new-privileges
               '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m,mode=1777']
 
 
-def run(argv, *, timeout=120, input=None):
+def run(argv, *, timeout=120, input=None, env=None):
     result = subprocess.run(argv, input=input, text=not isinstance(input, bytes),
-                            capture_output=True, timeout=timeout)
+                            capture_output=True, timeout=timeout, env=env)
     if result.returncode:
         # A provider proxy or a configuration error may contain credentials.
         raise RuntimeError(f'{argv[0]} {argv[1]} failed (exit {result.returncode})')
@@ -32,37 +32,51 @@ def run(argv, *, timeout=120, input=None):
     return (output.decode() if isinstance(output, bytes) else output).strip()
 
 
-def read_release(directory):
-    manifest = json.loads((directory / 'release.json').read_text())
-    if (set(manifest) != {'version', 'revision', 'image', 'storage', 'platform', 'sha256'}
-            or not re.fullmatch(r'\d+\.\d+\.\d+', manifest['version'])
-            or not re.fullmatch(r'[0-9a-f]{40}', manifest['revision'])
-            or not re.fullmatch(r'sha256:[0-9a-f]{64}', manifest['image'])
-            or type(manifest['storage']) is not int or manifest['storage'] < 1):
-        raise ValueError('invalid release manifest')
-    with (directory / 'image.tar').open('rb') as stream:
-        digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-    if digest != manifest['sha256']:
-        raise ValueError('release image checksum mismatch')
-    return manifest
+def image_reference(reference):
+    local = re.fullmatch(r'sha256:[0-9a-f]{64}', reference)
+    registry = re.fullmatch(r'[a-z0-9][a-z0-9.-]*(?::[0-9]+)?/[a-z0-9_./-]+(?::[A-Za-z0-9_.-]+|@sha256:[0-9a-f]{64})', reference)
+    host = reference.split('/', 1)[0]
+    if registry and host != 'localhost' and '.' not in host and ':' not in host:
+        registry = None
+    if not local and not registry:
+        raise ValueError('use a fully qualified registry image with tag/digest, or a local sha256 image ID')
+    return bool(registry)
 
 
-def load_image(engine, directory, manifest):
-    run([engine, 'load', '--input', str(directory / 'image.tar')], timeout=600)
-    info = json.loads(run([engine, 'image', 'inspect', manifest['image']]))[0]
+def resolve_image(engine, reference):
+    """Pull a registry reference once; subsequent operations use its local immutable ID."""
+    registry = image_reference(reference)
+    if registry:
+        run([engine, 'pull', reference], timeout=600)
+    info = json.loads(run([engine, 'image', 'inspect', reference]))[0]
     labels = info['Config'].get('Labels') or {}
-    if (info['Os'] + '/' + info['Architecture'] != manifest['platform']
-            or info['Config'].get('User') != '10001:10001'
-            or labels.get('org.opencontainers.image.revision') != manifest['revision']
-            or labels.get('org.opencontainers.image.version') != manifest['version']):
-        raise ValueError('loaded image does not match release metadata')
+    version = labels.get('org.opencontainers.image.version', '')
+    revision = labels.get('org.opencontainers.image.revision', '')
+    if (info['Os'] != 'linux' or info['Config'].get('User') != '10001:10001'
+            or not re.fullmatch(r'\d+\.\d+\.\d+', version)
+            or not re.fullmatch(r'[0-9a-f]{40}', revision)):
+        raise ValueError('image must declare its application version, source revision and non-root identity')
+    image = 'sha256:' + info['Id'].removeprefix('sha256:')
     code = ('import json,tomllib; from tracker import storage; '
             'p=tomllib.load(open("/app/backend/pyproject.toml","rb")); '
             'print(json.dumps([p["project"]["version"], storage.FORMAT]))')
     actual = json.loads(run([engine, 'run', '--rm', '--network', 'none', *PROTECTION,
-                            '--entrypoint', PYTHON, manifest['image'], '-c', code]))
-    if actual != [manifest['version'], manifest['storage']]:
-        raise ValueError('image application/storage version does not match release metadata')
+                            '--entrypoint', PYTHON, image, '-c', code]))
+    if actual[0] != version or type(actual[1]) is not int or actual[1] < 1:
+        raise ValueError('image application/storage version does not match its metadata')
+    return dict(version=version, revision=revision, image=image, storage=actual[1],
+                platform=info['Os'] + '/' + info['Architecture'],
+                reference=reference, digests=info.get('RepoDigests') or [])
+
+
+def instance_lock(service):
+    if service.engine == 'podman':
+        return service.settings['data'] / '.upgrade.lock'
+    daemon = json.loads(run(['docker', 'info', '--format', '{{json .ID}}']))
+    identity = hashlib.sha256((daemon + ':' + service.instance).encode()).hexdigest()
+    root = Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'lookout/locks'
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return root / (identity + '.lock')
 
 
 @contextmanager
@@ -407,7 +421,8 @@ class Quadlet:
             raise ValueError('unit changed since review; refusing upgrade')
 
     def stop(self):
-        service_action(self.service, 'StopUnit')
+        if service_state(self.service) not in ('inactive', 'failed'):
+            service_action(self.service, 'StopUnit')
 
     def stage(self, image):
         replacement = replace_image(self.original, image)

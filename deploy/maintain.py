@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Export a consistent online backup, or check disk and backup age."""
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
@@ -11,7 +12,7 @@ import tempfile
 import time
 import uuid
 
-from deployment import Docker, Quadlet, PYTHON, run
+from deployment import Docker, Quadlet, PYTHON, run, instance_lock, upgrade_lock
 
 
 def backup(service, output):
@@ -75,8 +76,8 @@ def configure(service, config, port):
              f'type=volume,src={volume},dst=/config,volume-nocopy', '--entrypoint', PYTHON,
              image, '-c', PREPARE, 'archive', '/config'], input=archive)
         service.settings['config'] = volume
-    service.stop()
     try:
+        service.stop()
         no_data_users(service)
         run(image_command(service, image, '-m', 'tracker.runtime_checks',
                           '--config', '/config/tracker.toml', '--db', '/data/state/tracker.sqlite3'))
@@ -98,6 +99,7 @@ def main(argv=None):
     target.add_argument('--unit', type=Path)
     operation = parser.add_mutually_exclusive_group()
     operation.add_argument('--output', type=Path, help='create an online backup at this new path')
+    operation.add_argument('--backup-dir', type=Path, help='create a timestamped online backup in this directory')
     operation.add_argument('--status', type=Path, metavar='BACKUP_DIR')
     parser.add_argument('--port', type=int, help='recreate Docker service on this loopback port')
     parser.add_argument('--config', type=Path, help='import reviewed configuration into a new Docker volume')
@@ -105,16 +107,20 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         if args.port is not None or args.config:
-            if args.output or args.status:
+            if args.output or args.backup_dir or args.status:
                 raise ValueError('configure and backup/status are separate operations')
-        elif not (args.output or args.status):
+        elif not (args.output or args.backup_dir or args.status):
             raise ValueError('choose --output, --status, --config or --port')
         service = Docker(args.container) if args.container else Quadlet(args.unit.absolute())
         if args.port is not None or args.config:
-            print(json.dumps(configure(service, args.config, args.port), indent=2))
+            with upgrade_lock(instance_lock(service)):
+                print(json.dumps(configure(service, args.config, args.port), indent=2))
             return 0
+        if args.backup_dir:
+            args.output = args.backup_dir / ('snapshot-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8] + '.sqlite3')
         if args.output:
-            print(backup(service, args.output.absolute()))
+            with upgrade_lock(instance_lock(service)):
+                print(backup(service, args.output.absolute()))
             return 0
         if not args.status.is_dir() or args.max_age_hours <= 0:
             raise ValueError('status requires a backup directory and positive age budget')

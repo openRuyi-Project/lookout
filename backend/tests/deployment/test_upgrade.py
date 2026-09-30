@@ -1,5 +1,4 @@
 """Release orchestration contracts; real image startup is covered by smoke-image."""
-import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -17,7 +16,7 @@ def module(name):
     return loaded
 
 
-upgrade, release = module('upgrade'), module('release')
+upgrade = module('upgrade')
 import deployment as operations
 NEW, OLD = 'sha256:' + '2' * 64, 'sha256:' + '1' * 64
 
@@ -36,10 +35,8 @@ def deployment(tmp_path, monkeypatch):
     unit = tmp_path / 'fixture.container'
     unit.write_text(text)
     manifest = dict(version='0.1.0', revision='a' * 40, image=NEW, storage=2,
-                    platform='linux/arm64', sha256=hashlib.sha256(b'archive').hexdigest())
-    (bundle / 'image.tar').write_bytes(b'archive')
-    (bundle / 'release.json').write_text(json.dumps(manifest))
-    return bundle, unit, backups, manifest
+                    platform='linux/arm64')
+    return NEW, unit, backups, manifest
 
 
 def simulate(monkeypatch, manifest, *, fail=None, incompatible=False):
@@ -54,6 +51,8 @@ def simulate(monkeypatch, manifest, *, fail=None, incompatible=False):
             return active[0]
         if argv[:2] == ['podman', 'info']:
             return 'true'
+        if argv[:2] == ['podman', 'inspect']:
+            return json.dumps([{'Image': OLD, 'State': {'Status': 'running'}}])
         if argv[:3] == ['podman', 'image', 'inspect']:
             return json.dumps([{'Id': argv[-1], 'Os': 'linux', 'Architecture': 'arm64', 'Config': {'User': '10001:10001',
                 'Labels': {'org.opencontainers.image.revision': manifest['revision'],
@@ -63,7 +62,7 @@ def simulate(monkeypatch, manifest, *, fail=None, incompatible=False):
                 return json.dumps([manifest['version'], manifest['storage']])
             if fail and fail in argv:
                 raise RuntimeError('fixture failure')
-            if incompatible and OLD in argv:
+            if incompatible and OLD in argv and 'tracker.runtime_checks' in argv:
                 raise RuntimeError('old reader rejects migrated database')
             if '/app/deploy/backup-snapshot.py' in argv:
                 mount = next(value for value in argv if value.endswith(':/backup:Z'))
@@ -84,7 +83,7 @@ def test_plan_performs_no_engine_or_service_actions(deployment, monkeypatch):
     monkeypatch.setattr(upgrade, 'run', lambda *args, **kwargs: pytest.fail('plan must not execute'))
     before = unit.read_bytes()
     result = upgrade.upgrade(bundle, unit, backups)
-    assert result['status'] == 'plan' and result['image'] == NEW
+    assert result['status'] == 'plan' and result['reference'] == NEW
     assert unit.read_bytes() == before and not list(backups.iterdir())
 
 
@@ -130,7 +129,7 @@ def test_failed_upgrade_rolls_back_only_after_compatible_reader(deployment, monk
 def test_incompatible_rollback_leaves_data_intact_and_service_stopped(deployment, monkeypatch):
     bundle, unit, backups, manifest = deployment
     calls, ready = simulate(monkeypatch, manifest, fail='ready', incompatible=True)
-    with pytest.raises(RuntimeError, match='old image preflight failed'):
+    with pytest.raises(RuntimeError, match='rollback/preflight failed'):
         upgrade.upgrade(bundle, unit, backups, apply=True)
     stops = [i for i, call in enumerate(calls) if call[0] == 'busctl' and 'StopUnit' in call]
     assert not any(call[0] == 'busctl' and 'StartUnit' in call for call in calls[stops[-1]:])
@@ -138,12 +137,13 @@ def test_incompatible_rollback_leaves_data_intact_and_service_stopped(deployment
     assert (operations.quadlet(unit.read_text())['data'] / 'state/tracker.sqlite3').read_bytes() == b'operator data'
 
 
-def test_release_tampering_is_rejected_before_any_service_operation(deployment, monkeypatch):
-    bundle, unit, backups, _ = deployment
-    (bundle / 'image.tar').write_bytes(b'changed')
-    monkeypatch.setattr(upgrade, 'run', lambda *args, **kwargs: pytest.fail('must reject before execution'))
-    with pytest.raises(ValueError, match='checksum'):
-        upgrade.upgrade(bundle, unit, backups, apply=True)
+def test_invalid_image_reference_is_rejected_before_service_stop(deployment, monkeypatch):
+    _, unit, backups, manifest = deployment
+    calls, ready = simulate(monkeypatch, manifest)
+    with pytest.raises(ValueError, match='fully qualified'):
+        upgrade.upgrade('--injected', unit, backups, apply=True)
+    assert not any('StopUnit' in call for call in calls)
+    assert not list(backups.iterdir())
 
 
 @pytest.mark.parametrize('change', ['Environment=TRACKER_DB=/other/db', 'PodmanArgs=--privileged',
@@ -161,42 +161,6 @@ def test_unit_compare_and_swap_preserves_concurrent_operator_edit(tmp_path):
     with pytest.raises(ValueError, match='changed since review'):
         operations.write_unit(unit, 'old unit', 'new unit')
     assert unit.read_text() == 'operator update'
-
-
-def test_packager_refuses_uncommitted_source(tmp_path, monkeypatch):
-    monkeypatch.setattr(release, 'run', lambda args: 'a' * 40 if args[-1] == 'HEAD' else ' M source.py')
-    with pytest.raises(ValueError, match='clean checkout'):
-        release.package('image', tmp_path / 'release', 'docker')
-    assert not (tmp_path / 'release').exists()
-
-
-def test_packager_checks_revision_and_image_version(tmp_path, monkeypatch):
-    import tomllib
-    version = tomllib.loads((ROOT / 'backend/pyproject.toml').read_text())['project']['version']
-    def run(argv):
-        if argv[0] == 'git':
-            return 'a' * 40 if argv[-1] == 'HEAD' else ''
-        if argv[1:3] == ['image', 'inspect']:
-            return json.dumps([{'Id': NEW, 'Os': 'linux', 'Architecture': 'arm64',
-                'Config': {'Labels': {'org.opencontainers.image.revision': 'a' * 40,
-                                       'org.opencontainers.image.version': version}}}])
-        if argv[1] == 'run':
-            return json.dumps([version, 2])
-        if argv[1] == 'save':
-            Path(argv[3]).write_bytes(b'archive')
-        return ''
-    monkeypatch.setattr(release, 'run', run)
-    output = release.package('image', tmp_path / 'release', 'docker')
-    manifest = upgrade.read_release(output)
-    assert manifest['version'] == version and manifest['image'] == NEW
-    assert (output / 'upgrade.py').read_bytes() == (ROOT / 'deploy/upgrade.py').read_bytes()
-    manual = (output / 'README.md').read_text()
-    assert '[build one](#build-and-test)' in manual
-    assert 'config/README.md` in the source checkout' in manual
-    import re
-    assert not any(link.startswith('../') for link in re.findall(r'\]\(([^)]+)\)', manual))
-    with pytest.raises(FileExistsError):
-        release.package('image', output, 'docker')
 
 
 def test_health_poll_has_bounded_subprocess_timeouts(monkeypatch):
@@ -240,7 +204,7 @@ def test_installer_rejects_conflicting_environment_before_engine_call(tmp_path, 
     monkeypatch.setattr(install, 'run', lambda *a, **kw: pytest.fail('no engine writes'))
     for value in ['PORT=9000', 'TRACKER_DB=/tmp/db', 'HOST=0.0.0.0', 'missing-separator']:
         with pytest.raises(ValueError, match='environment'):
-            install.install(tmp_path, 'fixture', environment=[value])
+            install.install(NEW, 'fixture', environment=[value])
 
 
 def test_config_archive_preserves_bytes_and_rejects_symlinks(tmp_path):
@@ -304,3 +268,141 @@ def test_service_transition_is_bounded_and_failed_start_rejected(monkeypatch):
     monkeypatch.setattr(operations.time, 'monotonic', lambda: next(clock))
     with pytest.raises(RuntimeError, match='timed out'):
         operations.service_action('fixture.service', 'StartUnit')
+
+
+def test_same_image_is_verified_without_stop_or_backup(deployment, monkeypatch):
+    _, unit, backups, manifest = deployment
+    calls, ready = simulate(monkeypatch, manifest)
+    result = upgrade.upgrade(OLD, unit, backups, apply=True)
+    assert result['status'] == 'unchanged' and ready == [OLD]
+    assert not any('StopUnit' in call or 'StartUnit' in call for call in calls)
+    assert not list(backups.iterdir())
+
+
+def test_lost_stop_acknowledgement_resumes_old_instance(deployment, monkeypatch):
+    reference, unit, backups, manifest = deployment
+    calls, ready = simulate(monkeypatch, manifest)
+    run = operations.run
+    failed = False
+    def lost(argv, **kwargs):
+        nonlocal failed
+        result = run(argv, **kwargs)
+        if 'StopUnit' in argv and not failed:
+            failed = True
+            raise RuntimeError('acknowledgement lost')
+        return result
+    monkeypatch.setattr(operations, 'run', lost)
+    with pytest.raises(RuntimeError, match='acknowledgement lost'):
+        upgrade.upgrade(reference, unit, backups, apply=True)
+    assert ready == [OLD]
+    assert any('StartUnit' in call for call in calls)
+    assert json.loads(next(backups.glob('upgrade-*/result.json')).read_text()) == {'status': 'failed', 'rollback': 'ready'}
+
+
+def test_old_running_image_is_not_resolved_through_pulled_channel(deployment, monkeypatch):
+    _, unit, backups, manifest = deployment
+    unit.write_text(unit.read_text().replace(OLD, 'ghcr.io/example/lookout:main'))
+    calls, ready = simulate(monkeypatch, manifest, fail='ready')
+    real = operations.run
+    def channel(argv, **kwargs):
+        if argv[:3] == ['podman', 'image', 'inspect'] and argv[-1] == 'ghcr.io/example/lookout:main':
+            argv = [*argv[:-1], NEW]
+        return real(argv, **kwargs)
+    monkeypatch.setattr(operations, 'run', channel)
+    with pytest.raises(RuntimeError):
+        upgrade.upgrade('ghcr.io/example/lookout:main', unit, backups, apply=True)
+    assert ready == [NEW, OLD]
+    assert 'Image=' + OLD in unit.read_text()
+
+
+def test_upgrade_lock_is_owned_by_instance_not_backup_directory(deployment):
+    _, unit, _, _ = deployment
+    first = operations.Quadlet(unit)
+    second = operations.Quadlet(unit)
+    assert operations.instance_lock(first) == operations.instance_lock(second)
+    with operations.upgrade_lock(operations.instance_lock(first)):
+        with pytest.raises(BlockingIOError):
+            with operations.upgrade_lock(operations.instance_lock(second)):
+                pytest.fail('concurrent upgrade admitted')
+
+
+def test_docker_lock_is_scoped_by_daemon_and_instance(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setenv('XDG_STATE_HOME', str(tmp_path))
+    monkeypatch.setattr(operations, 'run', lambda *_: '"daemon-id"')
+    service = SimpleNamespace(engine='docker', instance='instance-a')
+    first = operations.instance_lock(service)
+    assert first == operations.instance_lock(service)
+    service.instance = 'instance-b'
+    assert first != operations.instance_lock(service)
+
+
+@pytest.mark.parametrize('reference', ['image', '--flag', 'ghcr.io/example/lookout', 'ghcr.io/example/lookout:main\n'])
+def test_image_reference_requires_explicit_registry_identity(reference):
+    with pytest.raises(ValueError):
+        operations.resolve_image('docker', reference)
+
+
+def test_registry_pull_is_pinned_before_metadata_probe(monkeypatch):
+    calls = []
+    reference = 'ghcr.io/example/lookout:main'
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if 'inspect' in argv:
+            return json.dumps([{'Id': NEW, 'Os': 'linux', 'Architecture': 'amd64',
+                'RepoDigests': ['ghcr.io/example/lookout@sha256:' + '3' * 64],
+                'Config': {'User': '10001:10001', 'Labels': {
+                    'org.opencontainers.image.version': '0.1.0',
+                    'org.opencontainers.image.revision': 'a' * 40}}}])
+        if argv[1] == 'run':
+            assert NEW in argv and reference not in argv
+            return '["0.1.0", 2]'
+        return ''
+    monkeypatch.setattr(operations, 'run', run)
+    result = operations.resolve_image('podman', reference)
+    assert calls[0] == ['podman', 'pull', reference]
+    assert result['image'] == NEW and result['reference'] == reference
+    assert result['storage'] == 2 and result['platform'] == 'linux/amd64'
+
+
+def test_automation_keeps_host_update_and_backup_separate(tmp_path, monkeypatch):
+    install = module('install')
+    monkeypatch.setattr(install.Path, 'home', lambda: tmp_path)
+    calls = []
+    monkeypatch.setattr(install, 'run', lambda argv, **kwargs: calls.append(argv))
+    monkeypatch.setattr(install, 'manager', lambda *args: calls.append(args))
+    unit = tmp_path / 'lookout.container'
+    install.install_automation('lookout', tmp_path, unit, 'ghcr.io/example/lookout:main')
+    user_units = tmp_path / '.config/systemd/user'
+    update = (user_units / 'lookout-update.service').read_text()
+    backup = (user_units / 'lookout-backup.service').read_text()
+    assert '--image ghcr.io/example/lookout:main' in update
+    assert '--unit ' + str(unit) in update and '--quiet' in update
+    assert '--backup-dir ' + str(tmp_path / 'backups') in backup
+    assert '@' not in update and '@' not in backup
+    assert ['systemctl', '--user', 'enable', '--now', 'lookout-update.timer'] in calls
+    with pytest.raises(ValueError, match='already exist'):
+        install.install_automation('lookout', tmp_path, unit, 'ghcr.io/example/lookout:main')
+
+
+def test_rootless_installer_requires_linger_before_creating_directories(tmp_path, monkeypatch):
+    install = module('install')
+    monkeypatch.setattr(install.os, 'geteuid', lambda: 1001)
+    monkeypatch.setattr(install, 'run', lambda argv, **kwargs: 'true' if argv[0] == 'podman' else 'no')
+    destination = tmp_path / 'instance'
+    with pytest.raises(ValueError, match='linger'):
+        install.install(NEW, 'lookout', engine='podman', directory=destination,
+                        network='pasta', auto_update='ghcr.io/example/lookout:main')
+    assert not destination.exists()
+
+
+def test_podman_bare_image_ids_are_normalized(monkeypatch):
+    def run(argv, **kwargs):
+        if 'inspect' in argv:
+            return json.dumps([{'Id': NEW.removeprefix('sha256:'), 'Os': 'linux', 'Architecture': 'amd64',
+                'Config': {'User': '10001:10001', 'Labels': {
+                    'org.opencontainers.image.version': '0.1.0',
+                    'org.opencontainers.image.revision': 'a' * 40}}}])
+        return '["0.1.0", 2]'
+    monkeypatch.setattr(operations, 'run', run)
+    assert operations.resolve_image('podman', NEW)['image'] == NEW

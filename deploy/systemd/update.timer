@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for a tested Lookout image
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+RandomizedDelaySec=15s
+
+[Install]
+WantedBy=timers.target

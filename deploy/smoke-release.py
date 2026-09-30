@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Exercise Docker installation, reconfiguration, upgrade and recovery offline."""
 import argparse
-import hashlib
 import importlib.util
 import json
 from pathlib import Path
@@ -12,7 +11,7 @@ import sys
 import tempfile
 import uuid
 
-from deployment import Docker, PROTECTION, PYTHON, healthy, run
+from deployment import Docker, PROTECTION, PYTHON, healthy, resolve_image, run
 from install import install
 from maintain import backup, configure, status
 from upgrade import upgrade
@@ -23,25 +22,6 @@ def module(name):
     result = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(result)
     return result
-
-
-def bundle(image, path):
-    """Test bundles use actual image metadata; publication uses release.py instead."""
-    path.mkdir()
-    info = json.loads(run(['docker', 'image', 'inspect', image]))[0]
-    code = ('import json,tomllib; from tracker import storage; '
-            'p=tomllib.load(open("/app/backend/pyproject.toml","rb")); '
-            'print(json.dumps([p["project"]["version"],storage.FORMAT]))')
-    version, storage = json.loads(run(['docker', 'run', '--rm', '--network', 'none',
-        *PROTECTION, '--entrypoint', PYTHON, image, '-c', code]))
-    run(['docker', 'save', '--output', str(path / 'image.tar'), image], timeout=600)
-    with (path / 'image.tar').open('rb') as stream:
-        digest = hashlib.file_digest(stream, 'sha256').hexdigest()
-    manifest = dict(version=version, storage=storage, image=info['Id'],
-                    revision=info['Config']['Labels']['org.opencontainers.image.revision'],
-                    platform=info['Os'] + '/' + info['Architecture'], sha256=digest)
-    (path / 'release.json').write_text(json.dumps(manifest))
-    return manifest
 
 
 def free_port():
@@ -63,12 +43,11 @@ def exercise(image, root):
         run(['docker', 'cp', helper + ':/config/.', str(config)])
         for path in config.iterdir():
             path.chmod(0o600)
-        source = root / 'release'
-        initial = bundle(image, source)
+        initial = resolve_image('docker', image)
         port = free_port()
         smoke.containers.append(name)
         volumes.update(name + '-' + role for role in ('config', 'data', 'backups'))
-        result = install(source, name, config=config, port=port, memory='4g', cpus=2,
+        result = install(initial['image'], name, config=config, port=port, memory='4g', cpus=2,
                          environment=['TRACKER_SPEC_REPO='])
         assert result['status'] == 'ready'
         service = Docker(name)
@@ -118,10 +97,10 @@ state.commit(p,s)
             extra_images.append(tag)
             run(['docker', 'build', '--network', 'none', '-t', tag, '-'],
                 input=f'FROM {image}\n{instruction}\n')
-            destination = root / label
-            manifest = bundle(tag, destination)
+            ident = json.loads(run(['docker', 'image', 'inspect', tag]))[0]['Id']
+            manifest = resolve_image('docker', ident)
             if label == 'next':
-                outcome = upgrade(destination, None, root, container=name, apply=True)
+                outcome = upgrade(manifest['image'], None, root, container=name, apply=True)
                 assert outcome['status'] == 'ready'
                 upgraded = Docker(name)
                 assert upgraded.settings['data'] == original_data
@@ -132,7 +111,7 @@ state.commit(p,s)
                 print('PASS upgrade: changed image; same port, limits, config, data and observed version', flush=True)
             else:
                 try:
-                    upgrade(destination, None, root, container=name, apply=True)
+                    upgrade(manifest['image'], None, root, container=name, apply=True)
                 except (RuntimeError, ValueError):
                     pass
                 else:

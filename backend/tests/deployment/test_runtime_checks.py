@@ -165,3 +165,41 @@ def test_recovery_respects_application_writer_lock(tmp_path):
         with pytest.raises(BlockingIOError, match='writer busy'):
             state.recover(db)
     assert Path(str(db) + '-journal').exists()
+
+
+@pytest.mark.parametrize('mounts', [
+    '1 0 0:1 / / ro - overlay overlay ro\n2 1 8:1 / /config ro - ext4 /dev/data ro\n3 1 8:1 / /data rw - ext4 /dev/data rw\n',
+    '1 0 0:1 / / ro - overlay overlay ro\n2 1 8:1 / /config ro - xfs /dev/data ro\n3 1 8:1 / /data rw - xfs /dev/data rw\n',
+])
+def test_explicit_persistent_mounts_are_accepted(tmp_path, mounts):
+    info = tmp_path / 'mountinfo'
+    info.write_text(mounts)
+    runtime_checks.check_mounts('/config/tracker.toml', '/data/state/tracker.sqlite3', mountinfo=info)
+
+
+@pytest.mark.parametrize('change, message', [
+    ('/data rw - ext4', '/data rw - tmpfs'),
+    ('/data rw - ext4', '/data rw - overlay'),
+    ('/data rw', '/data ro'),
+    ('/config ro', '/config rw'),
+    ('/ ro - overlay', '/ rw - overlay'),
+    ('/data rw', '/temporary rw'),
+])
+def test_ephemeral_or_unsafe_mounts_fail_before_writing(tmp_path, change, message):
+    info = tmp_path / 'mountinfo'
+    info.write_text(('1 0 0:1 / / ro - overlay overlay ro\n'
+                     '2 1 8:1 / /config ro - ext4 /dev/data ro\n'
+                     '3 1 8:1 / /data rw - ext4 /dev/data rw\n').replace(change, message))
+    with pytest.raises(RuntimeError):
+        runtime_checks.check_mounts('/config/tracker.toml', '/data/state/tracker.sqlite3', mountinfo=info)
+
+
+def test_instance_lease_refuses_second_owner_and_releases_after_failure(tmp_path):
+    with pytest.raises(ValueError):
+        with runtime_checks.instance_lease(tmp_path):
+            with pytest.raises(RuntimeError, match='another Lookout'):
+                with runtime_checks.instance_lease(tmp_path):
+                    pytest.fail('two owners admitted')
+            raise ValueError('startup failure')
+    with runtime_checks.instance_lease(tmp_path):
+        assert (tmp_path / '.instance.lock').stat().st_mode & 0o777 == 0o600

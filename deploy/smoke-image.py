@@ -43,13 +43,15 @@ class Smoke:
         self.containers.remove(helper)
         return volumes
 
-    def start(self, label, volumes, *, root=False):
+    def start(self, label, volumes, *, root=False, persistent=True):
         name = f'{self.prefix}-{label}'
         self.containers.append(name)
         self.run('run', '-d', '--name', name, '--network', 'none', *self.mapping,
                  '--read-only', '--cap-drop=all', '--security-opt=no-new-privileges',
                  '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m,mode=1777',
-                 '-v', f'{volumes[0]}:/config:ro,nocopy', '-v', f'{volumes[1]}:/data:rw,nocopy',
+                 '-v', f'{volumes[0]}:/config:ro,nocopy',
+                 *(['-v', f'{volumes[1]}:/data:rw,nocopy'] if persistent else
+                   ['--tmpfs', '/data:rw,nosuid,nodev,size=128m,mode=1777']),
                  '-e', 'TRACKER_SPEC_REPO=', '-e', 'HOST=0.0.0.0', '-e', 'PORT=8080',
                  '-e', 'API_PORT=18731', '-e', 'PYTHONDONTWRITEBYTECODE=1',
                  *(['--user', '0'] if root else []), self.image)
@@ -109,6 +111,9 @@ for path in ('/', '/packages/smoke-fixture'):
 
     def negative(self, mode, *, root=False):
         name = self.start(mode, self.fixture(mode), root=root)
+        self.expect_preflight_failure(name, mode)
+
+    def expect_preflight_failure(self, name, mode):
         deadline = time.monotonic() + 30
         while self.state(name)['Running'] and time.monotonic() < deadline:
             time.sleep(0.25)
@@ -124,7 +129,8 @@ for path in ('/', '/packages/smoke-fixture'):
         self.containers.append(helper)
         self.run('run', '--rm', '--name', helper, '--network', 'none', *self.mapping,
                  '--read-only', '--cap-drop=all', '--security-opt=no-new-privileges',
-                 '-v', f'{volumes[0]}:/config:ro,nocopy', '-v', f'{volumes[1]}:/data:rw,nocopy',
+                 '-v', f'{volumes[0]}:/config:ro,nocopy',
+                 '-v', f'{volumes[1]}:/data:rw,nocopy',
                  '--entrypoint', '/opt/venv/bin/python', self.image,
                  '/app/deploy/migrate-state.py', '--db', '/data/state/tracker.sqlite3',
                  '--backup', '/data/before.sqlite3')
@@ -154,6 +160,11 @@ assert state.read('/data/state/tracker.sqlite3')['sources']['smoke-fixture']['ve
         name = self.start('seeded', volumes)
         self.wait_live(name)
         self.assert_seeded(name)
+        duplicate = self.start('duplicate', volumes)
+        self.expect_preflight_failure(duplicate, 'duplicate data owner')
+        self.assert_seeded(name)
+        ephemeral = self.start('ephemeral', self.fixture('cold'), persistent=False)
+        self.expect_preflight_failure(ephemeral, 'ephemeral data mount')
         # Orphaned Git/RPM helpers must not accumulate against RLIMIT_NPROC.
         # Exercise the image's real PID 1, rather than a mocked waitpid loop.
         result = self.python(name, '''import os, json, time
