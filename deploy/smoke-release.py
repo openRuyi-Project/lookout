@@ -31,6 +31,7 @@ def free_port():
 
 
 def exercise(image, root):
+    image = json.loads(run(['docker', 'image', 'inspect', image]))[0]['Id']
     smoke = module('smoke-image').Smoke('docker', image)
     name = smoke.prefix + '-installed'
     extra_images, volumes = [], set()
