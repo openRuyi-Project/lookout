@@ -3,6 +3,8 @@
 """Exercise architectural boundaries, including nested imports and package initializers."""
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -21,6 +23,15 @@ def source(root, path, text=''):
     destination = root / 'backend/tracker' / path
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(text)
+
+
+def test_static_guard_runs_without_site_packages():
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", "-B", str(ROOT / "scripts/check-architecture.py")],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "architecture invariants: ok"
 
 
 def test_repo_satisfies_all_invariants():

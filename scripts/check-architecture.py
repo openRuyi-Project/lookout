@@ -26,7 +26,7 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 from tracker.monitors.version.rules import load
-from tracker import config as configuration
+from tracker import catalog
 # Side-effect-free monitor types and comparisons can be read without collecting.
 PURE_MONITORS = {
     'tracker.monitors.github.model',
@@ -129,7 +129,9 @@ def check_read_write_separation():
 
 def check_thin_config():
     errors = []
-    cfg = configuration.load(ROOT / 'config/tracker.toml')
+    path = ROOT / 'config/tracker.toml'
+    cfg = tomllib.loads(catalog.read_input(path).decode())
+    catalog.load(cfg, path, {})
     rule = re.compile(r'-(\d+(?:\.\d+)*)$')
     for name, binding in cfg.get('packages', {}).items():
         if set(binding) != {'track_label'}:
