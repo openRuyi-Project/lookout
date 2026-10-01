@@ -174,8 +174,6 @@ export interface components {
         /** FilterEditor */
         FilterEditor: {
             query: components["schemas"]["FilterQuery"];
-            /** Active Group */
-            active_group: number;
             /**
              * Node Limit
              * @default 128
@@ -185,6 +183,8 @@ export interface components {
             groups: components["schemas"]["FilterGroup"][];
             /** Operators */
             operators: components["schemas"]["Choice"][];
+            /** Group */
+            group: string | null;
             /** Clear */
             clear: string;
         };
@@ -192,18 +192,16 @@ export interface components {
         FilterGroup: {
             /** Id */
             id: number;
-            /** Active */
-            active: boolean;
-            /** Select */
-            select: string;
+            /** Closed */
+            closed: boolean;
+            /** Palette */
+            palette: (0 | 1 | 2 | 3) | null;
             /** Logic */
             logic: string;
             /** Conditions */
             conditions: components["schemas"]["FilterCondition"][];
             /** Clear */
-            clear: string;
-            /** Add */
-            add: string | null;
+            clear: string | null;
         };
         /** FilterQuery */
         FilterQuery: {
@@ -212,6 +210,11 @@ export interface components {
              * @default []
              */
             groups: components["schemas"]["Group"][];
+            /**
+             * Tail
+             * @default []
+             */
+            tail: components["schemas"]["Condition"][];
         };
         /** Group */
         Group: {

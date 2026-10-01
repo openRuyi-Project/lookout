@@ -123,7 +123,7 @@ def listing(payload, query):
 
 def _coverage_table(payload, focus, links, title):
     filtered = any(c.dimension == 'check:' + focus['id']
-                   for g in links.editor.query.groups for c in g.conditions)
+                   for c in links.editor.query.conditions)
     reasons = {pkg['name']: pkg['monitors'][focus['id']]['check'].get('error') or
                pkg['monitors'][focus['id']]['check'].get('note')
                for pkg in payload['items']} if filtered else {}

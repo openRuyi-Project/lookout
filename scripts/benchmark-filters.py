@@ -5,7 +5,7 @@ from pathlib import Path
 import statistics
 import sys
 import time
-from urllib.parse import quote
+from urllib.parse import urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from tracker.readmodel.packages import PackageList
@@ -33,18 +33,18 @@ def main():
                 remaining -= count + 1
             if remaining:
                 groups.append({'logic': 'and', 'conditions': []})
-            wire = json.dumps({'groups': groups}, separators=(',', ':'))
+            wire = FilterQuery.model_validate({'groups': groups}).parameters()
             durations = []
             for _ in range(31):
                 start = time.perf_counter()
-                query = FilterQuery.model_validate_json(wire)
-                result = index.select(filters=query, active_group=len(groups) - 1, next_logic=root, per_page=100)
+                query = FilterQuery.extract(wire)[0]
+                result = index.select(filters=query, next_logic=root, per_page=100)
                 durations.append((time.perf_counter() - start) * 1000)
             samples.append({'nodes': nodes, 'group_join_and_next': root, 'packages': len(rows),
                 'candidate_counts': sum(len(result[key]) for key in (
                     'counts', 'buildsystems', 'maintenance_labels', 'version_signals', 'requires_counts'))
                     + sum(map(len, result['build_statuses'].values())),
-                'url_bytes': len(quote(wire, safe='')), 'p50_ms': round(statistics.median(durations), 3),
+                'url_bytes': len(urlencode(query.parameters())), 'p50_ms': round(statistics.median(durations), 3),
                 'p95_ms': round(sorted(durations)[29], 3)})
     print(json.dumps({'python': sys.version, 'node_limit': MAX_QUERY_NODES, 'samples': samples}, indent=2))
 

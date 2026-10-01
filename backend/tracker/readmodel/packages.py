@@ -60,7 +60,7 @@ class PackageList:
             if status not in monitor_model.CHECK_GROUPS and members
         } for dimension, options in self.index.items() if dimension.startswith('check:')}
 
-    def select(self, *, filters=FilterQuery(), active_group=0, next_logic: Logic = 'and', page=1, per_page=100,
+    def select(self, *, filters=FilterQuery(), next_logic: Logic = 'and', page=1, per_page=100,
                query=None, monitor=None, findings_only=False, search='name'):
         query = (self.query if query is None else query).strip().casefold()
         monitor = self.monitor if monitor is None else monitor
@@ -69,9 +69,9 @@ class PackageList:
             scope = scope | {number for number, observations in enumerate(self.observations)
                              if any(query in text for mid, text in observations.items()
                                     if not monitor or mid == monitor)}
-        coverage = Evaluation(self.index, scope, filters, active_group, next_logic)
+        coverage = Evaluation(self.index, scope, filters, next_logic)
         findings = self.index.get('findings:' + monitor, {}).get('yes', frozenset())
-        selection = (Evaluation(self.index, scope & findings, filters, active_group, next_logic)
+        selection = (Evaluation(self.index, scope & findings, filters, next_logic)
                      if findings_only else coverage)
         selected = sorted(selection.matches)
         total = len(selected)
@@ -80,7 +80,7 @@ class PackageList:
 
         def counts(dimension, required=(), *, evaluation=selection):
             values = self.index.get(dimension, {}).keys() | set(required)
-            values |= {c.value for g in filters.groups for c in g.conditions if c.dimension == dimension}
+            values |= {c.value for c in filters.conditions if c.dimension == dimension}
             return {value: evaluation.count(Condition(dimension=dimension, value=value))
                     for value in sorted(values)}
 
@@ -94,7 +94,7 @@ class PackageList:
                 ]
         checks = counts('check:' + monitor, monitor_model.CHECK_GROUPS, evaluation=coverage) if monitor else {}
         return {
-            'filters': filters, 'active_group': active_group, 'next_logic': next_logic,
+            'filters': filters, 'next_logic': next_logic,
             'items': [self.rows[number] for number in selected[(page - 1) * per_page:page * per_page]],
             'total': total, 'page': page, 'per_page': per_page, 'pages': pages,
             'counts': {**counts('view', required=VIEWS), 'all': total},

@@ -25,20 +25,20 @@ class Links:
     def __init__(self, query=None):
         self.query = {key: value for key, value in (query or {}).items() if value}
         raw = self.query.get('filters', {})
-        filters = FilterQuery.decode(raw)
+        filters = FilterQuery.model_validate(raw)
         self.query['filters'] = filters.model_dump()
-        self.editor = QueryEditor(filters, self.query.get('active_group', 0), self.query.get('next_logic', 'and'))
+        self.editor = QueryEditor(filters, self.query.get('next_logic', 'and'))
 
     def to(self, **changes):
         query = {**self.query, 'page': None, **changes}
         if query.get('page') == 1:
             del query['page']
-        filters = FilterQuery.decode(query.pop('filters', {}))
+        filters = FilterQuery.model_validate(query.pop('filters', {}))
         parameters = [(key, value) for key, value in query.items() if value]
         return '/?' + urlencode(parameters + filters.parameters(), safe=':')
 
     def edited(self, editor, **changes):
-        return self.to(filters=editor.query.model_dump(), active_group=editor.active,
+        return self.to(filters=editor.query.model_dump(),
                        next_logic=editor.next_logic if editor.next_logic != 'and' else '', **changes)
 
     def selected(self, dimension, value):
@@ -82,18 +82,16 @@ def condition_label(condition, payload):
 
 def filter_editor(payload, links):
     editor = links.editor
-    groups = []
-    can_add = editor.query.nodes + 1 <= MAX_QUERY_NODES
-    for number, group in enumerate(editor.query.groups):
-        selected = editor.select(number)
-        active = number == editor.active
-        groups.append(FilterGroup(id=number, active=active, select=links.edited(selected),
-            logic=group.logic,
-            conditions=[FilterCondition(label=condition_label(c, payload) or c.value, selected=active, logic=c.logic,
-                href=links.edited(selected.toggle(c) if active else selected)) for c in group.conditions],
-            clear=links.edited(editor.clear(number)),
-            add=links.edited(selected.add()) if can_add else None))
-    return FilterEditor(query=editor.query, active_group=editor.active, groups=groups,
+    groups = [FilterGroup(id=number, closed=True, palette=(0, 1, 2, 3)[number % 4], logic=group.logic,
+        conditions=[FilterCondition(label=condition_label(term, payload) or term.value, logic=term.logic,
+            href=links.edited(editor.remove(number, term))) for term in group.conditions],
+        clear=links.edited(editor.remove(number))) for number, group in enumerate(editor.query.groups)]
+    if editor.query.tail:
+        groups.append(FilterGroup(id=len(groups), closed=False, palette=None, logic='and',
+            conditions=[FilterCondition(label=condition_label(term, payload) or term.value, logic=term.logic,
+                href=links.edited(editor.toggle(term))) for term in editor.query.tail], clear=None))
+    return FilterEditor(query=editor.query, groups=groups,
+        group=links.edited(editor.group()) if editor.query.tail and editor.query.nodes < MAX_QUERY_NODES else None,
         operators=[Choice(label=logic.upper(), selected=editor.next_logic == logic,
             href=links.edited(editor.mode(logic))) for logic in ('and', 'or', 'not')],
         clear=links.edited(QueryEditor(FilterQuery(), next_logic=editor.next_logic)))
@@ -164,7 +162,7 @@ def listing_controls(payload, query, focus, links):
             href=links.condition('check:' + focus['id'], group, section='coverage')) for group in CHECK_GROUPS)
         navigation.append(Navigation(label=caption(focus['title']), choices=choices))
     hidden = [Parameter(name=key, value=str(query[key]))
-              for key in ('monitor', 'section', 'active_group', 'next_logic', 'per_page') if query.get(key)]
+              for key in ('monitor', 'section', 'next_logic', 'per_page') if query.get(key)]
     hidden.extend(Parameter(name=key, value=value) for key, value in links.editor.query.parameters())
     return Controls(query=query.get('q', ''), hidden=hidden, choice_rows=rows, navigation=navigation,
         active=[Choice(label='Search: ' + query['q'], href=links.to(q=''))] if query.get('q') else [],

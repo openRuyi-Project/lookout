@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal, get_origin
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
-from pydantic import BaseModel, ConfigDict, Field, Json, ValidationError, WithJsonSchema, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from tracker import state
 from tracker.monitors.model import RawFinding
@@ -312,7 +312,6 @@ class MonitoredList(BaseModel):
     per_page: int
     pages: int
     filters: FilterQuery
-    active_group: int
     next_logic: Literal['and', 'or', 'not']
     query_node_limit: int = MAX_QUERY_NODES
     counts: dict[str, int]
@@ -349,28 +348,20 @@ class ListingQuery(BaseModel):
     q: str = Field('', max_length=100)
     page: int = Field(1, ge=1, le=1000000)
     per_page: int = Field(100, ge=1, le=200)
-    filters: Annotated[Json[FilterQuery], WithJsonSchema({'type': 'string'}, mode='validation')] = Field(default='{}', validate_default=True,
-        description=f'One row: ordered AND-<dimension>=value / OR-<dimension>=value / NOT-<dimension>=value parameters, including repeated keys. Multiple rows: filters JSON groups. AND and NOT bind before OR; A leading NOT parameter negates only its condition; NOT groups use JSON. Max {MAX_QUERY_NODES} groups + conditions, including raw repeats. Empty groups are ignored. Do not mix inline parameters with filters. filters also accepts dimension=value.')
-    active_group: int = Field(0, ge=0,
-        description='Editor position, not a filter. Candidate counts add a condition to this group; selected conditions are counted idempotently.')
+    filters: FilterQuery = Field(default_factory=FilterQuery)
     next_logic: Literal['and', 'or', 'not'] = Field('and',
         description='Operator for the next addition. Candidate counts are min(combined result, candidate alone in the same scope), in every mode. Does not change the current query or total.')
     monitor: str = Field('', max_length=64)
     section: Literal['results', 'coverage'] = 'results'
 
-    @field_validator('filters', mode='before')
-    @classmethod
-    def simple_filter(cls, value):
-        if isinstance(value, str) and not value.lstrip().startswith('{'):
-            return FilterQuery.decode(value).model_dump_json()
-        return value
-
     @classmethod
     def from_parameters(cls, parameters):
         query, remaining = FilterQuery.extract(parameters)
-        values: dict[str, Any] = {'filters': query.model_dump_json()}
+        values: dict[str, Any] = {'filters': query}
         arrays = {name for name, field in cls.model_fields.items() if get_origin(field.annotation) is list}
         for name, value in remaining:
+            if name == 'filters':
+                raise ValueError('Use ordered AND-/OR-/NOT- conditions and group parameters')
             if name in arrays:
                 values.setdefault(name, []).append(value)
             else:
@@ -426,7 +417,10 @@ def query_schema(model):
     parameters = [{'name': name, 'in': 'query', 'schema': field,
         'required': name in schema.get('required', ()),
         **({'description': field['description']} if 'description' in field else {})}
-        for name, field in schema['properties'].items()]
+        for name, field in schema['properties'].items() if name != 'filters']
+    parameters.append({'name': 'group', 'in': 'query', 'required': False,
+        'schema': {'type': 'string', 'enum': ['AND', 'OR', 'NOT']},
+        'description': f'Seals preceding ungrouped AND-<dimension>, OR-<dimension>, NOT-<dimension> parameters, preserving order and repeated keys. Operations are evaluated left to right. At most {MAX_QUERY_NODES} conditions + group markers, before deduplication. Each expression starts from the scoped ALL, including inside groups: leading OR preserves ALL, leading NOT subtracts. Groups cannot nest.'})
     return {'parameters': parameters, 'responses': {422: {'description': 'Invalid query'}}}
 
 
@@ -494,7 +488,7 @@ def create_app(db=None):
             section = 'coverage'
         try:
             result = index.select(query=filters.q, monitor=monitor, filters=filters.filters,
-                active_group=filters.active_group, next_logic=filters.next_logic, page=filters.page, per_page=filters.per_page,
+                next_logic=filters.next_logic, page=filters.page, per_page=filters.per_page,
                 search=search,
                 findings_only=bool(focused and focused['kind'] in ('evidence', 'requires') and section == 'results'))
         except ValueError as error:

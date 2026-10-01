@@ -125,7 +125,7 @@ def requires_cells(pkg, result, links):
 def requires_preview(pkg, result, links):
     """Expand changes when requested; otherwise show only resolved conflicts."""
     changes = any(c.dimension == 'version_signal' and c.value == result['id']
-                  for group in links.editor.query.groups for c in group.conditions)
+                  for c in links.editor.query.conditions)
     visible = [item for item in result['data']['requirements']
                if unsatisfied(item) or changes and item['changed']]
     groups = [group for _, _, members in dependency_groups(visible) for group in members]

@@ -11,5 +11,6 @@ const {controls} = Astro.props;
   <nav class="logic-switch" aria-label="Next operator">
     {controls.editor.operators.map(choice => <a href={safeHref(choice.href)} aria-current={choice.selected ? 'true' : undefined}>{choice.label}</a>)}
   </nav>
+  <a class="group-add" href={safeHref(controls.editor.group)} aria-disabled={!controls.editor.group || undefined}>Group</a>
   <a class="filter-clear" href={safeHref(controls.editor.clear)}>Clear</a>
 </form>

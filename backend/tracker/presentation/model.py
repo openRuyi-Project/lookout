@@ -112,20 +112,19 @@ class FilterCondition(Choice):
 
 class FilterGroup(DocumentModel):
     id: int
-    active: bool
-    select: str
+    closed: bool
+    palette: Literal[0, 1, 2, 3] | None
     logic: str
     conditions: list[FilterCondition]
-    clear: str
-    add: str | None
+    clear: str | None
 
 
 class FilterEditor(DocumentModel):
     query: FilterQuery
-    active_group: int
     node_limit: int = MAX_QUERY_NODES
     groups: list[FilterGroup]
     operators: list[Choice]
+    group: str | None
     clear: str
 
 

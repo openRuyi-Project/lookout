@@ -36,7 +36,7 @@ def test_labels_and_underlines_follow_the_same_version_selection(client):
     page = document(client, {})
     rows = {row['key']: row for row in page['table']['rows']}
     for view, label, column in [('updates', 'Outdated', 0), ('untracked', 'Untracked', 1)]:
-        selected = {row['key'] for row in document(client, {'filters': conjunction({'view': view}).encode()})['table']['rows']}
+        selected = {row['key'] for row in document(client, dict(conjunction({'view': view}).parameters()))['table']['rows']}
         tagged = {name for name, row in rows.items() if any(v['text'] == label for v in values(row, column))}
         assert selected == tagged
     assert rows['untracked']['cells'][1]['lines'][0][0]['decoration'] == 'dashed'
@@ -51,7 +51,7 @@ def test_labels_and_underlines_follow_the_same_version_selection(client):
 
 
 def test_errors_aggregate_packages_and_link_to_the_failed_check(client):
-    page = document(client, {'filters': conjunction({'maintenance': 'CheckFailed'}).encode()})
+    page = document(client, dict(conjunction({'maintenance': 'CheckFailed'}).parameters()))
     assert {row['key'] for row in page['table']['rows']} == {'binutils', 'foo3'}
     for row in page['table']['rows']:
         badge, = [v for v in values(row, 0) if v['text'] == 'CheckFailed']
@@ -63,15 +63,15 @@ def test_errors_aggregate_packages_and_link_to_the_failed_check(client):
                       if any(v['text'] == 'CheckFailed' for v in values(item, 1))]
         assert any(v['text'] == 'CheckFailed' for v in values(selected, 1))
         assert any('Fixture' in v['text'] for v in values(selected, 1))
-    assert document(client, {'filters': conjunction({'maintenance': 'CheckFailed', 'view': 'updates'}).encode()})['total'] == 1
+    assert document(client, dict(conjunction({'maintenance': 'CheckFailed', 'view': 'updates'}).parameters()))['total'] == 1
 
 
 def test_version_issue_counts_and_row_links_have_one_authority(client):
     for view, label, column in [('updates', 'Outdated', 0), ('untracked', 'Untracked', 1)]:
-        version_view = client.get('/api/v2/packages', params={'filters': conjunction({'view': view}).encode()}).json()
-        filtered = client.get('/api/v2/packages', params={'filters': conjunction({'maintenance': label}).encode()}).json()
+        version_view = client.get('/api/v2/packages', params=dict(conjunction({'view': view}).parameters())).json()
+        filtered = client.get('/api/v2/packages', params=dict(conjunction({'maintenance': label}).parameters())).json()
         assert version_view['items'] == filtered['items']
-        page = document(client, {'filters': conjunction({'maintenance': label}).encode()})
+        page = document(client, dict(conjunction({'maintenance': label}).parameters()))
         choices = page['controls']['choice_rows'][0]['choices']
         assert len(choices) == len({c['label'] for c in choices})
         assert next(c for c in choices if c['label'] == label)['count'] == page['total']
@@ -94,13 +94,13 @@ def test_error_means_monitor_error_not_unknown_or_coverage(status):
 def test_failed_obs_build_is_not_a_monitor_error(snapshot, tmp_path):
     assert snapshot['builds']['foo3:tools']['rva20']['raw_status'] == 'failed'
     client, _ = client_for(snapshot, tmp_path)
-    assert document(client, {'filters': conjunction({'maintenance': 'CheckFailed'}).encode()})['total'] == 0
+    assert document(client, dict(conjunction({'maintenance': 'CheckFailed'}).parameters()))['total'] == 0
 
 
 def test_not_applicable_is_not_untracked_even_when_source_is_missing(snapshot, tmp_path):
     snapshot['bindings']['unknown'] = {'not_applicable': True}
     client, _ = client_for(snapshot, tmp_path)
-    page = document(client, {'filters': conjunction({'view': 'untracked'}).encode()})
+    page = document(client, dict(conjunction({'view': 'untracked'}).parameters()))
     assert 'unknown' not in {row['key'] for row in page['table']['rows']}
 
 
@@ -108,7 +108,7 @@ def test_multiple_failed_monitors_count_once_and_checks_keep_each_error(snapshot
     snapshot['tracks']['widget@3']['error'] = 'Fixture version error'
     snapshot['builds']['foo3']['rva23']['error'] = 'Fixture build API error'
     client, _ = client_for(snapshot, tmp_path)
-    page = document(client, {'filters': conjunction({'maintenance': 'CheckFailed'}).encode()})
+    page = document(client, dict(conjunction({'maintenance': 'CheckFailed'}).parameters()))
     assert page['total'] == 1
     badge, = [v for v in values(page['table']['rows'][0], 0) if v['text'] == 'CheckFailed']
     assert terms_in(badge['href']) == []

@@ -58,7 +58,7 @@ elif operation == 'list':
     focus = next((m for m in payload['monitors'] if m['id'] == filters.monitor), None)
     section = 'coverage' if focus and focus['kind'] == 'source' else filters.section
     selection = PackageList(packages, payload['targets']).select(query=filters.q,
-        filters=filters.filters, active_group=filters.active_group, next_logic=filters.next_logic, page=filters.page, per_page=filters.per_page,
+        filters=filters.filters, next_logic=filters.next_logic, page=filters.page, per_page=filters.per_page,
         monitor=filters.monitor, findings_only=bool(focus and focus['kind'] in ('evidence', 'requires') and section == 'results'))
     result = presentation_pages.listing({**payload, **selection, 'section': section},
         filters.model_copy(update={'section': section, 'page': selection['page']}).model_dump(exclude_defaults=True)).model_dump()

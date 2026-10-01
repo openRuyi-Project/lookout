@@ -11,21 +11,26 @@ let delays = {};
 let revision = 0;
 
 const filtered = (conditions, parameters = {}, logic = 'and', root = 'and') => {
-  const groups = conditions.map(terms => ({logic: root, conditions: terms.map(([dimension, value], i) => ({dimension, value, logic: i === 0 ? root : logic}))}));
-  return '/?' + new URLSearchParams({...parameters, filters: JSON.stringify({groups})});
+  const pairs = Object.entries(parameters);
+  conditions.forEach((terms, group) => {
+    terms.forEach(([dimension, value], index) => pairs.push([(index ? logic : root).toUpperCase() + '-' + dimension, value]));
+    if (group < conditions.length - 1) pairs.push(['group', root.toUpperCase()]);
+  });
+  return '/?' + new URLSearchParams(pairs);
 };
 const filterFrom = href => {
   const parameters = new URL(href.replaceAll('&amp;', '&'), 'http://fixture').searchParams;
-  const conditions = [...parameters].filter(([key]) => /^(AND|OR|NOT)-/.test(key)).map(([key, value]) => ({
-    dimension: key.slice(key.indexOf('-') + 1), value, logic: key.slice(0, key.indexOf('-')).toLowerCase(),
-  }));
-  if (conditions.length) return {groups: [{logic: conditions[0].logic === 'not' ? 'and' : conditions[0].logic, conditions}]};
-  const wire = parameters.get('filters') || '{"groups":[]}';
-  const split = wire.indexOf('=');
-  const parsed = wire.startsWith('{') ? JSON.parse(wire) :
-    {groups: [{conditions: [{dimension: wire.slice(0, split), value: wire.slice(split + 1)}]}]};
-  return {groups: parsed.groups.map(group => ({logic: group.logic || 'and',
-    conditions: (group.conditions || []).map(condition => ({logic: 'and', ...condition}))}))};
+  const groups = [];
+  let tail = [];
+  for (const [key, value] of parameters) {
+    if (key === 'group') {
+      groups.push({logic: value.toLowerCase(), conditions: tail});
+      tail = [];
+    } else if (/^(AND|OR|NOT)-/.test(key)) {
+      tail.push({dimension: key.slice(key.indexOf('-') + 1), value, logic: key.slice(0, key.indexOf('-')).toLowerCase()});
+    }
+  }
+  return {groups, tail};
 };
 const targets = ['rva23', 'rva20', 'x86_64'].map(id => ({id, label: id, repository: id, architecture: 'riscv64'}));
 const makePackage = (name, patch = {}) => ({
@@ -91,6 +96,9 @@ const packages = [
       architecture: target.architecture, raw_status: 'unknown', text: 'No result', kind: 'muted',
       log_url: null, stale: false, updated_at: null, matches_source: null, last_success: null, flavors: []}))}),
 ];
+packages.push(makePackage('advisory-current', {latest: '2.0', relation: 'current',
+  maintenance_findings: [packages[0].maintenance_findings[0]],
+}));
 // The fixture keeps concise package variants above; this is its only wire mapping.
 // The fixture builds domain inputs; pages receive only reading documents.
 const catalog = [
@@ -400,22 +408,19 @@ try {
   assert.match(packageMenu, />Untracked<\/span>/);
   const alertLinks = [...packageMenu.matchAll(/href="([^"]+)"/g)].map(([, href]) => filterFrom(href));
   for (const value of ['Outdated', 'Untracked', 'CheckFailed']) {
-    assert.ok(alertLinks.some(q => q.groups[0].conditions.some(c => c.dimension === 'maintenance' && c.value === value)));
+    assert.ok(alertLinks.some(q => q.tail.some(c => c.dimension === 'maintenance' && c.value === value)));
   }
   assert.match(packageMenu, />DepMismatch<\/span>[^]*?>DepChanges<\/span>/);
   const simpleLink = [...packageMenu.matchAll(/href="([^"]+)"/g)]
     .map(([, href]) => href).find(href => href.includes('AND-maintenance=DepMismatch'));
   assert.equal(simpleLink, '/?AND-maintenance=DepMismatch');
   const simplePage = await read(simpleLink);
-  const jsonPage = await read(filtered([[['maintenance', 'DepMismatch']]]));
-  assert.deepEqual(simplePage.match(/<tr data-key="[^"]+"/g), jsonPage.match(/<tr data-key="[^"]+"/g));
-  assert.deepEqual(simplePage.match(/\b\d+ packages\b/g), jsonPage.match(/\b\d+ packages\b/g));
+  const equivalentPage = await read(filtered([[['maintenance', 'DepMismatch']]]));
+  assert.deepEqual(simplePage.match(/<tr data-key="[^"]+"/g), equivalentPage.match(/<tr data-key="[^"]+"/g));
+  assert.deepEqual(simplePage.match(/\b\d+ packages\b/g), equivalentPage.match(/\b\d+ packages\b/g));
   const inlineURL = '/?per_page=2&AND-maintenance=Outdated&OR-maintenance=Advisory&AND-maintenance=DepMismatch';
   const inlineQuery = filterFrom(inlineURL);
   const inlinePage = await read(inlineURL);
-  const mixedJSONPage = await read('/?' + new URLSearchParams({per_page: '2', filters: JSON.stringify(inlineQuery)}));
-  assert.deepEqual(inlinePage.match(/<tr data-key="[^"]+"/g), mixedJSONPage.match(/<tr data-key="[^"]+"/g));
-  assert.deepEqual(inlinePage.match(/\b\d+ packages\b/g), mixedJSONPage.match(/\b\d+ packages\b/g));
   assert.deepEqual([...inlinePage.matchAll(/<input type="hidden" name="((?:AND|OR|NOT)-[^"]+)" value="([^"]+)"/g)]
     .map(([, key, value]) => [key, value]), [...new URL(inlineURL, 'http://fixture').searchParams]
     .filter(([key]) => /^(AND|OR|NOT)-/.test(key)));
@@ -425,20 +430,20 @@ try {
   }
   const excludedURL = '/?AND-maintenance=Outdated&NOT-maintenance=Advisory&next_logic=not';
   const excludedPage = await read(excludedURL);
-  const excludedJSON = await read('/?' + new URLSearchParams({filters: JSON.stringify(filterFrom(excludedURL)), next_logic: 'not'}));
   const rowKeys = html => new Set([...html.matchAll(/<tr data-key="([^"]+)"/g)].map(([, key]) => key));
-  assert.deepEqual(rowKeys(excludedPage), rowKeys(excludedJSON));
   const outdatedKeys = rowKeys(await read('/?AND-maintenance=Outdated'));
   const advisoryKeys = rowKeys(await read('/?AND-maintenance=Advisory'));
+  const combinedKeys = rowKeys(await read('/?AND-maintenance=Outdated&OR-maintenance=Advisory'));
+  assert.ok(advisoryKeys.has('advisory-current'));
+  assert.ok(!outdatedKeys.has('advisory-current'));
+  assert.deepEqual([...combinedKeys].sort(), [...new Set([...outdatedKeys, ...advisoryKeys])].sort());
   assert.deepEqual(rowKeys(excludedPage), outdatedKeys.difference(advisoryKeys));
   assert.match(excludedPage, /name="NOT-maintenance" value="Advisory"/);
   assert.match(excludedPage, /class="condition-operator">NOT/);
   assert.match(excludedPage, /aria-current="true"[^>]*>NOT|>NOT<\/a>/);
   const leadingNot = await read('/?NOT-maintenance=Outdated&AND-maintenance=Advisory');
   assert.deepEqual(rowKeys(leadingNot), advisoryKeys.difference(outdatedKeys));
-  const leadingNotJSON = await read('/?' + new URLSearchParams({filters: JSON.stringify(filterFrom('/?NOT-maintenance=Outdated&AND-maintenance=Advisory'))}));
-  assert.deepEqual(rowKeys(leadingNot), rowKeys(leadingNotJSON));
-  console.log('PASS NOT: set subtraction, ordered URL/JSON equivalence and retained search inputs');
+  console.log('PASS NOT: set subtraction and retained ordered search inputs');
   const alertCount = (html, label) => {
     const alerts = html.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
     return Number(alerts.match(new RegExp(`>${label}</span></span>\\s*<b>(\\d+)</b>`))[1]);
@@ -467,9 +472,9 @@ try {
   });
   assert.ok(pageLinks[0].length > 0);
   assert.deepEqual(pageLinks[0], pageLinks[1]);
-  console.log('PASS palette counts: AND <= OR <= own scope; ordered inline/JSON queries, search inputs and pagination');
+  console.log('PASS palette counts: AND <= OR <= own scope; ordered condition/group parameters, search inputs and pagination');
   const changedPage = await read(filtered([[['version_signal', 'requires']]]));
-  assert.match(changedPage, /aria-label="Remove DepChanges from group 1"/);
+  assert.match(changedPage, /aria-label="Remove DepChanges"/);
   assert.match(changedPage, /name="AND-version_signal" value="requires"/);
   const untrackedRow = listing.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
   assert.match(untrackedRow, /data-decoration="dashed"/);
@@ -490,40 +495,50 @@ try {
   const terms = [['buildsystem', 'custom'], ['maintenance', 'LicenseDiff'], ['build:rva23', 'failed']];
   const scoped = await read(filtered([terms]));
   for (const label of ['BuildSystem: custom', 'LicenseDiff', 'rva23: Failed']) {
-    assert.ok(scoped.includes(`aria-label="Remove ${label} from group 1"`));
+    assert.ok(scoped.includes(`aria-label="Remove ${label}"`));
   }
-  const clearBuild = scoped.match(/<a href="([^"]+)" aria-label="Remove rva23: Failed from group 1"/)[1];
-  assert.deepEqual(filterFrom(clearBuild).groups[0].conditions, terms.slice(0, 2).map(([dimension, value]) => ({dimension, value, logic: 'and'})));
+  const clearBuild = scoped.match(/<a href="([^"]+)" aria-label="Remove rva23: Failed"/)[1];
+  assert.deepEqual(filterFrom(clearBuild).tail, terms.slice(0, 2).map(([dimension, value]) => ({dimension, value, logic: 'and'})));
   assert.match(scoped, /0 packages/);
   for (const [dimension, value] of terms) {
     assert.ok(scoped.includes(`name="AND-${dimension}" value="${value}"`));
   }
   assert.match(scoped, /aria-label="Next operator"/);
-  const grouped = await read(filtered([[['build:rva23', 'failed'], ['build:rva23', 'unresolvable']], [['maintenance', 'Advisory']]], {active_group: '1', next_logic: 'or'}, 'or'));
+  const grouped = await read(filtered([[['build:rva23', 'failed'], ['build:rva23', 'unresolvable']], [['maintenance', 'Advisory']]], {next_logic: 'or'}, 'or'));
   assert.equal((grouped.match(/class="logic-switch"/g) || []).length, 1);
   assert.match(grouped, /data-group-id="0"/);
   assert.match(grouped, /data-group-id="1"/);
-  assert.match(grouped, /aria-label="Clear group 1"/);
-  assert.equal((grouped.match(/class="group-add"/g) || []).length, 2);
-  assert.equal((grouped.match(/class="query-precedence"/g) || []).length, 1);
-  assert.ok(grouped.indexOf('class="query-precedence"') > grouped.indexOf('data-group-id="1"'));
+  assert.match(grouped, /aria-label="Remove group 1"/);
+  assert.equal((grouped.match(/class="group-add"/g) || []).length, 1);
   const searchIndex = grouped.indexOf('type="submit">Search');
   const switchIndex = grouped.indexOf('aria-label="Next operator"');
   const clearIndex = grouped.indexOf('class="filter-clear"');
   const groupsIndex = grouped.indexOf('data-group-id="0"');
   assert.ok(searchIndex < switchIndex && switchIndex < clearIndex && clearIndex < groupsIndex);
   assert.ok(groupsIndex < grouped.indexOf('<table'));
-  assert.match(grouped, /class="group-selector"[^>]*aria-label="Edit group 2">AND/);
+  assert.match(grouped, /data-group-id="0" data-palette="0"/);
+  assert.match(grouped, /data-group-id="0" data-palette="0"[^]*?<span class="condition-operator">AND<\/span>/);
+  const leadingOrPage = await read('/?OR-maintenance=Advisory');
+  assert.deepEqual(leadingOrPage.match(/\b\d+ packages\b/g), listing.match(/\b\d+ packages\b/g));
+  const sealLink = grouped.match(/class="group-add" href="([^"]+)"/)[1];
+  const sealedQuery = filterFrom(sealLink);
+  assert.equal(sealedQuery.groups.length, 2);
+  assert.equal(sealedQuery.groups[1].logic, 'or');
+  assert.equal(sealedQuery.tail.length, 0);
+  const sealedHTML = await read(sealLink.replaceAll('&amp;', '&'));
+  assert.match(sealedHTML, /class="group-add"[^>]*aria-disabled="true"/);
+  const removeGroup = sealedHTML.match(/class="group-clear" href="([^"]+)" aria-label="Remove group 1"/)[1];
+  assert.deepEqual(filterFrom(removeGroup).groups, sealedQuery.groups.slice(1));
   const queryContract = await (await fetch(`http://127.0.0.1:${mock.address().port}/api/ui/packages`)).json();
   const nodeLimit = queryContract.controls.editor.node_limit;
-  const atLimit = await read(filtered([Array.from({length: nodeLimit - 1}, (_, i) => ['maintenance', `c${i}`])]));
-  assert.equal((atLimit.match(/aria-label="Remove /g) || []).length, nodeLimit - 1);
+  const atLimit = await read(filtered([Array.from({length: nodeLimit}, (_, i) => ['maintenance', `c${i}`])]));
+  assert.equal((atLimit.match(/aria-label="Remove /g) || []).length, nodeLimit);
   assert.match(atLimit, new RegExp(`Query limit: ${nodeLimit} groups \\+ conditions`));
   assert.match(atLimit, /class="group-add"[^>]*aria-disabled="true"/);
-  const clearAtLimit = atLimit.match(/class="group-clear" href="([^"]+)"/)[1];
+  const clearAtLimit = atLimit.match(/class="filter-clear" href="([^"]+)"/)[1];
   assert.doesNotMatch(await read(clearAtLimit.replaceAll('&amp;', '&')), /data-group-id=/);
   const exactCheck = await read(filtered([[['check:security', 'expired']]], {monitor: 'security', section: 'coverage'}));
-  assert.match(exactCheck, /aria-label="Remove Advisory: Stale from group 1"/);
+  assert.match(exactCheck, /aria-label="Remove Advisory: Stale"/);
   const paged = await read('/?per_page=3&page=2');
   const topPager = paged.match(/<nav[^>]*aria-label="Pages above results"[^]*?<\/nav>/)[0];
   const bottomPager = paged.match(/<nav[^>]*aria-label="Pages below results"[^]*?<\/nav>/)[0];
@@ -556,7 +571,7 @@ try {
   assert.doesNotMatch(focused, /data-key="success"/);
   const coverage = await read(filtered([[['check:yanked', 'ok']]], {monitor: 'yanked', section: 'coverage'}));
   assert.match(coverage, />Version<\/th>/);
-  assert.match(coverage, /Remove Release files: Checked from group 1/);
+  assert.match(coverage, /Remove Release files: Checked/);
   const unknownPort = await read('/packages/yanked');
   assert.match(unknownPort, /Release withdrawn/);
   assert.match(unknownPort, />Files<\/dt>/);
@@ -616,7 +631,7 @@ try {
   const versionViews = versionList.match(/<nav[^>]*aria-label="Version"[^]*?<\/nav>/)[0];
   assert.match(versionViews, />Outdated<\/span>/);
   const updatesList = await read(filtered([[['view', 'updates']]], {monitor: 'version'}));
-  assert.match(updatesList, /aria-label="Remove Outdated from group 1"/);
+  assert.match(updatesList, /aria-label="Remove Outdated"/);
   assert.match(versionList, /<nav[^>]*aria-label="Related"/);
   const versionRelated = await read(filtered([[['version_signal', 'security']]], {monitor: 'version', q: 'security'}));
   assert.match(versionRelated, /data-key="security"/);
@@ -658,7 +673,7 @@ try {
   const requirementNav = requiresList.match(/<nav[^>]*aria-label="Dependencies"[^]*?<\/nav>/)[0];
   for (const label of ['DepMismatch', 'DepChanges', 'Uncovered', 'CheckFailed']) assert.ok(requirementNav.includes(label));
   const requiresFiltered = await read(filtered([[['requires', 'unmet']]], {monitor: 'requires', per_page: '1'}));
-  assert.match(requiresFiltered, /Remove DepMismatch from group 1/);
+  assert.match(requiresFiltered, /Remove DepMismatch/);
   assert.match(requiresFiltered, /name="AND-requires"/);
   const requiresCoverage = await read(filtered([[['check:requires', 'uncovered'], ['requires', 'unmet']]], {monitor: 'requires', section: 'coverage'}));
   assert.match(requiresCoverage, />Version<\/th>/);

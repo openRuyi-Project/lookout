@@ -2,28 +2,20 @@
 import {safeHref, type FilterEditor} from '../../lib/document';
 interface Props {editor: FilterEditor}
 const {editor} = Astro.props;
-const nodes = editor.query.groups.reduce((sum, group) => sum + 1 + group.conditions.length, 0);
+const nodes = editor.query.tail.length + editor.query.groups.reduce((sum, group) => sum + 1 + group.conditions.length, 0);
 ---
-{editor.groups.map(group => <div class:list={['filter-group', {active: group.active}]} data-group-id={group.id}
-    role="group" aria-label={`Filter group ${group.id + 1}`}>
-    <a class="group-selector" href={safeHref(group.select)} aria-current={group.active ? 'true' : undefined}
-      aria-label={`Edit group ${group.id + 1}`}>{group.logic.toUpperCase()}</a>
-    <div class="group-conditions">
-      {group.conditions.length === 0 && <span class="empty-group" aria-label="Empty group">—</span>}
-      {group.conditions.map((condition, index) => <>
-        {(index > 0 || (condition.logic === 'not' && group.logic !== 'not')) && <span class="condition-operator">{condition.logic.toUpperCase()}</span>}
-        <a href={safeHref(condition.href)} aria-label={group.active ? `Remove ${condition.label} from group ${group.id + 1}` : `Edit group ${group.id + 1}: ${condition.label}`}>
-          {condition.label}{group.active && <span aria-hidden="true"> ×</span>}
-        </a>
-      </>)}
-    </div>
-    {group.active && <span class="query-hint-space">
-      <small class="query-precedence">// AND / NOT &gt; OR</small>
-    </span>}
-    <span class="group-actions">
-      <a class="group-clear" href={safeHref(group.clear)} aria-label={`Clear group ${group.id + 1}`}>×</a>
-      <a class="group-add" href={safeHref(group.add)} aria-label={`Add group after group ${group.id + 1}`}
-        aria-disabled={!group.add || undefined}>+ Group</a>
+{editor.groups.length > 0 && <div class="query-expression" aria-label="Filter expression">
+  {editor.groups.map(group => <span class="query-operand">
+    {group.closed && <span class="condition-operator">{group.logic.toUpperCase()}</span>}
+    <span class:list={['query-segment', {'query-group': group.closed}]}
+      data-group-id={group.id} data-palette={group.palette ?? undefined}>
+
+    {group.conditions.map(condition => <>
+      <span class="condition-operator">{condition.logic.toUpperCase()}</span>
+      <a href={safeHref(condition.href)} aria-label={`Remove ${condition.label}`}>{condition.label} <span class="term-remove" aria-hidden="true">×</span></a>
+    </>)}
+    {group.closed && <><a class="group-clear" href={safeHref(group.clear)} aria-label={`Remove group ${group.id + 1}`}>×</a></>}
     </span>
-  </div>)}
-{nodes >= editor.node_limit && <p role="status" class="notice">Query limit: {editor.node_limit} groups + conditions. Clear conditions before adding more.</p>}
+  </span>)}
+</div>}
+{nodes >= editor.node_limit && <p role="status" class="notice">Query limit: {editor.node_limit} groups + conditions.</p>}

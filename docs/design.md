@@ -92,74 +92,42 @@ request/response models; the site's `/api` page owns usage examples.
 
 ## Selection and presentation
 
-`readmodel/query.py` owns the two-level query:
+`readmodel/query.py` owns sealed groups plus a pending condition sequence. The only
+HTTP input is ordered `AND-dimension=value`, `OR-dimension=value`,
+`NOT-dimension=value` and `group=AND|OR|NOT` pairs. Preserve repeated keys in order.
+A group marker seals conditions since the preceding marker; it cannot nest or
+capture an already sealed group. Its operator connects the entire group, independently
+of the first condition's operator. Each sequence is evaluated left to right, starting from the scoped ALL.
+AND intersects, OR unions and NOT subtracts the next operand. Pending terms have
+no implicit parentheses. A sealed group evaluates its conditions in the same
+order from the scoped ALL, then joins the outer result using its own operator. Every condition retains its operator when grouped.
 
-```json
-{"groups":[
-  {"logic":"and","conditions":[{"dimension":"build:rva23","value":"failed"},{"dimension":"build:rva23","value":"unresolvable","logic":"or"}]},
-  {"logic":"and","conditions":[{"dimension":"maintenance","value":"Advisory"},{"dimension":"maintenance","value":"DepMismatch"}]}
-]}
-```
+`presentation/query_editor.py` adds/removes pending terms, seals groups and
+removes terms or groups without changing other operators. `next_logic` controls
+only the next action. Repeated conditions collapse within each sequence; a sealed
+group and pending terms may share a condition. Four cyclic colors distinguish
+adjacent groups, not severity or truth. `FilterGroups.astro` renders server-owned
+links; there is no browser evaluator. Navigation replaces controls, counts,
+packages and pagination together and remains usable without JavaScript.
 
-The URL/API `filters` parameter serializes this structure. No category replaces a
-previous condition. Each link belongs to the following term. AND and NOT take precedence
-over OR at each level; rows are parentheses. NOT subtracts its condition or group.
-A leading NOT condition complements only that condition within the scoped package universe.
-An explicit NOT group complements its whole row;
-leading AND/OR starts from the first nonempty row.
-Empty groups are omitted from evaluation. Repeated conditions collapse within a group; groups can share conditions.
-Indexed package sets implement the predicates and intersection/union/difference; unions count each
-package once. Search and the chosen results/coverage view bound the dataset.
+The list total evaluates the current expression. Candidate counts are
+`min(result after idempotent addition, candidate alone in the same scope)`.
+A choice already in the pending sequence retains the current result for counting;
+clicking it removes it. Other choices append with `next_logic`. Indexed package
+sets implement union, intersection and subtraction, counting each package once.
+Search bounds the scope; Check counts target coverage, other counts use the
+selected results/coverage view. Pagination follows selection.
 
-The list total and pagination use the current expression, independent of editing
-mode. Candidate counts evaluate the whole expression after adding the candidate
-idempotently to the active group using `next_logic`. In every mode, the displayed
-count is `min(combined count, candidate's own count in the same scope)`, including
-selected choices. This cap avoids repeating the union total on every option; it
-is neither a new-package count nor an intersection, and never limits results.
-Within a non-negated active row, AND candidate counts cannot exceed OR counts.
-In a NOT row, OR expands the excluded set and can reduce the final result.
-Check choices count coverage; other choices keep the current results/coverage
-view. Search bounds both counts. Pagination follows selection, never precedes it.
+`MAX_QUERY_NODES` is the single budget: 128 conditions + group markers, including
+raw repetitions before deduplication. No per-group cap exists. Invalid operators,
+unknown dimensions, empty group operations and over-budget inputs return 422.
+Responses publish the same limit; additions are disabled at the boundary while
+removal remains available. Dimension/value identifiers are limited to 100 characters.
 
-`presentation/query_editor.py` performs immutable edits. The active group is a
-positional editor ID outside `FilterQuery`; `next_logic` is also editor state.
-Changing mode or selecting a row never rewrites existing predicates. The first
-addition to an empty row sets its connector; subsequent additions keep that
-connector. Removing the first condition keeps the row connector. Clearing a row
-preserves the others; removing the final condition clears all empty rows and
-resets the active row until the next condition.
-
-One row uses ordered `AND-dimension=value` / `OR-dimension=value` / `NOT-dimension=value` parameters.
-Repeated keys retain their positions, e.g. `AND-maintenance=A&OR-maintenance=B&AND-maintenance=C`
-means `A OR (B AND C)`. Multiple rows use `filters` JSON, omitting default fields;
-an empty editor row also needs JSON to retain its position. NOT groups use JSON
-even for one row, so they cannot be confused with a leading NOT condition. Mixing inline terms
-with `filters` is rejected, as are repeated `filters` parameters. The HTTP adapter
-reads ordered query pairs before Pydantic validation, which still owns all field
-constraints. OpenAPI parameters are derived from those same model fields.
-`filters=dimension=value` remains a valid single-condition input. All encodings
-produce the same `FilterQuery` and normalized response. Links omit default request
-parameters; editor state is included only when needed to continue an edit.
-Adding a row inserts it immediately after the chosen row and selects it.
-`presentation/navigation.py` projects edits as GET links and
-`FilterGroups.astro` renders them. The browser has no second expression evaluator.
-The existing HTML navigation/cancellation path updates groups, counts and rows
-atomically; all edits also work without JavaScript.
-
-`MAX_QUERY_NODES` is the single limit: 128 groups + conditions, counted before
-deduplication. The fixed root is not a node. Pydantic rejects extra fields, nested
-groups, unknown operators and over-budget input with 422; dimension/value names
-retain a 100-character identifier bound. Reading documents and the fact API
-publish the same limit, so the UI disables additions but leaves removal and
-operator changes available. There is no per-group or group-count cap.
-
-Budget measurement: `python scripts/benchmark-filters.py` builds 6,000 synthetic
-packages with dense overlapping facts and 141 candidate counts. It measures 31
-parse + selection + count samples for each query size and next-operator context.
-The limit bounds indexed set operations, not network latency. Re-run the benchmark
-before raising the bound; corpus size, deployment CPU and serialization also
-matter. Reverse proxies must accept query URLs at the limit, not truncate them.
+`python scripts/benchmark-filters.py` measures 31 parse + selection + count samples
+on 6,000 synthetic packages with overlapping facts. Re-run before raising the
+budget; deployment CPU and corpus size also matter. Reverse proxies must accept
+query URLs at the limit without truncation.
 
 The website renders typed display primitives, not provider payloads. Presenters
 own captions, value formatting and evidence links; CSS owns layout, with palette

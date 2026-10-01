@@ -124,7 +124,7 @@ def test_navigation_counts_distinguish_results_from_candidates(snapshot, tmp_pat
         zip(snapshot['sources'], ('not_configured', 'error', 'unsupported', 'ok', 'not_applicable'))}
     client = client_for(snapshot, tmp_path)
     query = FilterQuery(groups=(Group(logic=logic, conditions=(Condition(dimension='build:rva20', value='failed'),)),))
-    response = client.get('/api/ui/packages', params={'monitor': monitor, 'section': 'coverage', 'filters': query.encode(), 'next_logic': logic})
+    response = client.get('/api/ui/packages', params={'monitor': monitor, 'section': 'coverage', **dict(query.parameters()), 'next_logic': logic})
     assert response.status_code == 200, response.text
     page = response.json()
     choices = [c for n in page['controls']['navigation'] for c in n['choices']]
@@ -136,9 +136,9 @@ def test_navigation_counts_distinguish_results_from_candidates(snapshot, tmp_pat
         params = parse_qs(urlsplit(choice['href']).query)
         candidate_query = filter_in(choice['href'])
         if candidate_query != query:
-            candidate = candidate_query.groups[0].conditions[-1]
-            params = {key: value for key, value in params.items() if not key.startswith(('AND-', 'OR-')) and key != 'filters'}
-            params['filters'] = FilterQuery(groups=(Group(conditions=(candidate,)),)).encode()
+            candidate = candidate_query.tail[-1]
+            params = {key: value for key, value in params.items() if not key.startswith(('AND-', 'OR-', 'NOT-')) and key != 'group'}
+            params.update(FilterQuery(tail=(candidate.model_copy(update={'logic': 'and'}),)).parameters())
             standalone = client.get('/api/ui/packages', params=params)
             assert standalone.status_code == 200, standalone.text
             expected = min(expected, standalone.json()['total'])

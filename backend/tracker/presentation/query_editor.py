@@ -1,4 +1,4 @@
-"""Pure edits; active row and next operator are state, not query predicates."""
+"""Immutable edits to a pending condition sequence and sealed groups."""
 from dataclasses import dataclass, replace
 
 from tracker.readmodel.query import Condition, FilterQuery, Group, Logic
@@ -7,54 +7,36 @@ from tracker.readmodel.query import Condition, FilterQuery, Group, Logic
 @dataclass(frozen=True)
 class QueryEditor:
     query: FilterQuery
-    active: int = 0
     next_logic: Logic = 'and'
-
-    def __post_init__(self):
-        if self.active < 0 or self.active >= max(1, len(self.query.groups)):
-            raise ValueError('Active group does not exist')
-
-    @property
-    def groups(self):
-        return self.query.groups or (Group(),)
 
     @property
     def current(self):
-        return self.groups[self.active]
-
-    def _replace(self, groups, *, active=None):
-        groups = tuple(groups)
-        if not any(group.conditions for group in groups):
-            groups = ()
-            active = 0
-        return replace(self, query=FilterQuery(groups=groups),
-                       active=self.active if active is None else active)
-
-    def select(self, group):
-        return replace(self, active=group)
+        return Group(conditions=self.query.tail)
 
     def mode(self, logic: Logic):
         return replace(self, next_logic=logic)
 
     def toggle(self, condition: Condition):
-        current = self.current
-        if current.contains(condition):
-            updated = Group(logic=current.logic,
-                conditions=tuple(c for c in current.conditions if c.identity != condition.identity))
+        if self.current.contains(condition):
+            tail = tuple(term for term in self.query.tail if term.identity != condition.identity)
         else:
-            updated = current.append(condition, self.next_logic)
-        groups = list(self.groups)
-        groups[self.active] = updated
-        return self._replace(groups)
+            tail = (*self.query.tail, condition.model_copy(update={'logic': self.next_logic}))
+        return replace(self, query=FilterQuery(groups=self.query.groups, tail=tail))
 
-    def add(self):
-        after = self.active + 1
-        groups = self.groups[:after] + (Group(logic=self.next_logic),) + self.groups[after:]
-        return self._replace(groups, active=after)
+    def group(self):
+        if not self.query.tail:
+            raise ValueError('Group requires preceding ungrouped conditions')
+        return replace(self, query=FilterQuery(groups=(*self.query.groups,
+            Group(logic=self.next_logic, conditions=self.query.tail))))
 
-    def clear(self, group):
-        if group < 0 or group >= len(self.groups):
+    def remove(self, group, condition=None):
+        if not 0 <= group < len(self.query.groups):
             raise ValueError('Group does not exist')
-        groups = list(self.groups)
-        groups[group] = Group(logic=groups[group].logic)
-        return self._replace(groups, active=group)
+        groups = list(self.query.groups)
+        if condition is None:
+            groups.pop(group)
+        else:
+            original = groups[group]
+            groups[group] = Group(logic=original.logic,
+                conditions=tuple(term for term in original.conditions if term.identity != condition.identity))
+        return replace(self, query=FilterQuery(groups=tuple(groups), tail=self.query.tail))

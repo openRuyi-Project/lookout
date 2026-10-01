@@ -65,12 +65,12 @@ def test_saved_categories_use_current_names_everywhere_without_mutation(snapshot
     }}}
     before = deepcopy(snapshot)
     client, db = client_for(snapshot, tmp_path)
-    raw = client.get('/api/v2/packages', params={'filters': conjunction({'maintenance': new}).encode()}).json()
+    raw = client.get('/api/v2/packages', params=dict(conjunction({'maintenance': new}).parameters())).json()
     assert raw['total'] == 1
     assert {k: v for k, v in raw['maintenance_labels'].items() if v} == {new: 1, 'Outdated': 1}
     result = raw['items'][0]['monitors'][monitor]
     assert result['title'] == new and result['data']['labels'][0]['label'] == new
-    page = client.get('/api/ui/packages', params={'filters': conjunction({'maintenance': new}).encode()}).json()
+    page = client.get('/api/ui/packages', params=dict(conjunction({'maintenance': new}).parameters())).json()
     badge, = [value for line in page['table']['rows'][0]['cells'][0]['lines']
               for value in line if value['text'] == new]
     assert terms_in(badge['href']) == []

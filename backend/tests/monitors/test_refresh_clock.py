@@ -98,7 +98,7 @@ def test_clock_only_freshness_change_reprojects_rows_and_facets(
     expected = next(row for row in expected_rows if row['name'] == 'binutils')['monitors']['build']
     assert after['data'] == expected['data']
     listing = client.get('/api/v2/packages', params={'monitor': 'build', 'section': 'coverage',
-            'filters': conjunction({'check:build': after_status}).encode()}).json()
+            **dict(conjunction({'check:build': after_status}).parameters())}).json()
     assert listing['total'] == len(snapshot['sources'])
     assert listing['check_statuses'] == {after_status: len(snapshot['sources'])}
     assert listing['collection'] == {**expected_collection, 'projection_notice': None}
@@ -107,7 +107,7 @@ def test_clock_only_freshness_change_reprojects_rows_and_facets(
         for row in expected_rows
     )
     assert client.get('/api/v2/packages', params={'monitor': 'build', 'section': 'coverage',
-        'filters': conjunction({'check:build': before_status}).encode()}).json()['total'] == 0
+        **dict(conjunction({'check:build': before_status}).parameters())}).json()['total'] == 0
     assert len(calls) == 2
 
 
