@@ -1,5 +1,6 @@
 import json
 import sqlite3
+from contextlib import closing
 from copy import deepcopy
 from datetime import UTC, datetime
 
@@ -128,7 +129,7 @@ def test_collection_row_reuse_and_version_independence(config, snapshot, tmp_pat
     monkeypatch.setattr('tracker.config.require_unchanged', lambda _: None)
     state.commit(db, snapshot)
     initial = collect(config, db, client=Client([[raw()], [raw()]]), now=NOW)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         revision = conn.execute("SELECT revision FROM snapshot_records WHERE section='github_items'").fetchone()[0]
     updated = deepcopy(initial)
     updated['sources']['foo3']['version'] = '99.0'
@@ -136,7 +137,7 @@ def test_collection_row_reuse_and_version_independence(config, snapshot, tmp_pat
     result = collect(config, db, client=Client([None]), now='2026-01-01T12:05:00+00:00')
     assert result['github_items'] == initial['github_items']
     assert result['github_links'] == initial['github_links']
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         assert conn.execute("SELECT revision FROM snapshot_records WHERE section='github_items'").fetchone()[0] == revision
 
 
@@ -166,7 +167,7 @@ def test_keyset_pages_and_package_scope(snapshot):
 def test_v2_migration_preserves_observations(snapshot, tmp_path):
     db = tmp_path / 'old.db'
     state.commit(db, snapshot)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         header = json.loads(conn.execute('SELECT payload FROM snapshot').fetchone()[0])
         header['storage'] = 2
         conn.execute('UPDATE snapshot SET payload=?', (json.dumps(header),))
@@ -176,7 +177,7 @@ def test_v2_migration_preserves_observations(snapshot, tmp_path):
     assert storage.migrate(db)
     assert state.read(db) == before
     assert not storage.migrate(db)
-    with sqlite3.connect(db) as conn:
+    with closing(sqlite3.connect(db)) as conn, conn:
         assert conn.execute('SELECT * FROM snapshot_records ORDER BY section,subject,slot').fetchall() == records
 
 

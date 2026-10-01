@@ -26,11 +26,9 @@ def test_get_has_no_external_effect(tmp_path,snapshot,monkeypatch):
     monkeypatch.setattr(subprocess,'run',forbidden)
     monkeypatch.setattr(httpx.Client,'request',forbidden)
     before=state.read(db)
-    # ASGI TestClient does not invoke network transport; request method replaced so use lower-level send.
-    from starlette.testclient import TestClient as TC
-    from fastapi import Request
+    # Keep the in-process ASGI transport available while production HTTP requests are forbidden.
     for path in ['/api/v2/packages','/api/v2/status','/api/v2/targets','/api/v2/tracks/widget@3']:
-        request=httpx.Request('GET','http://testserver'+path)
+        request=c.build_request('GET',path)
         assert c.send(request).status_code==200
     assert state.read(db)==before
 
