@@ -30,7 +30,8 @@ no Astro branch or new API endpoint.
    catalog from the image. Administrator exceptions use `package_overrides`.
    Replace one complete adapter identity, never merge individual provider fields.
 4. Fetch through supplied `io`; return attributed facts using `finding()` and
-   `evidence()` from `monitors.model`. Reuse existing provider protocols.
+   `evidence()` from `monitors.model`. Reuse existing provider protocols; `providers.model.resolve_inputs()` selects
+   explicit registry identities or the first inferred match.
 5. Test the runner → storage → API path, inspect a sample and release code with config.
 
 ### Module contract

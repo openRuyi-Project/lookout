@@ -34,12 +34,12 @@ jobs:
       - name: Save the tested image
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         run: docker save --output /tmp/tested-image.tar openruyi-lookout:test
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         with:
-          name: tested-image
           path: /tmp/tested-image.tar
-          compression-level: 0
+          archive: false
+          if-no-files-found: error
           retention-days: 1
   publish:
     needs: [static, native]
@@ -49,9 +49,11 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: tested-image
+          name: tested-image.tar
+          skip-decompress: true
+          digest-mismatch: error
       - name: Publish the same tested image
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

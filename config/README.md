@@ -166,7 +166,7 @@ Adapter-specific fields and new backends are in [Monitor porting](../docs/monito
 
 ## Add a package
 
-OBS inventory supplies rows independently of upstream tracking. Offline `setup`
+The SPEC catalogue supplies package rows; OBS supplies build observations. Offline `setup`
 currently proposes rules only from crates.io Source0 evidence:
 
 ```sh

@@ -15,7 +15,7 @@ monitor, follow [Monitor porting](docs/monitor-porting.md).
 | Derive package state, filters and counts | `backend/tracker/readmodel/` |
 | Select and group visible facts | `backend/tracker/presentation/` |
 | Render documents and controls | `frontend/src/components/document/`, `pages/`, `styles/` |
-| Local brand assets and provenance | `frontend/src/assets/logos/catalog.json`; BuildSystem mapping in `config/tracker.toml` |
+| Local brand assets and provenance | `frontend/src/assets/logos/catalog.json`; BuildSystem mapping in `config/distribution.toml` |
 | Persist state or change HTTP contracts | `backend/tracker/state.py`, `api.py` |
 
 Tests follow these responsibilities under `backend/tests/`. Shared fixtures belong

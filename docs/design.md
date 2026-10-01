@@ -29,7 +29,7 @@ configured identities → collectors → SQLite → readmodel → fact API
 
 Executable adapters register in `monitors/registry.py`; readers consume the saved
 catalog instead. Package initializers are inert. `scripts/check-architecture.py`
-checks import boundaries; `scripts/api-types.py --check` checks generated types
+and Import Linter enforce import boundaries; `scripts/api-types.py --check` checks generated types
 against OpenAPI. [Porting](monitor-porting.md) describes extension contracts;
 [Configuration](../config/README.md) owns editing and promotion.
 
