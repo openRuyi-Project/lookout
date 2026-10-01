@@ -60,11 +60,3 @@ extra_macro_packages = ["openruyi-linux-build"]
 clang-wrap = ["macros.clang-wrap"]
 linux-lts-kmhv2 = ["series"]
 pam = ["macros.pam"]
-
-[github]
-interval_seconds = 600
-stale_after_seconds = 1800
-
-[github.repositories."openRuyi-Project/openRuyi"]
-source_root = "SPECS"
-ambiguous_names = ["file", "patch", "make", "which", "time", "tree", "find", "screen", "expect", "words", "git"]

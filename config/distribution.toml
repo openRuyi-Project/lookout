@@ -62,3 +62,11 @@ foreground = "#ffffff"
 icon = "linux"
 background = "#475569"
 foreground = "#ffffff"
+
+[github]
+interval_seconds = 600
+stale_after_seconds = 1800
+
+[github.repositories."openRuyi-Project/openRuyi"]
+source_root = "SPECS"
+ambiguous_names = ["file", "patch", "make", "which", "time", "tree", "find", "screen", "expect", "words", "git"]

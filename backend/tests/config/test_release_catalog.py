@@ -282,3 +282,22 @@ def test_catalog_destination_cannot_reenter_source_through_symlink(tmp_path, ope
         else:
             module.migrate(source.parent, source.parent, destination, release=source.parent)
     assert not (source.parent / 'prepared').exists()
+
+
+def test_github_defaults_follow_release_without_changing_operator_config(tmp_path):
+    from tracker.monitors.github.model import settings
+    source, target = initialized(tmp_path)
+    before = target.read_bytes()
+    assert not settings(config.load(target)).repositories
+    document = tomllib.loads((source.parent / 'distribution.toml').read_text())
+    document['github'] = {'repositories': {'owner/packages': {'source_root': 'SPECS'}}}
+    write(source.parent / 'distribution.toml', document)
+    assert 'owner/packages' in settings(config.load(target)).repositories
+    assert target.read_bytes() == before
+    operator = tomllib.loads(target.read_text())
+    operator['github'] = {'repositories': {}}
+    write(target, operator)
+    assert not settings(config.load(target)).repositories
+    operator['github'] = {'repositories': {'operator/packages': {'source_root': 'pkgs'}}}
+    write(target, operator)
+    assert set(settings(config.load(target)).repositories) == {'operator/packages'}

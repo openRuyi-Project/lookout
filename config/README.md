@@ -227,7 +227,9 @@ The parser does not download Source archives or replace RPM expansion with text 
 
 ## GitHub activity
 
-Configure packaging repositories in `tracker.toml`:
+Repository defaults are in `distribution.toml` and follow release updates.
+To replace them, configure `[github]` in `tracker.toml`; `repositories = {}`
+disables collection. Explicit settings are never merged with default repositories:
 
 ```toml
 [github]

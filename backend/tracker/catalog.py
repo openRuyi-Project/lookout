@@ -8,7 +8,7 @@ from pathlib import Path
 from tracker.monitors.version import rules
 
 POLICY_FIELDS = {'compare', 'watch', 'comparable', 'not_applicable', 'track_label', 'monitors'}
-DISTRIBUTION_FIELDS = {'buildsystems', 'dependencies', 'dependency_environments'}
+DISTRIBUTION_FIELDS = {'buildsystems', 'dependencies', 'dependency_environments', 'github'}
 
 
 def read_input(path):

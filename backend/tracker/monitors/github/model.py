@@ -24,7 +24,7 @@ class Settings(BaseModel):
 
 
 def settings(config):
-    result = Settings.model_validate(config.get('github', {}))
+    result = Settings.model_validate(config.get('github', config.get('openruyi', {}).get('github', {})))
     if result.stale_after_seconds <= result.interval_seconds:
         raise ValueError('github stale threshold must exceed interval')
     for name, repository in result.repositories.items():

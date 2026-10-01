@@ -140,9 +140,9 @@ The active `/config` mount is the configuration entry point after migration.
 installation references `/app/config/` for version rules, monitor identities and
 distribution mappings. Explicit operator overrides remain in `/config`; see
 [Configuration](../config/README.md). A deliberately local catalog remains local.
-Existing installations keep `tracker.toml`. GitHub activity requires an explicit
-repository entry there; updating the image alone does not enable an absent
-module. See [GitHub activity configuration](../config/README.md#github-activity).
+GitHub repository defaults follow the release distribution catalog. An explicit
+`[github]` in `tracker.toml` takes precedence, including an empty repository map
+to disable collection. See [GitHub activity configuration](../config/README.md#github-activity).
 
 SQLite stays in the same data directory; compatible updates reuse observations
 and indexes. Supported storage-format changes are backed up and migrated;
