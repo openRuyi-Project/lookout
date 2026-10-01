@@ -18,7 +18,7 @@ const nodes = editor.query.groups.reduce((sum, group) => sum + 1 + group.conditi
       </>)}
     </div>
     {group.active && <span class="query-hint-space">
-      <small class="query-precedence">// AND binds before OR</small>
+      <small class="query-precedence">// AND / NOT &gt; OR</small>
     </span>}
     <span class="group-actions">
       <a class="group-clear" href={safeHref(group.clear)} aria-label={`Clear group ${group.id + 1}`}>×</a>
