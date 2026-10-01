@@ -59,7 +59,7 @@ def version_annotations(pkg, links=None):
         title = subject + ('; retained evidence, see Checks' if annotation['stale'] else '')
         if annotation['monitor'] == 'security':
             title += '; upstream advisory matches, local patches not evaluated'
-        href = (links.to(monitor='version', signal=annotation['monitor'], check='', section='results')
+        href = (links.condition('version_signal', annotation['monitor'], monitor='version', section='results')
                 if links else '#' + annotation['monitor'])
         values.append(text(label, kind='tag', href=href, title=title, appearance=appearance(annotation['label']),
                            tone='notice' if annotation['stale'] else 'normal'))
@@ -69,5 +69,5 @@ def version_annotations(pkg, links=None):
 def version_cells(pkg, result, links):
     values = version_value(pkg, links=links) + version_annotations(pkg, links)
     if any(a['stale'] for a in result['data'].get('annotations', [])):
-        values.append(retained_marker(links.to(monitor=result['id'], freshness='retained', check='', section='results')))
+        values.append(retained_marker(links.condition('retained:' + result['id'], 'yes', monitor=result['id'], section='results')))
     return [cell(values)]

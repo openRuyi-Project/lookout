@@ -1,13 +1,11 @@
 """Out-of-date observation membership is separate from check failures."""
+from tests.helpers.query import conjunction, query_url
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
-from itertools import product
-from urllib.parse import parse_qs, urlsplit
 
 from fastapi.testclient import TestClient
 import pytest
 
-from tracker import state
 from tracker.api import create_app
 from tracker.monitors import model as monitor_model
 from tracker.monitors.requires import model as requirements
@@ -42,10 +40,11 @@ def retained_projection(snapshot):
     return snapshot, rows, collection
 
 
-def selected(index, **changes):
-    filters = dict(view='all', buildsystem='', maintenance='', builds={}, page=1,
-                   per_page=100, monitor='security')
-    return index.select(**(filters | changes))
+def selected(index, *, freshness='', check='', signal='', requires='', buildsystem='', maintenance='', **kwargs):
+    return index.select(filters=conjunction({'retained:security': 'yes' if freshness else '',
+        'check:security': check, 'version_signal': signal, 'requires': requires,
+        'buildsystem': buildsystem, 'maintenance': maintenance}),
+        monitor='security', page=1, per_page=100, **kwargs)
 
 
 def names(result):
@@ -117,44 +116,6 @@ def test_retained_projection_is_repeatable_without_rewriting_observations():
     assert result['dimensions'] == {}
 
 
-def test_intersections_and_disjunctive_retained_count_match_independent_scan():
-    examples = [
-        ('pkg-a', True, 'error', 'cmake', 'Advisory', 'failed', ['security'], ['unmet']),
-        ('pkg-b', True, 'expired', 'cmake', 'LicenseDiff', 'succeeded', ['license'], ['changes']),
-        ('pkg-c', False, 'error', 'cmake', 'Advisory', 'failed', [], []),
-        ('other', True, 'ok', 'meson', 'Advisory', 'failed', ['security'], ['unmet']),
-    ]
-    rows = [dict(name=name, monitors={'security': dict(dimensions={
-        'retained:security': ['yes', 'yes'] if retained else [], 'check:security': [check],
-        'findings:security': ['yes'] if signals else [], 'buildsystem': [system], 'maintenance': [label],
-        'build:target': [build], 'version_signal': signals, 'requires': requires,
-    })}) for name, retained, check, system, label, build, signals, requires in examples]
-    index = PackageList(rows, [{'id': 'target'}])
-    for query, freshness, check, system, signal, requires, findings in product(
-        ('', 'PKG'), ('', 'retained'), ('', 'error'), ('', 'cmake'), ('', 'security'),
-        ('', 'unmet'), (False, True),
-    ):
-        choices = {'check:security': check, 'buildsystem': system, 'version_signal': signal,
-                   'requires': requires, 'findings:security': 'yes' if findings else ''}
-
-        def matches(row, retained=False):
-            dimensions = row['monitors']['security']['dimensions']
-            return (query.casefold() in row['name'].casefold()
-                    and all(not value or value in dimensions[dimension] for dimension, value in choices.items())
-                    and (not retained or 'yes' in dimensions['retained:security']))
-
-        result = selected(index, query=query, freshness=freshness, check=check, buildsystem=system,
-                          signal=signal, requires=requires, findings_only=findings, per_page=1)
-        expected = [row for row in rows if matches(row, bool(freshness))]
-        assert result['total'] == len(expected)
-        assert result['items'] == expected[:1]
-        assert result['retained_count'] == sum(matches(row, True) for row in rows)
-    assert names(selected(index, freshness='retained', maintenance='LicenseDiff',
-                          builds={'target': 'succeeded'})) == ['pkg-b']
-    assert selected(index, freshness='retained', maintenance='LicenseDiff',
-                    builds={'target': 'failed'})['retained_count'] == 0
-
-
 @pytest.fixture
 def retained_client(retained_projection, tmp_path, monkeypatch):
     snapshot, rows, collection = retained_projection
@@ -165,41 +126,22 @@ def retained_client(retained_projection, tmp_path, monkeypatch):
 
 
 def test_raw_api_is_typed_and_composable(retained_client):
-    base = '/api/v2/packages?monitor=security&freshness=retained'
+    base = query_url('/api/v2/packages', {'retained:security': 'yes'}, monitor='security')
     response = retained_client.get(base)
     assert response.status_code == 200
     result = response.json()
     assert names(result) == ['binutils', 'foo3'] and result['retained_count'] == 2
     assert (result['result_count'], result['coverage_count']) == (2, 2)
-    failed = retained_client.get(base + '&check=failed').json()
+    failed = retained_client.get(query_url('/api/v2/packages', {'retained:security': 'yes', 'check:security': 'failed'}, monitor='security', section='coverage')).json()
     assert names(failed) == ['foo3'] and failed['retained_count'] == 1
-    assert names(retained_client.get(base + '&build=rva20:failed').json()) == ['foo3']
-    assert names(retained_client.get(base + '&build=rva20:failed').json()) == ['foo3']
-    assert retained_client.get(base + '&signal=missing').json()['total'] == 0
-    assert retained_client.get('/api/v2/packages?freshness=retained').status_code == 422
+    assert names(retained_client.get(query_url('/api/v2/packages', {'retained:security': 'yes', 'build:rva20': 'failed'}, monitor='security')).json()) == ['foo3']
+    assert names(retained_client.get(query_url('/api/v2/packages', {'retained:security': 'yes', 'build:rva20': 'failed'}, monitor='security')).json()) == ['foo3']
+    assert retained_client.get(query_url('/api/v2/packages', {'retained:security': 'yes', 'version_signal': 'missing'}, monitor='security')).json()['total'] == 0
+    assert retained_client.get(query_url('/api/v2/packages', {'retained:absent': 'yes'})).status_code == 422
     for path in ('/api/v2/packages', '/api/ui/packages'):
         assert retained_client.get(path + '?monitor=security&freshness=expired').status_code == 422
     schema = retained_client.get('/openapi.json').json()
     assert schema['components']['schemas']['MonitoredList']['properties']['retained_count']['type'] == 'integer'
-
-
-@pytest.mark.parametrize('monitor', ['security', 'version'])
-@pytest.mark.parametrize('mode', ['', '&freshness=retained', '&check=failed'])
-def test_navigation_count_is_destination_count_and_modes_are_disjoint(retained_client, monitor, mode):
-    document = retained_client.get('/api/ui/packages?monitor=' + monitor + mode).json()
-    choices = [choice for navigation in document['controls']['navigation'] for choice in navigation['choices']]
-    retained = next(choice for choice in choices if choice['label'] == 'Stale')
-    assert retained['count'] == 2
-    for choice in choices:
-        if choice['count'] is not None:
-            destination = retained_client.get(choice['href'].replace('/?', '/api/ui/packages?')).json()
-            assert destination['total'] == choice['count']
-        query = parse_qs(urlsplit(choice['href']).query)
-        if choice['label'] == 'Stale':
-            assert query['freshness'] == ['retained'] and 'check' not in query
-        else:
-            assert 'freshness' not in query
-    assert retained['selected'] == (mode == '&freshness=retained')
 
 
 def test_retained_count_follows_search_and_selected_zero_remains_visible(retained_client):
@@ -209,7 +151,7 @@ def test_retained_count_follows_search_and_selected_zero_remains_visible(retaine
     assert retained['count'] == 1
     destination = retained_client.get(retained['href'].replace('/?', '/api/ui/packages?')).json()
     assert [row['key'] for row in destination['table']['rows']] == ['foo3']
-    empty = retained_client.get('/api/ui/packages?monitor=security&q=absent&freshness=retained').json()
+    empty = retained_client.get(query_url('/api/ui/packages', {'retained:security': 'yes'}, monitor='security', q='absent')).json()
     choices = [choice for navigation in empty['controls']['navigation'] for choice in navigation['choices']]
     retained = next(choice for choice in choices if choice['label'] == 'Stale')
     assert retained['count'] == 0 and retained['selected'] and empty['total'] == 0

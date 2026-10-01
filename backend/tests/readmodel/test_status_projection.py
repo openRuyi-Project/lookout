@@ -1,4 +1,5 @@
 """The status endpoint consumes prepared monitor facts, without per-request projection."""
+from tests.helpers.query import conjunction, query_url
 from collections import Counter
 from copy import deepcopy
 
@@ -23,8 +24,7 @@ def test_new_monitors_share_coverage_counts_with_their_filters():
     assert counts == Counter(statuses)
     assert not set(counts).intersection(monitor_model.CHECK_GROUPS)
     for status, count in counts.items():
-        selection = index.select(view='all', buildsystem='', maintenance='', builds={},
-                                 monitor='external-fixture', check=status, page=1, per_page=10)
+        selection = index.select(filters=conjunction({'buildsystem': '', 'maintenance': '', **{'build:' + target: value for target, value in ({}).items()}, 'check:' + 'external-fixture': status}), monitor='external-fixture', page=1, per_page=10)
         assert selection['total'] == count
     counts['ok'] = 99
     assert index.monitor_coverage()['external-fixture']['ok'] == 1
@@ -81,7 +81,7 @@ def test_status_and_facets_switch_to_the_same_new_generation(snapshot, tmp_path)
     updated = client.get('/api/v2/status').json()
     assert updated['generation'] == old['generation'] + 1
     assert updated['monitor_coverage']['version']['error'] == 1
-    listing = client.get('/api/v2/packages?monitor=version&check=error').json()
+    listing = client.get(query_url('/api/v2/packages', {'check:version': 'error'}, monitor='version', section='coverage')).json()
     assert listing['total'] == updated['monitor_coverage']['version']['error']
     assert [row['name'] for row in listing['items']] == ['binutils']
     assert old_index.monitor_coverage() == old['monitor_coverage']

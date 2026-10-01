@@ -1,6 +1,7 @@
 """A category has one name in facts, summaries, controls and saved URLs."""
+from tests.helpers.query import conjunction, query_url, terms_in
+from tracker.presentation.labels import appearance, palettes, priority
 from copy import deepcopy
-from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -33,21 +34,21 @@ def test_current_category_links_match_their_filters(snapshot, tmp_path):
         }}
     before = deepcopy(snapshot)
     client, _ = client_for(snapshot, tmp_path)
-    raw = client.get('/api/v2/packages?maintenance=LicenseDiff').json()
+    raw = client.get(query_url('/api/v2/packages', {'maintenance': 'LicenseDiff'})).json()
     assert {row['name'] for row in raw['items']} == {'binutils', 'foo3'}
-    assert raw['maintenance_labels'] == {'LicenseDiff': 2, 'Outdated': 1, 'Untracked': 0}
+    assert {k: v for k, v in raw['maintenance_labels'].items() if v} == {'LicenseDiff': 2, 'Outdated': 1}
     for row in raw['items']:
         assert row['monitors']['license']['data']['labels'][0]['label'] == 'LicenseDiff'
         detail = client.get('/api/v2/packages/' + row['name']).json()
         assert detail['monitors']['license']['data']['findings'][0]['label'] == 'LicenseDiff'
-    page = client.get('/api/ui/packages?maintenance=LicenseDiff').json()
+    page = client.get(query_url('/api/ui/packages', {'maintenance': 'LicenseDiff'})).json()
     facet = next(n for n in page['controls']['choice_rows'] if n['label'] == 'Alerts')
     assert {option['label'] for option in facet['choices']} >= {'Outdated', 'LicenseDiff', 'Untracked'}
     assert next(option for option in facet['choices'] if option['selected'])['count'] == 2
     for row in page['table']['rows']:
         labels = [value for line in row['cells'][0]['lines'] for value in line if value['kind'] == 'tag']
         license_label, = [value for value in labels if value['text'].startswith('LicenseDiff')]
-        assert parse_qs(urlsplit(license_label['href']).query)['maintenance'] == ['LicenseDiff']
+        assert terms_in(license_label['href']) == []
     assert snapshot == before
 
 
@@ -64,15 +65,15 @@ def test_saved_categories_use_current_names_everywhere_without_mutation(snapshot
     }}}
     before = deepcopy(snapshot)
     client, db = client_for(snapshot, tmp_path)
-    raw = client.get('/api/v2/packages', params={'maintenance': new}).json()
+    raw = client.get('/api/v2/packages', params={'filters': conjunction({'maintenance': new}).encode()}).json()
     assert raw['total'] == 1
-    assert raw['maintenance_labels'] == {new: 1, 'Outdated': 1, 'Untracked': 0}
+    assert {k: v for k, v in raw['maintenance_labels'].items() if v} == {new: 1, 'Outdated': 1}
     result = raw['items'][0]['monitors'][monitor]
     assert result['title'] == new and result['data']['labels'][0]['label'] == new
-    page = client.get('/api/ui/packages', params={'maintenance': new}).json()
+    page = client.get('/api/ui/packages', params={'filters': conjunction({'maintenance': new}).encode()}).json()
     badge, = [value for line in page['table']['rows'][0]['cells'][0]['lines']
               for value in line if value['text'] == new]
-    assert parse_qs(urlsplit(badge['href']).query)['maintenance'] == [new]
+    assert terms_in(badge['href']) == []
     assert badge['appearance'] == 'label:' + new and badge['variant'] == 'outline'
     detail = client.get('/api/ui/packages/binutils').json()
     section = next(section for section in detail['sections'] if section['id'] == monitor)
@@ -95,14 +96,14 @@ def test_custom_fallback_keeps_its_identity_and_last_position(selected):
     from tracker.presentation.navigation import global_navigation, Links
     from tracker.presentation.values import buildsystem
     payload = {'buildsystems': {'_not_detected': 4, 'cmake': 2, 'custom': 1, 'meson': 3}}
-    query = {'buildsystem': '_not_detected'} if selected else {}
-    navigation, = global_navigation(payload, query, Links(query))
+    query = {'filters': conjunction({'buildsystem': '_not_detected'}).model_dump()} if selected else {}
+    navigation, = global_navigation(payload, Links(query))
     assert [choice.label for choice in navigation.choices] == ['cmake', 'custom', 'meson', '❔ custom']
     assert navigation.choices[-1].count == 4
     choice = navigation.choices[-1]
     assert choice.selected is selected
     assert choice.icon is None
-    assert parse_qs(urlsplit(choice.href).query).get('buildsystem') == (None if selected else ['_not_detected'])
+    assert terms_in(choice.href) == ([] if selected else [('buildsystem', '_not_detected')])
     assert buildsystem('cmake', Links()).variant == 'solid'
 
 
@@ -119,9 +120,20 @@ def test_declared_icons_follow_identity_without_frontend_category_rules():
     from tracker.presentation.navigation import global_navigation, Links
     payload = {'buildsystems': {'new-tool': 3, '_not_detected': 1},
                'presentation': {'buildsystems': {'new-tool': {'icon': 'gopher'}}}}
-    choices = global_navigation(payload, {}, Links())[0].choices
+    choices = global_navigation(payload, Links())[0].choices
     assert choices[0].icon == 'gopher'
     assert choices[1].icon is None
     payload['presentation']['buildsystems']['new-tool']['icon'] = 'rust'
-    changed = global_navigation(payload, {}, Links())[0].choices
+    changed = global_navigation(payload, Links())[0].choices
     assert changed[0].icon == 'rust' and changed[0].href == choices[0].href
+
+
+def test_emphasis_has_one_palette_and_order_not_provider_severity():
+    groups = [('Outdated', 'Advisory', 'DepMismatch', 'EOL', 'Yanked'),
+              ('DepChanges', 'LicenseDiff'), ('Untracked', 'CheckFailed')]
+    theme = palettes()
+    for rank, labels in enumerate(groups):
+        assert {priority(label) for label in labels} == {rank}
+        assert {priority(appearance(label)) for label in labels} == {rank}
+        assert len({theme[appearance(label)]['background'] for label in labels}) == 1
+    assert len({theme[appearance(group[0])]['background'] for group in groups}) == 3

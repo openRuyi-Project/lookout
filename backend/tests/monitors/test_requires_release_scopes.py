@@ -1,4 +1,5 @@
 """Requires release independence and read-side truth, without native RPM or network."""
+from tests.helpers.query import query_url, terms_in
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -224,7 +225,7 @@ def test_dependency_only_change_reprojects_unmet_and_preserves_upstream_facts(co
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
     client = ProjectedClient(create_app(db))
-    route = '/api/v2/packages?monitor=requires&requires=unmet'
+    route = query_url('/api/v2/packages', {'requires': 'unmet'}, monitor='requires')
     first = client.get(route)
     assert first.status_code == 200 and first.json()['total'] == 0
     snapshot['sources']['runtime-package']['version'] = '3.7'
@@ -240,7 +241,7 @@ def test_dependency_only_change_reprojects_unmet_and_preserves_upstream_facts(co
     unmet = next(choice for navigation in document['controls']['navigation']
                  for choice in navigation['choices'] if choice['label'] == 'DepMismatch')
     query = parse_qs(urlsplit(unmet['href']).query)
-    assert query['requires'] == ['unmet'] and query['monitor'] == ['requires']
+    assert terms_in(unmet['href']) == [('requires', 'unmet')] and query['monitor'] == ['requires']
     assert query['q'] == ['binutils'] and unmet['count'] == 1
 
 
@@ -316,8 +317,6 @@ def test_condition_and_upstream_identity_changes_do_not_overwrite_clauses(config
     assert identities['first']['changed'] is identities['second']['changed'] is False
     # A declaration change is independent of its satisfied target condition.
     assert identities['optional']['changed'] is True
-
-
 
 
 def test_build_declarations_are_saved_without_current_runtime_warnings(config, snapshot, release_setup):

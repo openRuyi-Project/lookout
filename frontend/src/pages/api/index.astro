@@ -1,6 +1,11 @@
 ---
 import Base from '../../layouts/Base.astro';
 const evidence = '/api/v2/packages?monitor=security&search=observations&q=CVE-&include=security&detail=full&per_page=20';
+const grouped = {groups: [
+  {logic: 'and', conditions: [{dimension: 'build:rva23', value: 'failed'}, {dimension: 'build:rva23', value: 'unresolvable', logic: 'or'}]},
+  {logic: 'and', conditions: [{dimension: 'maintenance', value: 'Advisory'}, {dimension: 'maintenance', value: 'DepMismatch'}]},
+]};
+const groupedURL = '/api/v2/packages?' + new URLSearchParams({filters: JSON.stringify(grouped)});
 const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=version&include=security';
 ---
 <Base title="API">
@@ -32,10 +37,25 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         (default: all). IDs come from the list response's <code>monitors</code>.</li>
       <li><code>q</code> searches names; <code>search=observations</code> adds fact values,
         restricted by <code>monitor</code> when set. Matching is case-insensitive substring.</li>
-      <li>Filters intersect. Repeat <code>maintenance</code> to require multiple issue labels;
-        each <code>build</code> target takes one state. Evidence views default to findings; <code>section=coverage</code>
-        includes packages without findings.</li>
+      <li><code>filters</code>: JSON <code>groups</code>; each group has
+        <code>logic</code> (<code>and</code>/<code>or</code>) + <code>conditions</code>
+        (<code>dimension</code>, <code>value</code>, <code>logic</code>). Each logic joins the preceding term;
+        AND binds before OR, and rows are parentheses. The first condition shares its row’s connector.
+        Empty groups do not filter.
+        The response returns the normalized query and <code>query_node_limit</code>.</li>
+      <li>Counts evaluate the complete expression after adding a candidate to <code>active_group</code>
+        (zero-based, default 0), using <code>next_logic</code> (default <code>and</code>).
+        Editing context never changes existing predicates; selected conditions count once. OR deduplicates packages.
+        Search stays in scope. Evidence views default to findings; <code>section=coverage</code>
+        includes packages without findings. Check counts target coverage.</li>
     </ul>
+    <p>Build alternatives intersected with two alerts:</p>
+    <pre><code>{JSON.stringify(grouped, null, 2)}</code></pre>
+    <p><a href={groupedURL}>Run grouped query</a>. Dimensions use the monitor projection's IDs:
+      <code>maintenance</code>, <code>buildsystem</code>, <code>build:TARGET</code>,
+      <code>view</code>, <code>version_signal</code>, <code>requires</code>,
+      <code>check:MONITOR</code>, <code>retained:MONITOR</code>.
+      Malformed/over-budget queries return 422; no truncation or implicit exclusivity.</p>
     <p>Find advisory evidence:</p>
     <pre><code><a href={evidence}>{evidence}</a></code></pre>
     <p>Fetch known packages:</p>

@@ -1,3 +1,4 @@
+from tests.helpers.query import query_url
 from copy import deepcopy
 from datetime import date, datetime, timezone
 import types
@@ -7,7 +8,6 @@ import pytest
 from tracker import state
 from tracker.monitors import eol as monitor_eol, model as monitor_model, registry as monitor_registry, runner as monitor
 from tracker.monitors.security import monitor as monitor_security
-from tracker.readmodel import snapshot as view
 
 
 class FixtureIO:
@@ -127,9 +127,9 @@ def test_new_monitor_uses_existing_runner_projection_and_api(config, snapshot, m
     db = tmp_path / "state.db"
     state.commit(db, snapshot)
     client = ProjectedClient(create_app(db))
-    out = client.get("/api/v2/packages?maintenance=NewSignal").json()
+    out = client.get(query_url('/api/v2/packages', {'maintenance': 'NewSignal'})).json()
     assert out["total"] == 1 and out["items"][0]["name"] == "binutils"
-    assert out["maintenance_labels"] == {"NewSignal": 1, "Outdated": 1, "Untracked": 0}
+    assert {k: v for k, v in out["maintenance_labels"].items() if v} == {"NewSignal": 1, "Outdated": 1}
     detail = client.get("/api/v2/packages/binutils").json()
     assert detail["monitors"]["newsignal"]["data"]["findings"][0]["title"] == "New observation"
 
@@ -203,11 +203,11 @@ def test_buildsystem_configuration_not_frontend_categories(snapshot, tmp_path):
     snapshot['specs']['foo3'] = {'metadata': {'name': 'foo3', 'buildsystem': None}}
     snapshot['presentation'] = {'buildsystems': {'new-buildsystem': {'background': '#123456', 'foreground': '#ffffff'}}}
     db = tmp_path/'state.db';state.commit(db, snapshot);client = ProjectedClient(create_app(db))
-    result = client.get('/api/v2/packages?buildsystem=new-buildsystem').json()
+    result = client.get(query_url('/api/v2/packages', {'buildsystem': 'new-buildsystem'})).json()
     assert result['total'] == 1 and result['items'][0]['monitors']['source']['data']['buildsystem'] == 'new-buildsystem'
     assert result['presentation'] == {'buildsystems': {
         name: {**style, 'icon': None} for name, style in snapshot['presentation']['buildsystems'].items()}}
-    missing = client.get('/api/v2/packages?buildsystem=_not_detected').json()
+    missing = client.get(query_url('/api/v2/packages', {'buildsystem': '_not_detected'})).json()
     assert missing['total'] == 4
     assert missing['buildsystems']['_not_detected'] == 4
     assert {p['monitors']['source']['data']['buildsystem_status'] for p in missing['items']} == {'not_declared', 'unknown'}
@@ -343,18 +343,18 @@ def test_facets_follow_search_other_filter_and_view_not_pagination(snapshot, tmp
     db = tmp_path / "state.db"
     state.commit(db, snapshot)
     client = ProjectedClient(create_app(db))
-    out = client.get("/api/v2/packages?buildsystem=cmake&maintenance=EOL&per_page=1&page=2").json()
+    out = client.get(query_url('/api/v2/packages', {'maintenance': 'EOL', 'buildsystem': 'cmake'}, per_page='1', page='2')).json()
     assert out["total"] == 1 and out["items"][0]["name"] == "binutils"
-    assert out["maintenance_labels"] == {"EOL": 1, "Advisory": 0, "Outdated": 1, "Untracked": 0}
-    assert out["buildsystems"] == {"cmake": 1, "meson": 1}
+    assert {k: v for k, v in out["maintenance_labels"].items() if v} == {"EOL": 1, "Outdated": 1}
+    assert out["buildsystems"]["cmake"] == 1 and out["buildsystems"]["meson"] == 0
     assert out["counts"]["all"] == out["counts"]["updates"] == 1 and out["counts"]["problems"] == 0
-    out = client.get("/api/v2/packages?buildsystem=cmake&view=updates").json()
-    assert out["maintenance_labels"] == {"EOL": 1, "Outdated": 1}
-    assert out["counts"]["all"] == 2 and out["total"] == 1
-    out = client.get("/api/v2/packages?q=foo&buildsystem=cmake&maintenance=EOL").json()
+    out = client.get(query_url('/api/v2/packages', {'buildsystem': 'cmake', 'view': 'updates'})).json()
+    assert {k: v for k, v in out["maintenance_labels"].items() if v} == {"EOL": 1, "Outdated": 1}
+    assert out["counts"]["all"] == out["total"] == 1
+    out = client.get(query_url('/api/v2/packages', {'maintenance': 'EOL', 'buildsystem': 'cmake'}, q='foo')).json()
     assert out["total"] == 0
-    assert out["maintenance_labels"] == {"Advisory": 0, "EOL": 0, "Outdated": 0, "Untracked": 0}
-    assert out["buildsystems"] == {"meson": 1, "cmake": 0}
+    assert not any(out["maintenance_labels"].values())
+    assert not any(out["buildsystems"].values())
     assert all(v == 0 for v in out["counts"].values())
 
 

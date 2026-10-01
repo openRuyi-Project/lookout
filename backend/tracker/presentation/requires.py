@@ -117,7 +117,7 @@ def requires_cells(pkg, result, links):
         lines.append([text(title, tone='muted')])
         lines.extend(requirement_values(item, compact=True) for item, _ in groups)
     if result.get('dimensions', {}).get('retained:' + result['id']):
-        lines.insert(0, [retained_marker(links.to(monitor=result['id'], freshness='retained', check='', section='results'))])
+        lines.insert(0, [retained_marker(links.condition('retained:' + result['id'], 'yes', monitor=result['id'], section='results'))])
     if any(requirement['changed'] or requirement['current'] is None for requirement in data['requirements']):
         lines.insert(0, version_value(pkg))
     return [cell(*lines)]
@@ -125,7 +125,8 @@ def requires_cells(pkg, result, links):
 
 def requires_preview(pkg, result, links):
     """Expand changes when requested; otherwise show only resolved conflicts."""
-    changes = links.query.get('signal') == result['id']
+    changes = any(c.dimension == 'version_signal' and c.value == result['id']
+                  for group in links.editor.query.groups for c in group.conditions)
     visible = [item for item in result['data']['requirements']
                if unsatisfied(item) or changes and item['changed']]
     groups = [group for _, _, members in dependency_groups(visible) for group in members]

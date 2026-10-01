@@ -1,7 +1,7 @@
 """Pages for reading documents; no collection or persistence."""
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from tracker.monitors.model import CHECK_GROUPS, check_failed
+from tracker.monitors.model import check_failed
 from tracker.monitors.issues import Issue
 from tracker.presentation.evidence import evidence_labels
 from tracker.presentation.build import build_note
@@ -13,11 +13,9 @@ from tracker.presentation.navigation import (
 from tracker.presentation.registry import PRESENTERS, presenter
 from tracker.presentation.source import changelog_section
 from tracker.presentation.values import (
-    CHECK_LABELS,
     buildsystem,
     cell,
     check_value,
-    field,
     module,
     stamp,
     text,
@@ -57,7 +55,7 @@ def identity_cell(pkg, links, *, labels=True):
         version = module(pkg, 'version')
         if version and Issue.OUTDATED in version['dimensions'].get('maintenance', []):
             signals.append(text(Issue.OUTDATED, kind='tag', appearance=appearance(Issue.OUTDATED),
-                                href=links.only_filter(maintenance=[Issue.OUTDATED])))
+                                href=links.condition('maintenance', Issue.OUTDATED)))
         signals.extend(check_failed_label(pkg, links))
         for result in pkg['monitors'].values():
             if result['data']['kind'] in ('evidence', 'requires'):
@@ -76,16 +74,17 @@ def check_failed_label(pkg, links=None):
     anchor = 'check-' + errors[0]['id'] if len(errors) == 1 else 'checks'
     return [text(Issue.CHECK_FAILED, kind='tag', appearance=appearance(Issue.CHECK_FAILED),
                  title=', '.join(caption(result['title']) for result in errors),
-                 href=links.only_filter(maintenance=[Issue.CHECK_FAILED]) if links else pkg['detail_url'] + '#' + anchor)]
+                 href=links.condition('maintenance', Issue.CHECK_FAILED) if links else pkg['detail_url'] + '#' + anchor)]
 
 
 def listing(payload, query):
     query = listing_query(query, payload['monitors'])
     focus = next((m for m in payload['monitors'] if m['id'] == query.get('monitor')), None)
     payload = {**payload, 'section': query.get('section', 'results')}
-    links = Links(query, payload['monitors'])
+    links = Links(query)
     coverage = bool(focus and payload['section'] == 'coverage')
-    filtered_checks = coverage and bool(query.get('check'))
+    filtered_checks = coverage and any(c.dimension == 'check:' + focus['id']
+            for g in links.editor.query.groups for c in g.conditions)
     reasons = {pkg['name']: pkg['monitors'][focus['id']]['check'].get('error') or
                pkg['monitors'][focus['id']]['check'].get('note')
                for pkg in payload['items']} if filtered_checks else {}
@@ -130,11 +129,9 @@ def listing(payload, query):
                     notes.extend(build_note(pkg, result, column))
         rows.append(Row(key=pkg['name'], cells=cells, notes=notes))
     title = caption(focus['title']) if focus else 'Packages'
-    if filtered_checks and query['check'] not in CHECK_GROUPS:
-        title += ' · ' + CHECK_LABELS.get(query['check'], query['check'].replace('_', ' '))
     navigation = Navigation(label='Monitors', choices=[
-        Choice(label='Packages', href=links.to(monitor='', check='', section=''), selected=not focus),
-        *[Choice(label=caption(m['title']), href=links.to(monitor=m['id'], check='', section='results'),
+        Choice(label='Packages', href=links.to(monitor='', section=''), selected=not focus),
+        *[Choice(label=caption(m['title']), href=links.to(monitor=m['id'], section='results'),
                  selected=m == focus) for m in sorted(payload['monitors'], key=lambda m: m['id'] == 'eol')
           if presenter(m).has_results and m['id'] != 'yanked']])
     controls = listing_controls(payload, query, focus, links)
@@ -147,7 +144,7 @@ def listing(payload, query):
     notices = ['Test fixture — not live openRuyi data.'] if payload['collection']['mode'] == 'fixture' else []
     if notice := payload['collection'].get('projection_notice'):
         notices.append(notice)
-    return ListingDocument(title=title, navigation=navigation, global_navigation=global_navigation(payload, query, links), controls=controls,
+    return ListingDocument(title=title, navigation=navigation, global_navigation=global_navigation(payload, links), controls=controls,
         table=Table(label=title, columns=columns, rows=rows), total=payload['total'], page=payload['page'],
         pages=payload['pages'], pagination=pagination, meta=meta,
         notices=notices)
@@ -188,7 +185,7 @@ def detail(pkg):
         if check.get('attempted_at') and check['attempted_at'] != check.get('checked_at'):
             timestamps.append([text('Last attempted', tone='muted'), stamp(check['attempted_at'])])
         checks.append(Row(key=result['id'], id='check-' + result['id'], cells=[cell([text(caption(result['title']),
-            href=links.to(monitor=result['id'], section='coverage', check=check['status']))]),
+            href=links.condition('check:' + result['id'], check['status'], monitor=result['id'], section='coverage'))]),
             cell(*status_lines), cell(*timestamps)]))
     if source:
         sections.extend(changelog_section(source))

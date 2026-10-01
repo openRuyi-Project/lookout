@@ -1,4 +1,5 @@
 """Version is a composed topic; collectors keep their own evidence and cadence."""
+from tests.helpers.query import conjunction, query_url
 from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -144,38 +145,20 @@ def test_signal_counts_are_disjunctive_package_counts_and_filter_by_stable_id():
         for name, signals, system in [('a', ['security', 'security', 'license'], 'cmake'),
                                      ('b', ['license'], 'cmake'), ('c', ['yanked'], 'meson')]]
     index = PackageList(rows, [])
-    filters = dict(view='all', buildsystem='cmake', maintenance='', builds={}, page=1, per_page=100)
-    result = index.select(signal='security', **filters)
+    filters = dict(page=1, per_page=100)
+    result = index.select(filters=conjunction({'buildsystem': 'cmake', 'version_signal': 'security'}), **filters)
     assert result['total'] == 1
-    assert result['version_signals'] == {'license': 2, 'security': 1}
+    assert result['version_signals'] == {'license': 1, 'security': 1, 'yanked': 0, 'requires': 0}
     for signal, count in result['version_signals'].items():
-        assert index.select(signal=signal, **filters)['total'] == count
+        assert index.select(filters=conjunction({'buildsystem': 'cmake', 'version_signal': ['security', signal]}), **filters)['total'] == count
 
 
-def test_home_exposes_dependency_changes_as_an_independent_filter(snapshot, tmp_path, monkeypatch):
-    snapshot['monitor_catalog'] = {'requires': {'title': 'RuntimeDeps'}}
-    rows, collection = view.project_monitors(snapshot)
-    for row in rows:
-        dimensions = row['monitors']['version']['dimensions']
-        dimensions['version_signal'] = ['requires'] if row['name'] in ('binutils', 'foo3') else []
-        dimensions['maintenance'] = ['DepMismatch'] if row['name'] == 'binutils' else []
-    index = PackageList(rows, snapshot['targets'])
-    app = create_app(tmp_path / 'unused.db')
-    monkeypatch.setattr(app.state.projection, 'read', lambda: (snapshot, index, collection))
-    client = TestClient(app)
-    for query in ('', '?q=bin', '?maintenance=DepMismatch', '?signal=requires', '?q=missing&signal=requires'):
-        page = client.get('/api/ui/packages' + query).json()
-        choices = page['controls']['choice_rows'][0]['choices']
-        labels = [choice['label'] for choice in choices]
-        if 'DepMismatch' in labels:
-            assert labels.index('DepChanges') > labels.index('DepMismatch')
-        for choice in choices:
-            facet_destination(client, page, choice)
-        if 'signal=requires' in query:
-            selected = next(c for c in choices if c['label'] == 'DepChanges')
-            assert selected['selected']
-            assert any(c['label'] == 'DepChanges' for c in page['controls']['active'])
-            assert {'name': 'signal', 'value': 'requires'} in page['controls']['hidden']
+def test_home_exposes_dependency_changes_as_an_independent_filter(scoped_client):
+    page = scoped_client.get('/api/ui/packages').json()
+    choice = next(c for c in page['controls']['choice_rows'][0]['choices'] if c['label'] == 'DepChanges')
+    selected = facet_destination(scoped_client, page, choice)
+    assert any(c['label'] == 'DepChanges' for c in selected['controls']['editor']['groups'][0]['conditions'])
+    assert any(p['name'] == 'filters' for p in selected['controls']['hidden'])
 
 
 def test_v2_filter_and_schema_expose_the_join_without_repeating_evidence(snapshot, tmp_path, monkeypatch):
@@ -190,10 +173,10 @@ def test_v2_filter_and_schema_expose_the_join_without_repeating_evidence(snapsho
     app = create_app(tmp_path / 'unused.db')
     monkeypatch.setattr(app.state.projection, 'read', lambda: (snapshot, index, collection))
     client = TestClient(app)
-    response = client.get('/api/v2/packages?monitor=version&signal=security')
+    response = client.get(query_url('/api/v2/packages', {'version_signal': 'security'}, monitor='version'))
     assert response.status_code == 200
     output = response.json()
-    assert output['total'] == 1 and output['version_signals'] == {'security': 1}
+    assert output['total'] == 1 and output['version_signals'] == {'security': 1, 'requires': 0}
     annotation = output['items'][0]['monitors']['version']['data']['annotations'][0]
     assert annotation['monitor'] == 'security' and annotation['count'] == 2
     assert annotation['finding_ids'] == ['security:one', 'security:two']

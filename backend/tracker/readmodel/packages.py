@@ -1,14 +1,10 @@
-"""One set intersection defines rows, counts and linked filter choices.
-
-Single-valued facets count alternatives with their own selection removed.
-Independent issue labels count intersections with the current selection.
-Counts describe packages, not build flavors or findings. Pagination happens
-only after this calculation.
-"""
+"""Indexed facts: one grouped expression drives rows and candidate counts."""
 from collections import defaultdict
 from types import MappingProxyType
 
 from tracker.monitors import model as monitor_model
+from tracker.monitors.issues import Issue
+from tracker.readmodel.query import Condition, Evaluation, FilterQuery
 from tracker.monitors.build import status as build_status
 
 
@@ -25,42 +21,6 @@ def _search_values(value):
             yield from _search_values(child)
     elif isinstance(value, (str, int, float)) and not isinstance(value, bool):
         yield str(value).casefold()
-
-
-class _Selection:
-    """Request-local evaluation of fixed filters over an immutable index.
-
-    Facets without a selection share the same context. Memoization lives only
-    for this selection, never across requests or snapshot generations.
-    """
-    def __init__(self, index, scope, filters):
-        self.index = index
-        self.scope = scope
-        self.filters = {key: (value if isinstance(value, str) else tuple(value))
-                        for key, value in filters.items() if value}
-        self._contexts = {}
-
-    def matching(self, *, without=None):
-        key = without if without in self.filters else None
-        if key not in self._contexts:
-            members = set(self.scope)
-            for dimension, value in self.filters.items():
-                if dimension != key:
-                    values = (value,) if isinstance(value, str) else value
-                    for item in values:
-                        members.intersection_update(self.index.get(dimension, {}).get(item, ()))
-            self._contexts[key] = frozenset(members)
-        return self._contexts[key]
-
-    def counts(self, dimension, required=(), *, within_selection=False):
-        context = self.matching() if within_selection else self.matching(without=dimension)
-        options = self.index.get(dimension, {})
-        selected = self.filters.get(dimension, ())
-        selected = {selected} if isinstance(selected, str) else set(selected)
-        values = options.keys() | set(required) | selected
-        counts = {value: len(context.intersection(options.get(value, ()))) for value in sorted(values)}
-        return {value: count for value, count in counts.items()
-                if count or value in required or value in selected or (within_selection and selected)}
 
 
 class PackageList:
@@ -80,7 +40,9 @@ class PackageList:
             index[key]
         for number, row in enumerate(self.rows):
             index['view']['all'].add(number)
-            for module in row['monitors'].values():
+            for mid, module in row['monitors'].items():
+                for family in ('check', 'retained', 'findings'):
+                    index[family + ':' + mid]
                 for dimension, values in module['dimensions'].items():
                     for value in values:
                         index[dimension][value].add(number)
@@ -99,8 +61,8 @@ class PackageList:
             if status not in monitor_model.CHECK_GROUPS and members
         } for dimension, options in self.index.items() if dimension.startswith('check:')}
 
-    def select(self, *, view, buildsystem, maintenance, builds, page, per_page, check='', findings_only=False,
-               query=None, monitor=None, requires='', signal='', freshness='', search='name'):
+    def select(self, *, filters=FilterQuery(), active_group=0, next_logic='and', page=1, per_page=100,
+               query=None, monitor=None, findings_only=False, search='name'):
         query = (self.query if query is None else query).strip().casefold()
         monitor = self.monitor if monitor is None else monitor
         scope = {number for number, name in enumerate(self.names) if query in name} if query else self.all
@@ -108,60 +70,42 @@ class PackageList:
             scope.update(number for number, observations in enumerate(self.observations)
                          if any(query in text for mid, text in observations.items()
                                 if not monitor or mid == monitor))
-        selections = {'view': view, 'buildsystem': buildsystem, 'maintenance': maintenance, 'requires': requires, 'version_signal': signal,
-                      **{f'build:{target}': status for target, status in builds.items()}}
-        if monitor:
-            selections['check:' + monitor] = check
-            selections['retained:' + monitor] = 'yes' if freshness == 'retained' else ''
-        coverage_selection = _Selection(self.index, scope, selections)
-        coverage = coverage_selection.matching(without='check:' + monitor)
-        results = coverage & self.index.get('findings:' + monitor, {}).get('yes', frozenset())
-        check_statuses = coverage_selection.counts('check:' + monitor) if monitor else {}
-        check_groups = {group: check_statuses.get(group, 0) for group in monitor_model.CHECK_GROUPS}
-        check_statuses = {status: count for status, count in check_statuses.items()
-                          if status not in monitor_model.CHECK_GROUPS}
-        selection = (_Selection(self.index, scope, {**selections, 'findings:' + monitor: 'yes'})
-                     if findings_only else coverage_selection)
-        retained = selection.matching(without='retained:' + monitor).intersection(
-            self.index.get('retained:' + monitor, {}).get('yes', ()))
-        selected = sorted(selection.matching())
+        coverage = Evaluation(self.index, scope, filters, active_group, next_logic)
+        findings = self.index.get('findings:' + monitor, {}).get('yes', frozenset())
+        selection = (Evaluation(self.index, scope & findings, filters, active_group, next_logic)
+                     if findings_only else coverage)
+        selected = sorted(selection.matches)
         total = len(selected)
         pages = max(1, (total + per_page - 1) // per_page)
         page = min(page, pages)
+
+        def counts(dimension, required=(), *, evaluation=selection):
+            values = self.index.get(dimension, {}).keys() | set(required)
+            values |= {c.value for g in filters.groups for c in g.conditions if c.dimension == dimension}
+            return {value: evaluation.count(Condition(dimension=dimension, value=value))
+                    for value in sorted(values)}
+
         statuses = {}
         for dimension in self.index:
             if dimension.startswith('build:'):
-                counts = selection.counts(dimension)
+                options = counts(dimension)
                 statuses[dimension.removeprefix('build:')] = [
-                    {'value': value, 'label': build_status.label(value), 'count': counts[value]}
-                    for value in build_status.ordered(counts)
+                    {'value': value, 'label': build_status.label(value), 'count': options[value]}
+                    for value in build_status.ordered(options)
                 ]
+        checks = counts('check:' + monitor, monitor_model.CHECK_GROUPS, evaluation=coverage) if monitor else {}
         return {
+            'filters': filters, 'active_group': active_group, 'next_logic': next_logic,
             'items': [self.rows[number] for number in selected[(page - 1) * per_page:page * per_page]],
             'total': total, 'page': page, 'per_page': per_page, 'pages': pages,
-            'counts': selection.counts('view', required=VIEWS),
-            'buildsystems': selection.counts('buildsystem'),
-            'maintenance_labels': selection.counts('maintenance', within_selection=True),
-            'version_signals': selection.counts('version_signal'),
-            'requires_counts': {
-                'all': len(selection.matching(without='requires')),
-                **selection.counts('requires', required=('unmet', 'changes')),
-            },
+            'counts': {**counts('view', required=VIEWS), 'all': total},
+            'buildsystems': counts('buildsystem'),
+            'maintenance_labels': counts('maintenance', required=(*Issue, 'EOL')),
+            'version_signals': counts('version_signal', required=('requires',)),
+            'requires_counts': {'all': total, **counts('requires', required=('unmet', 'changes'))},
             'build_statuses': statuses,
-            'check_statuses': check_statuses,
-            'check_groups': check_groups,
-            'result_count': len(results), 'coverage_count': len(coverage),
-            'retained_count': len(retained),
+            'check_statuses': {k: v for k, v in checks.items() if k not in monitor_model.CHECK_GROUPS},
+            'check_groups': {group: checks.get(group, 0) for group in monitor_model.CHECK_GROUPS},
+            'result_count': len(coverage.matches & findings), 'coverage_count': len(coverage.matches),
+            'retained_count': selection.count(Condition(dimension='retained:' + monitor, value='yes')) if monitor else 0,
         }
-
-
-def build_selections(values, targets):
-    """Repeated build=TARGET:STATE parameters allow data-defined target identities."""
-    known = {target['id'] for target in targets}
-    selected = {}
-    for value in values:
-        target, separator, status = value.partition(':')
-        if not separator or target not in known or target in selected or len(status) > 100:
-            raise ValueError('build filters require one TARGET:STATE per configured target')
-        selected[target] = status
-    return selected

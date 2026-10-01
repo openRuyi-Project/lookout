@@ -7,6 +7,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tracker.presentation import pages as presentation_pages
 from tracker.monitors.requires.model import RequirementAssessment
+from tracker.api import ListingQuery
+from tracker.readmodel.packages import PackageList
+from tracker.readmodel.monitors import retained_dimensions
+from tracker.monitors.model import check_failed
 
 request = json.load(sys.stdin)
 operation = request['operation']
@@ -21,7 +25,43 @@ for package in packages:
 if operation == 'detail':
     result = presentation_pages.detail(request['payload']).model_dump()
 elif operation == 'list':
-    result = presentation_pages.listing(request['payload'], request['query']).model_dump()
+    payload = request['payload']
+    for package in packages:
+        for mid, monitor in package['monitors'].items():
+            data = monitor['data']
+            dimensions = monitor.setdefault('dimensions', {})
+            dimensions['check:' + mid] = [monitor['check']['status']]
+            if check_failed(monitor['check']):
+                dimensions.setdefault('maintenance', []).append('CheckFailed')
+            if data['kind'] == 'source':
+                dimensions['buildsystem'] = [data['buildsystem'] or '_not_detected']
+            elif data['kind'] == 'build':
+                dimensions.update({'build:' + t['target']: [t['raw_status']] for t in data['targets']})
+            elif data['kind'] == 'evidence':
+                dimensions.update({'findings:' + mid: ['yes'] if data['findings'] else [],
+                    'maintenance': [label['label'] for label in data['labels']]})
+            elif data['kind'] == 'requires':
+                dims = []
+                if any(r['satisfaction'] == 'unsatisfied' or r['target_satisfaction'] == 'unsatisfied' for r in data['requirements']):
+                    dims.append('unmet')
+                if any(r['changed'] for r in data['requirements']):
+                    dims.append('changes')
+                dimensions.update({'requires': dims, 'findings:' + mid: ['yes'] if data['requirements'] else [],
+                                   'maintenance': ['DepMismatch'] if 'unmet' in dims else []})
+            elif data['kind'] == 'version':
+                dimensions['version_signal'] = [a['monitor'] for a in data['annotations']]
+                if not data['track']:
+                    monitor['check']['status'] = 'not_configured'
+                    dimensions['check:' + mid] = ['not_configured']
+        retained_dimensions(package['monitors'])
+    filters = ListingQuery.model_validate(request['query'])
+    focus = next((m for m in payload['monitors'] if m['id'] == filters.monitor), None)
+    section = 'coverage' if focus and focus['kind'] == 'source' else filters.section
+    selection = PackageList(packages, payload['targets']).select(query=filters.q,
+        filters=filters.filters, active_group=filters.active_group, next_logic=filters.next_logic, page=filters.page, per_page=filters.per_page,
+        monitor=filters.monitor, findings_only=bool(focus and focus['kind'] in ('evidence', 'requires') and section == 'results'))
+    result = presentation_pages.listing({**payload, **selection, 'section': section},
+        {**filters.model_dump(), 'section': section, 'page': selection['page']}).model_dump()
 elif operation == 'theme':
     result = presentation_pages.theme(request['payload'])
 else:

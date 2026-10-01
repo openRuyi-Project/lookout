@@ -1,9 +1,11 @@
 ---
 import Base from '../layouts/Base.astro';
 import Controls from '../components/document/Controls.astro';
+import FilterGroups from '../components/document/FilterGroups.astro';
 import Table from '../components/document/Table.astro';
 import Fields from '../components/document/Fields.astro';
 import Pagination from '../components/document/Pagination.astro';
+import Search from '../components/document/Search.astro';
 import {api} from '../lib/api';
 import type {ListingDocument} from '../lib/document';
 import NavigationMenu from '../components/document/NavigationMenu.astro';
@@ -17,7 +19,10 @@ if (!data) Astro.response.status = status === 422 ? 422 : 503;
       </header>}
       <Controls controls={data.controls}/>
       {data.notices.map(notice => <p class="notice">{notice}</p>)}
-      <Pagination page={data} label="Pages above results" controls={data.controls}/>
+      <Pagination page={data} label="Pages above results">
+        <Search controls={data.controls}/>
+        <FilterGroups editor={data.controls.editor}/>
+      </Pagination>
       <Table table={data.table} identityMenus={data.global_navigation}/>
       <Pagination page={data} label="Pages below results"/>
       <div class="collection-meta"><Fields fields={data.meta} compact/></div>

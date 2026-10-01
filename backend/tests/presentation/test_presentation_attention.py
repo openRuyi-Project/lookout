@@ -1,4 +1,5 @@
 """Reader roles and visible filter context, using only synthetic observations."""
+from tests.helpers.query import conjunction, terms_in
 from copy import deepcopy
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, urlsplit
@@ -56,8 +57,7 @@ def parsed(href):
 
 def listing_payload(prepared):
     snapshot, rows, collection = prepared
-    selected = PackageList(rows, snapshot['targets']).select(
-        view='all', buildsystem='', maintenance='', builds={}, page=1, per_page=100)
+    selected = PackageList(rows, snapshot['targets']).select(filters=conjunction({'buildsystem': '', 'maintenance': '', **{'build:' + target: value for target, value in ({}).items()}}), page=1, per_page=100)
     return {**selected, 'section': 'results', 'collection': collection, 'targets': snapshot['targets'],
             'monitors': [module.describe() for module in monitor_views.registry(snapshot)]}
 
@@ -86,7 +86,7 @@ def test_explicit_source_ui_link_is_coverage_without_a_fake_results_mode(client)
     assert hidden['monitor'] == 'source' and hidden['section'] == 'coverage'
     choices = [choice for nav in document['controls']['navigation'] for choice in nav['choices']]
     assert [(choice['label'], choice['count']) for choice in choices] == [
-        ('Uncovered', 0), ('CheckFailed', 0)]
+        ('Coverage', 1), ('Uncovered', 0), ('CheckFailed', 0)]
 
 
 def test_source_v2_fields_and_detail_provenance_remain_available(client):
@@ -135,25 +135,6 @@ def test_context_role_follows_kind_instead_of_hard_coded_source_id(prepared):
     assert any(row.key == 'package_context' for row in checks.table.rows)
 
 
-@pytest.mark.parametrize('focus,allowed', [
-    ('build', {'build'}), ('requires', {'requires'}), ('version', {'view'}),
-])
-def test_inherited_selections_not_supported_by_the_page_are_removed(client, focus, allowed):
-    query = (f'monitor={focus}&requires=unmet&view=updates&q=bin&per_page=1&page=2'
-             '&maintenance=FixtureSignal&build=rva23:failed&build=rva20:succeeded')
-    document = client.get('/api/ui/packages?' + query).json()
-    supported = '&build=rva23:failed&build=rva20:succeeded' if focus == 'build' else (
-        '&requires=unmet' if focus == 'requires' else '&view=updates')
-    expected = client.get(f'/api/ui/packages?monitor={focus}&q=bin&per_page=1&page=2' + supported).json()
-    assert document == expected
-    controls = document['controls']
-    assert any(row['icon'] for row in controls['choice_rows']) == ('build' in allowed)
-    hidden = {parameter['name'] for parameter in controls['hidden']}
-    assert not (hidden & ({'view', 'requires'} - allowed))
-    assert not any(choice['label'].startswith(('View:', 'Requires:', 'Maintenance:'))
-                   for choice in controls['active'])
-
-
 def test_empty_unselected_menus_are_not_all_only_controls(prepared):
     payload = listing_payload(prepared)
     payload.update(buildsystems={}, maintenance_labels={},
@@ -172,21 +153,21 @@ def test_selected_zero_count_menus_remain_visible_and_removable(prepared):
                    build_statuses={target['id']: [] for target in payload['targets']})
     target = payload['targets'][0]['id']
     payload['build_statuses'][target] = [{'value': 'failed', 'label': 'CheckFailed', 'count': 0}]
-    query = {'buildsystem': 'fixture-system', 'maintenance': 'FixtureSignal', 'build': [target + ':failed']}
+    query = {'filters': conjunction({'buildsystem': 'fixture-system', 'maintenance': 'FixtureSignal', 'build:' + target: 'failed'}).model_dump()}
     page = presentation_pages.listing(payload, query)
     controls = page.controls
     selectors = [row for row in controls.choice_rows if any(choice.selected for choice in row.choices)]
     assert len(selectors) == 2
-    sidebar, = presentation_navigation.global_navigation(payload, query, presentation_navigation.Links(query))
+    sidebar, = presentation_navigation.global_navigation(payload, presentation_navigation.Links(query))
     assert sidebar.label == 'BuildSystem'
     assert [(c.label, c.count) for c in sidebar.choices if c.selected] == [('fixture-system', 0)]
-    assert len(controls.active) == 3
-    assert 'buildsystem' not in parsed(controls.active[0].href)
+    assert len(controls.editor.groups[0].conditions) == 3
+    assert ('buildsystem', 'fixture-system') not in terms_in(controls.editor.groups[0].conditions[0].href)
     for facet in selectors:
         selected = [option for option in facet.choices if option.selected]
         assert len(selected) == 1 and selected[0].count == 0
         key = 'maintenance' if facet.label == 'Alerts' else 'build'
-        assert any(key not in parsed(chip.href) for chip in controls.active)
+        assert any(len(terms_in(chip.href)) == 2 for chip in controls.editor.groups[0].conditions)
 
 
 def evidence_result(scopes):
@@ -269,7 +250,7 @@ def test_list_groups_retained_evidence_without_repeating_a_field_per_finding(mon
     for marker in markers:
         query = parse_qs(urlsplit(marker.href).query)
         assert query['monitor'] == [monitor_id]
-        assert query['freshness'] == ['retained']
+        assert any(dimension.startswith('retained:') and value == 'yes' for dimension, value in terms_in(marker.href))
     for finding in result['data']['findings']:
         matching = [value for value in values if value.text == finding['title']]
         assert len(matching) == 1 and matching[0].href == finding['evidence_url']

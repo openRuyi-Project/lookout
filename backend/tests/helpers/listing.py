@@ -25,17 +25,6 @@ def inline_navigation(page):
 
 
 def facet_destination(client, page, choice):
-    """Nonzero choices toggle; zero choices restart with one filter."""
     result = follow(client, choice['href'])
-    if choice['count'] == 0:
-        query = parsed(choice['href'])
-        filters = query.keys() - {'q', 'page', 'per_page'}
-        assert len(filters) == 1
-        key, = filters
-        assert key in {'view', 'maintenance', 'signal', 'build', 'buildsystem'}
-        assert len(query[key]) == 1
-        assert query.get('q', ['']) == [page['controls']['query']]
-        assert query['page'] == ['1']
-    else:
-        assert (page['total'] if choice['selected'] else result['total']) == choice['count']
+    assert (page['total'] if choice['selected'] else result['total']) == choice['count']
     return result

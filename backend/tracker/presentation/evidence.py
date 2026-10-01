@@ -8,7 +8,7 @@ from tracker.presentation.values import CHECK_LABELS, cell, field, retained_mark
 
 def evidence_labels(result, links, *, counts=True):
     return [text(caption(label['label']) + (f" {label['count']}" if counts and label['count'] > 1 else ''),
-                 kind='tag', href=links.only_filter(maintenance=[label['label']]),
+                 kind='tag', href=links.condition('maintenance', label['label']),
                  appearance=appearance(label['label']),
                  tone='notice' if label['stale'] else 'normal',
                  title=CHECK_LABELS['expired'] if label['stale'] else None)
@@ -78,7 +78,7 @@ def evidence_section(result, links):
         if finding['scope'] == 'upgrade' and not shared_target:
             fields.insert(0, field('Target', text(finding.get('target_version'), kind='code')))
         heading = [text(finding['title'], href=finding['evidence_url'])]
-        heading += [text(caption(tag), kind='tag', appearance=appearance(tag), href=links.only_filter(maintenance=[tag])) for tag in finding['tags']]
+        heading += [text(caption(tag), kind='tag', appearance=appearance(tag), href=links.condition('maintenance', tag)) for tag in finding['tags']]
         if finding['stale'] and not all_stale:
             heading.append(retained_marker())
         entries.append(Entry(heading=heading, fields=fields))
@@ -97,7 +97,7 @@ def evidence_section(result, links):
 def evidence_lines(pkg, result, links):
     data = result['data']
     entries = data.get('entries') or data.get('findings', [])
-    checks_url = links.to(monitor=result['id'], freshness='retained', check='', section='results')
+    checks_url = links.condition('retained:' + result['id'], 'yes', monitor=result['id'], section='results')
     if result['id'] == 'security':
         # One wrapping line of identifiers, not one tall row per advisory or a
         # count that repeats the section's identity. Keep KEV tied to its subject.

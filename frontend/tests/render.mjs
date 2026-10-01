@@ -10,6 +10,11 @@ const serving = process.argv.includes('--serve');
 let delays = {};
 let revision = 0;
 
+const filtered = (conditions, parameters = {}, logic = 'and', root = 'and') => {
+  const groups = conditions.map(terms => ({logic: root, conditions: terms.map(([dimension, value], i) => ({dimension, value, logic: i === 0 ? root : logic}))}));
+  return '/?' + new URLSearchParams({...parameters, filters: JSON.stringify({groups})});
+};
+const filterFrom = href => JSON.parse(new URL(href.replaceAll('&amp;', '&'), 'http://fixture').searchParams.get('filters') || '{"groups":[]}');
 const targets = ['rva23', 'rva20', 'x86_64'].map(id => ({id, label: id, repository: id, architecture: 'riscv64'}));
 const makePackage = (name, patch = {}) => ({
   buildsystem: null, buildsystem_status: 'not_declared', maintenance: [], maintenance_findings: [], monitor_checks: [], presentation: {buildsystems: {}},
@@ -173,16 +178,16 @@ const fixtureBridge = fileURLToPath(new URL('../../backend/tests/presentation_fi
 function project(operation, payload, query = {}) {
   const result = spawnSync(process.env.PYTHON || 'python3', [fixtureBridge], {
     input: JSON.stringify({operation, payload, query}), encoding: 'utf8',
+    // Bounded queries repeat their URLs in links, exceeding spawnSync's 1 MiB default.
+    maxBuffer: 16 * 1024 * 1024,
   });
   assert.equal(result.status, 0, result.stderr);
   return JSON.parse(result.stdout);
 }
-let lastQuery = new URLSearchParams();
 let unavailable = false;
 let health = 'ok';
 let ready = {status: 200, body: {status: 'degraded', generation: 1}};
 let appearancePalette = {custom: {background: '#123456', foreground: '#ffffff', icon: 'gopher'}};
-let retainedCount = 0;
 const publicPaths = [
   '/api/v2/packages', '/api/v2/packages/security', '/api/v2/tracks/widget',
   '/api/v2/targets', '/api/v2/status', '/api/v2/export', '/api/v2/packages:batchGet',
@@ -227,36 +232,18 @@ const mock = createServer((req, res) => {
   if (url.pathname === '/api/ui/packages' && url.searchParams.get('monitor') === 'not-registered') {
     res.writeHead(422, {'Content-Type': 'application/json'}); res.end('{}'); return;
   }
-  if (url.pathname === '/api/ui/packages') lastQuery = url.searchParams;
   const selected = packages.find(pkg => url.pathname === `/api/ui/packages/${pkg.name}`);
   const focus = url.searchParams.get('monitor') || '';
-  const section = url.searchParams.get('check') ? 'coverage' : url.searchParams.get('section') || 'results';
-  const evidenceFocus = catalog.some(m => m.id === focus && ['evidence', 'requires'].includes(m.kind));
-  const resultRows = packages.filter(pkg => pkg.maintenance_findings.some(f => f.monitor === focus)
-    || (focus === 'requires' && pkg.requirements?.length));
-  let rows = evidenceFocus && section === 'results' ? resultRows : packages;
-  if (serving && url.searchParams.get('q')) rows = rows.filter(pkg => pkg.name.includes(url.searchParams.get('q')));
-  const perPage = Math.max(1, Math.min(200, Number(url.searchParams.get('per_page')) || 100));
-  const pages = Math.max(1, Math.ceil(rows.length / perPage));
-  const page = Math.max(1, Math.min(pages, Number(url.searchParams.get('page')) || 1));
+  const section = url.searchParams.get('section') || 'results';
   const payload = url.pathname === '/api/ui/theme'
     ? {buildsystems: appearancePalette}
     : selected ? monitored(selected) : {
-      monitors: catalog, check_statuses: {ok: packages.length}, check_groups: {failed: 0, uncovered: 0}, section,
-      result_count: resultRows.length, coverage_count: packages.length, retained_count: retainedCount,
-      presentation: {buildsystems: appearancePalette},
-      buildsystems: {custom: 1, _not_detected: 4}, maintenance_labels: {CheckFailed: 1, NewSignal: 1, LicenseDiff: 1, DepMismatch: 1},
-      requires_counts: {all: 3, unmet: 1, changes: 1},
-      version_signals: {security: 1, license: 1, requires: 1},
-      build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'failed',label:'Failed',count:2}, {value:'blocked',label:'Blocked',count:1}]])),
-      items: (url.searchParams.get('q') === 'quiet' ? rows.map(pkg=>({...pkg,maintenance:[],maintenance_findings:[]})) : rows).slice((page - 1) * perPage, page * perPage).map(pkg => monitored(pkg, true, focus)),
-      total: rows.length, page, per_page: perPage, pages,
-      counts: {all: packages.length, updates: 3 + revision, problems: 1, attention: 1, untracked: 1}, targets,
+      monitors: catalog, section, presentation: {buildsystems: appearancePalette},
+      items: packages.map(pkg => monitored(pkg, true, focus)),
+      targets,
       collection: {build_service_url: 'https://build.example.org', source_repository: {url: 'https://github.com/fixture/repo.git', branch: 'stable/3', revision: 'abcdef0123456789abcdef0123456789abcdef01'}, obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
         packages: packages.length, tracked_packages: packages.length - 1}};
   const query = Object.fromEntries(url.searchParams);
-  query.build = url.searchParams.getAll('build');
-  query.maintenance = url.searchParams.getAll('maintenance');
   query.section = section;
   const document = project(url.pathname === '/api/ui/theme' ? 'theme' : selected ? 'detail' : 'list', payload, query);
   const response = JSON.stringify(url.pathname.startsWith('/api/ui/') ? document : payload);
@@ -383,8 +370,8 @@ try {
   const globalNavigation = packageHeader.match(new RegExp(`<div id="${packageMenuID}"[^>]*popover="auto"[^]*?<\\/div>`))[0];
   assert.match(globalNavigation, /<h2>BuildSystem<\/h2>/);
   assert.match(globalNavigation, /aria-label="BuildSystem"/);
-  assert.match(globalNavigation, /buildsystem=custom[^]*?>custom<\/span><\/span>\s*<b>1<\/b>/);
-  assert.match(globalNavigation, /buildsystem=_not_detected[^]*?>❔ custom<\/span><\/span>\s*<b>4<\/b>/);
+  assert.match(globalNavigation, />custom<\/span><\/span>\s*<b>1<\/b>/);
+  assert.match(globalNavigation, />❔ custom<\/span>/);
   assert.equal((globalNavigation.match(/class="brand-icon/g) || []).length, 1);
   const logoURL = globalNavigation.match(/<img src="([^"]+)"/)[1];
   assert.match(logoURL, /^\/_astro\/gopher[.\w-]*\.svg$/);
@@ -396,21 +383,22 @@ try {
   assert.match(listing, /href="https:\/\/github.com\/fixture\/repo\/commit\/abcdef0123456789abcdef0123456789abcdef01"[^>]*>abcdef<\/a>/);
   assert.equal((listing.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 5);
   assert.equal((listing.match(/<form\b/g) || []).length, 1);
+  assert.equal((listing.match(/data-group-id=/g) || []).length, 0);
   const packageMenu = listing.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
   assert.match(packageMenu, />Outdated<\/span>/);
   assert.match(packageMenu, />Untracked<\/span>/);
-  assert.match(packageMenu, /maintenance=Outdated/);
-  assert.match(packageMenu, /maintenance=Untracked/);
-  assert.match(packageMenu, /maintenance=CheckFailed/);
+  const alertLinks = [...packageMenu.matchAll(/href="([^"]+)"/g)].map(([, href]) => filterFrom(href));
+  for (const value of ['Outdated', 'Untracked', 'CheckFailed']) {
+    assert.ok(alertLinks.some(q => q.groups[0].conditions.some(c => c.dimension === 'maintenance' && c.value === value)));
+  }
   assert.match(packageMenu, />DepMismatch<\/span>[^]*?>DepChanges<\/span>/);
-  assert.match(packageMenu, /signal=requires/);
-  const changedPage = await read('/?signal=requires');
-  assert.match(changedPage, /aria-label="Remove DepChanges"/);
-  assert.match(changedPage, /name="signal" value="requires"/);
+  const changedPage = await read(filtered([[['version_signal', 'requires']]]));
+  assert.match(changedPage, /aria-label="Remove DepChanges from group 1"/);
+  assert.match(changedPage, /name="filters"/);
   const untrackedRow = listing.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
   assert.match(untrackedRow, /data-decoration="dashed"/);
   assert.match(untrackedRow, /label%3AUntracked[^>]*>Untracked/);
-  assert.match(listing, /href="\/\?page=1&amp;maintenance=CheckFailed"/);
+
   const errorPage = await read('/packages/check-error');
   for (const page of [listing, errorPage]) {
     const dataLinks = [...page.matchAll(/<a\b[^>]*href="([^"]+)"/g)]
@@ -421,34 +409,44 @@ try {
   assert.match(errorPage, /Fixture provider timeout/);
   assertCollapsedChecksLast(errorPage);
   assert.equal((packageMenu.match(/>LicenseDiff<\/span>/g) || []).length, 1);
-  assert.match(packageMenu, /maintenance=LicenseDiff[^]*?>LicenseDiff<\/span><\/span>\s*<b>1<\/b>/);
+  assert.match(packageMenu, />LicenseDiff<\/span><\/span>\s*<b>1<\/b>/);
   assert.equal((listing.match(/<button[^>]*type="submit"/g) || []).length, 1);
-  const scoped = await read('/?buildsystem=custom&maintenance=LicenseDiff&build=rva23:blocked');
-  for (const label of ['BuildSystem: custom', 'LicenseDiff', 'rva23: Blocked']) {
-    assert.ok(scoped.includes(`aria-label="Remove ${label}"`));
+  const terms = [['buildsystem', 'custom'], ['maintenance', 'LicenseDiff'], ['build:rva23', 'failed']];
+  const scoped = await read(filtered([terms]));
+  for (const label of ['BuildSystem: custom', 'LicenseDiff', 'rva23: Failed']) {
+    assert.ok(scoped.includes(`aria-label="Remove ${label} from group 1"`));
   }
-  const chips = scoped.match(/<div class="active-filters"[^]*?<\/div>/)[0];
-  const clearBuild = chips.match(/<a href="([^"]+)" aria-label="Remove rva23: Blocked"/)[1];
-  const cleared = new URL(clearBuild.replaceAll('&amp;', '&'), 'http://fixture').searchParams;
-  assert.deepEqual(cleared.getAll('build'), []);
-  assert.equal(cleared.get('maintenance'), 'LicenseDiff');
-  assert.equal(cleared.get('buildsystem'), 'custom');
-  const selectedMenu = scoped.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
-  assert.match(selectedMenu, /aria-current="page"[^]*?>LicenseDiff<\/span>/);
-  const searchForm = scoped.match(/<form\b[^]*?<\/form>/)[0];
-  assert.match(searchForm, /name="maintenance" value="LicenseDiff"/);
-  assert.match(searchForm, /name="build" value="rva23:blocked"/);
-  const combined = await read('/?maintenance=LicenseDiff&maintenance=DepMismatch&signal=requires');
-  for (const label of ['LicenseDiff', 'DepMismatch', 'DepChanges']) {
-    assert.ok(combined.includes(`aria-label="Remove ${label}"`));
-  }
-  const combinedSearch = combined.match(/<form\b[^]*?<\/form>/)[0];
-  assert.match(combinedSearch, /name="maintenance" value="LicenseDiff"/);
-  assert.match(combinedSearch, /name="maintenance" value="DepMismatch"/);
-  assert.match(combinedSearch, /name="signal" value="requires"/);
-  const exactCheck = await read('/?monitor=security&check=expired');
-  assert.match(exactCheck, /aria-label="Remove Check: Stale"/);
-  const paged = await read('/?q=fixture&per_page=3&page=2&buildsystem=custom');
+  const clearBuild = scoped.match(/<a href="([^"]+)" aria-label="Remove rva23: Failed from group 1"/)[1];
+  assert.deepEqual(filterFrom(clearBuild).groups[0].conditions, terms.slice(0, 2).map(([dimension, value]) => ({dimension, value, logic: 'and'})));
+  assert.match(scoped, /0 packages/);
+  assert.match(scoped, /name="filters"/);
+  assert.match(scoped, /aria-label="Next operator"/);
+  const grouped = await read(filtered([[['build:rva23', 'failed'], ['build:rva23', 'unresolvable']], [['maintenance', 'Advisory']]], {active_group: '1', next_logic: 'or'}, 'or'));
+  assert.equal((grouped.match(/class="logic-switch"/g) || []).length, 1);
+  assert.match(grouped, /data-group-id="0"/);
+  assert.match(grouped, /data-group-id="1"/);
+  assert.match(grouped, /aria-label="Clear group 1"/);
+  assert.equal((grouped.match(/class="group-add"/g) || []).length, 2);
+  assert.equal((grouped.match(/class="query-precedence"/g) || []).length, 1);
+  assert.ok(grouped.indexOf('class="query-precedence"') > grouped.indexOf('data-group-id="1"'));
+  const searchIndex = grouped.indexOf('type="submit">Search');
+  const switchIndex = grouped.indexOf('aria-label="Next operator"');
+  const clearIndex = grouped.indexOf('class="filter-clear"');
+  const groupsIndex = grouped.indexOf('data-group-id="0"');
+  assert.ok(searchIndex < switchIndex && switchIndex < clearIndex && clearIndex < groupsIndex);
+  assert.ok(groupsIndex < grouped.indexOf('<table'));
+  assert.match(grouped, /class="group-selector"[^>]*aria-label="Edit group 2">AND/);
+  const queryContract = await (await fetch(`http://127.0.0.1:${mock.address().port}/api/ui/packages`)).json();
+  const nodeLimit = queryContract.controls.editor.node_limit;
+  const atLimit = await read(filtered([Array.from({length: nodeLimit - 1}, (_, i) => ['maintenance', `c${i}`])]));
+  assert.equal((atLimit.match(/aria-label="Remove /g) || []).length, nodeLimit - 1);
+  assert.match(atLimit, new RegExp(`Query limit: ${nodeLimit} groups \\+ conditions`));
+  assert.match(atLimit, /class="group-add"[^>]*aria-disabled="true"/);
+  const clearAtLimit = atLimit.match(/class="group-clear" href="([^"]+)"/)[1];
+  assert.doesNotMatch(await read(clearAtLimit.replaceAll('&amp;', '&')), /data-group-id=/);
+  const exactCheck = await read(filtered([[['check:security', 'expired']]], {monitor: 'security', section: 'coverage'}));
+  assert.match(exactCheck, /aria-label="Remove Advisory: Stale from group 1"/);
+  const paged = await read('/?per_page=3&page=2');
   const topPager = paged.match(/<nav[^>]*aria-label="Pages above results"[^]*?<\/nav>/)[0];
   const bottomPager = paged.match(/<nav[^>]*aria-label="Pages below results"[^]*?<\/nav>/)[0];
   const pagerLinks = html => [...html.matchAll(/href="([^"]+)"/g)].map(match => match[1]);
@@ -457,13 +455,8 @@ try {
   assert.ok(paged.indexOf(topPager) < paged.indexOf('<table class="data-table'));
   assert.ok(paged.indexOf(bottomPager) > paged.lastIndexOf('</table>'));
   for (const link of pagerLinks(topPager)) {
-    const query = new URL(link.replaceAll('&amp;', '&'), 'http://fixture').searchParams;
-    assert.equal(query.get('q'), 'fixture');
-    assert.equal(query.get('buildsystem'), 'custom');
-    assert.equal(query.get('per_page'), '3');
+    assert.equal(new URL(link.replaceAll('&amp;', '&'), 'http://fixture').searchParams.get('per_page'), '3');
   }
-  assert.doesNotMatch(listing, /Pages above results/);
-  assert.equal((listing.match(/class="result-count"/g) || []).length, 2);
   assert.match(listing, /class="results-toolbar"[^]*?class="result-count"[^]*?<form[^>]*role="search"/);
   assert.match(listing, /rel="icon" type="image\/svg\+xml" href="\/openruyi.svg"/);
   assert.match(listing, /<img src="\/openruyi.svg" width="38" height="28" alt=""/);
@@ -473,45 +466,19 @@ try {
   assert.match(simple, /<table class="data-table"/);
   assert.match(await read('/?monitor=build'), /<table class="data-table wide status-matrix"/);
   assert.match(listing, /<table class="data-table wide"/);
-  const sourceCoverage = await read('/?monitor=source&section=results&buildsystem=custom&build=rva23:blocked&per_page=2');
+  const sourceCoverage = await read('/?monitor=source&section=coverage&per_page=2');
   const sourceTable = sourceCoverage.match(/<table\b[^]*?<\/table>/)[0];
   assert.match(sourceTable, />Check<\/th>/);
   assert.match(sourceTable, />Last checked<\/th>/);
   assert.match(sourceTable, /Checked/);
-  assert.doesNotMatch(sourceTable, />(?:Source|Version)<\/th>|→/);
   assert.equal((sourceTable.match(/<col(?:\s[^>]*)?\s*\/?>/g) || []).length, 3);
-  assert.match(sourceCoverage, /name="monitor" value="source"/);
   assert.match(sourceCoverage, /name="section" value="coverage"/);
-  assert.equal(lastQuery.get('monitor'), 'source');
-  assert.deepEqual(lastQuery.getAll('build'), ['rva23:blocked']);
-  // The website forwards the URL; the backend presenter owns the reading scope.
-  const focused = await read('/?monitor=yanked&buildsystem=custom&build=rva23:blocked');
-  assert.equal(lastQuery.get('monitor'), 'yanked');
-  assert.deepEqual(lastQuery.getAll('build'), ['rva23:blocked']);
+  const focused = await read('/?monitor=yanked');
   assert.match(focused, /Release withdrawn/);
   assert.doesNotMatch(focused, /data-key="success"/);
-  assert.match(focused, /name="buildsystem" value="custom"/, 'search preserves the global filter');
-  const focusedGlobal = focused.match(/<nav[^>]*aria-label="BuildSystem"[^]*?<\/nav>/)[0];
-  assert.match(focusedGlobal, /aria-current="page"[^>]*data-appearance="buildsystem%3Acustom"[^]*?>custom<\/span>/);
-  for (const match of focusedGlobal.matchAll(/href="([^"]+)"/g)) {
-    const link = new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture');
-    assert.equal(link.searchParams.get('monitor'), 'yanked');
-    assert.deepEqual(link.searchParams.getAll('build'), []);
-  }
-  assert.equal((focused.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 2);
-  const coverage = await read('/?monitor=yanked&buildsystem=custom&build=rva23:blocked&check=ok');
-  const coverageTable = coverage.match(/<table\b[^]*?<\/table>/)[0];
-  assert.match(coverageTable, />Version<\/th>/);
-  assert.doesNotMatch(coverageTable, /Last checked|>Checked</);
-  assert.match(coverage, /Checked/);
-  assert.equal((coverageTable.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 2);
-  const nav = coverage.match(/<nav[^>]*aria-label="Monitors"[^]*?<\/nav>/)[0];
-  for (const match of nav.matchAll(/href="([^"]+)"/g)) {
-    const link = new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture');
-    assert.equal(link.searchParams.get('check'), null);
-    assert.equal(link.searchParams.get('buildsystem'), 'custom');
-    assert.deepEqual(link.searchParams.getAll('build'), []);
-  }
+  const coverage = await read(filtered([[['check:yanked', 'ok']]], {monitor: 'yanked', section: 'coverage'}));
+  assert.match(coverage, />Version<\/th>/);
+  assert.match(coverage, /Remove Release files: Checked from group 1/);
   const unknownPort = await read('/packages/yanked');
   assert.match(unknownPort, /Release withdrawn/);
   assert.match(unknownPort, />Files<\/dt>/);
@@ -569,25 +536,16 @@ try {
   assert.equal((security.match(/>Reported fixes<\/dt>/g) || []).length, 8);
   const versionList = await read('/?monitor=version');
   const versionViews = versionList.match(/<nav[^>]*aria-label="Version"[^]*?<\/nav>/)[0];
-  assert.match(versionViews, /view=updates[^>]*>\s*<span class="choice-label"><span>Outdated<\/span><\/span><b>3<\/b>/);
-  const updatesList = await read('/?monitor=version&view=updates');
-  assert.match(updatesList, /view=updates[^>]*aria-current="page"[^>]*>\s*<span class="choice-label"><span>Outdated<\/span>/);
-  assert.match(updatesList, /aria-label="Remove Outdated"/);
-  assert.match(versionList, /class="choice-row-label">Related<\/span>/);
+  assert.match(versionViews, />Outdated<\/span>/);
+  const updatesList = await read(filtered([[['view', 'updates']]], {monitor: 'version'}));
+  assert.match(updatesList, /aria-label="Remove Outdated from group 1"/);
   assert.match(versionList, /<nav[^>]*aria-label="Related"/);
-  const versionRelated = await read('/?monitor=version&signal=security&q=openssl&buildsystem=custom');
-  const relatedNav = versionRelated.match(/<nav[^>]*aria-label="Related"[^]*?<\/nav>/)[0];
-  assert.match(relatedNav, /signal=security[^>]*aria-current="page"/);
-  for (const match of relatedNav.matchAll(/href="([^"]+)"/g)) {
-    const link = new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture');
-    assert.equal(link.searchParams.get('monitor'), 'version');
-    assert.equal(link.searchParams.get('q'), 'openssl');
-    assert.equal(link.searchParams.get('buildsystem'), 'custom');
-    assert.equal(link.searchParams.getAll('signal').length <= 1, true);
-  }
+  const versionRelated = await read(filtered([[['version_signal', 'security']]], {monitor: 'version', q: 'security'}));
+  assert.match(versionRelated, /data-key="security"/);
+  assert.doesNotMatch(versionRelated, /data-key="license-evidence"/);
   const versionTable = versionList.match(/<table\b[^]*?<\/table>/)[0];
   assert.match(versionTable, />Advisory 8<\/a>/);
-  assert.match(versionTable, /signal=security/);
+  assert.ok([...versionTable.matchAll(/href="([^"]+)"/g)].some(([, href]) => href.includes('version_signal')));
   assert.doesNotMatch(versionTable, /CVE-2026-|Reported fixes|Exploit probability/);
   const securityDetail = await read('/packages/security');
   assert.match(securityDetail, /href="#security"[^>]*>Advisory 8<\/a>/);
@@ -621,27 +579,13 @@ try {
   assert.match(requiresRow('requires-target-only'), /libtarget<[^]*?Upgrade:[^]*?>✗</);
   const requirementNav = requiresList.match(/<nav[^>]*aria-label="Dependencies"[^]*?<\/nav>/)[0];
   for (const label of ['DepMismatch', 'DepChanges', 'Uncovered', 'CheckFailed']) assert.ok(requirementNav.includes(label));
-  assert.match(requirementNav, /requires=unmet/);
-  assert.match(requirementNav, /check=uncovered/);
-  assert.match(requirementNav, /check=failed/);
-  assert.match(requirementNav, /requires=changes/);
-  const requiresFiltered = await read('/?monitor=requires&requires=unmet&build=rva23:blocked&per_page=1');
-  assert.equal(lastQuery.get('requires'), 'unmet');
-  assert.match(requiresFiltered, /name="requires" value="unmet"/);
-  const filteredNav = requiresFiltered.match(/<nav[^>]*aria-label="Dependencies"[^]*?<\/nav>/)[0];
-  for (const match of filteredNav.matchAll(/href="([^"]+)"/g)) {
-    const link = new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture');
-    assert.equal(link.searchParams.get('page'), '1');
-    assert.equal(link.searchParams.get('per_page'), '1');
-    assert.deepEqual(link.searchParams.getAll('build'), []);
-    if (link.searchParams.get('check')) assert.equal(link.searchParams.get('requires'), null);
-  }
-  const requiresCoverage = await read('/?monitor=requires&check=uncovered&requires=unmet&build=rva23:blocked');
-  const coverageNav = requiresCoverage.match(/<nav[^>]*aria-label="Dependencies"[^]*?<\/nav>/)[0];
-  for (const label of ['DepMismatch', 'DepChanges', 'Uncovered', 'CheckFailed']) assert.ok(coverageNav.includes(label));
-  assert.doesNotMatch(requiresCoverage, /name="requires"/);
+  const requiresFiltered = await read(filtered([[['requires', 'unmet']]], {monitor: 'requires', per_page: '1'}));
+  assert.match(requiresFiltered, /Remove DepMismatch from group 1/);
+  assert.match(requiresFiltered, /name="filters"/);
+  const requiresCoverage = await read(filtered([[['check:requires', 'uncovered'], ['requires', 'unmet']]], {monitor: 'requires', section: 'coverage'}));
   assert.match(requiresCoverage, />Version<\/th>/);
-  const uncovered = await read('/?monitor=version&check=uncovered');
+  assert.match(requiresCoverage, /0 packages/);
+  const uncovered = await read(filtered([[['check:version', 'uncovered']]], {monitor: 'version', section: 'coverage'}));
   const uncoveredRow = uncovered.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
   assert.match(uncoveredRow, />2\.0</);
   assert.doesNotMatch(uncoveredRow, /→/);
@@ -651,35 +595,13 @@ try {
   const buildList = await read('/?monitor=build');
   assert.match(buildList, /status-matrix/);
   assert.equal((buildList.match(/class="choice-row"/g) || []).length, targets.length);
-  assert.doesNotMatch(buildList.match(/<nav[^>]*aria-label="Views"[^]*?<\/nav>/)[0], /Stale/);
-  for (const target of targets) {
-    const controls = buildList.match(new RegExp(`<nav[^>]*aria-label="${target.label}"[^]*?</nav>`))[0];
-    assert.match(controls, />Blocked<\/span><\/span>\s*<b>1<\/b>/);
-  }
-  const buildFiltered = await read('/?monitor=build&build=rva23:blocked&build=x86_64:blocked&q=openssl&buildsystem=custom');
-  for (const target of targets) {
-    const targetNav = buildFiltered.match(new RegExp(`<nav[^>]*aria-label="${target.label}"[^]*?</nav>`))[0];
-    assert.equal((targetNav.match(/aria-current="page"/g) || []).length, target.id === 'rva20' ? 0 : 1, 'at most one selected status per target');
-    for (const match of targetNav.matchAll(/href="([^"]+)"/g)) {
-      const link = new URL(match[1].replaceAll('&amp;', '&'), 'http://fixture');
-      assert.equal(link.searchParams.get('monitor'), 'build');
-      assert.equal(link.searchParams.get('q'), 'openssl');
-      assert.equal(link.searchParams.get('buildsystem'), 'custom');
-      const builds = link.searchParams.getAll('build');
-      assert.ok(builds.filter(value => value.startsWith(target.id + ':')).length <= 1);
-      for (const retained of ['rva23:blocked', 'x86_64:blocked']) {
-        if (!retained.startsWith(target.id + ':')) assert.ok(builds.includes(retained), 'other targets compose');
-      }
-    }
-  }
-  retainedCount = 2;
-  const retainedBuilds = await read('/?monitor=build');
-  const retainedNavigation = retainedBuilds.match(/<nav[^>]*aria-label="Views"[^]*?<\/nav>/)[0];
-  assert.match(retainedNavigation, /freshness=retained[^]*?>Stale<\/span><\/span>\s*<b>2<\/b>/);
-  retainedCount = 0;
-  const selectedRetained = await read('/?monitor=build&freshness=retained');
-  assert.match(selectedRetained.match(/<nav[^>]*aria-label="Views"[^]*?<\/nav>/)[0],
-    /freshness=retained[^>]*aria-current="page"[^]*?>Stale<\/span><\/span>\s*<b>0<\/b>/);
+  const buildFiltered = await read(filtered([[['build:rva23', 'failed'], ['build:rva23', 'unresolvable']]], {monitor: 'build'}, 'or'));
+  const selectedTarget = buildFiltered.match(/<nav[^>]*aria-label="rva23"[^]*?<\/nav>/)[0];
+  assert.equal((selectedTarget.match(/aria-current="page"/g) || []).length, 2);
+  assert.match(buildFiltered, /data-key="failed"/);
+  assert.match(buildFiltered, /data-key="build-reason"/);
+  const impossibleBuild = await read(filtered([[['build:rva23', 'failed'], ['build:rva23', 'unresolvable']]], {monitor: 'build'}));
+  assert.match(impossibleBuild, /0 packages/);
   assert.match(buildList, /nothing provides &lt;fixture-dependency&gt;/);
   assert.doesNotMatch(buildList, /worker:\/\//);
   const aggregateReason = listing.match(/<tr class="row-note"[^]*?<\/tr>/)[0];

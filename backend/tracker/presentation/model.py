@@ -5,6 +5,8 @@ values. This is a disposable projection, never a second stored observation.
 """
 from typing import Literal
 
+from tracker.readmodel.query import FilterQuery, MAX_QUERY_NODES
+
 from pydantic import BaseModel, ConfigDict, Field as Constraint, model_validator
 
 
@@ -32,7 +34,7 @@ class Choice(DocumentModel):
     appearance: str | None = None
     icon: str | None = None
     label: str
-    href: str
+    href: str | None
     selected: bool = False
     count: int | None = None
 
@@ -103,7 +105,31 @@ class Parameter(DocumentModel):
     value: str
 
 
+class FilterCondition(Choice):
+    logic: str
+
+
+class FilterGroup(DocumentModel):
+    id: int
+    active: bool
+    select: str
+    logic: str
+    conditions: list[FilterCondition]
+    clear: str
+    add: str | None
+
+
+class FilterEditor(DocumentModel):
+    query: FilterQuery
+    active_group: int
+    node_limit: int = MAX_QUERY_NODES
+    groups: list[FilterGroup]
+    operators: list[Choice]
+    clear: str
+
+
 class Controls(DocumentModel):
+    editor: FilterEditor
     action: str = '/'
     query: str = ''
     hidden: list[Parameter] = []

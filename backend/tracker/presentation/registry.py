@@ -26,7 +26,6 @@ class Presenter:
     sections: Callable[[dict, Links], list[Section]]
     columns: Callable[[str, list[dict]], list[Column]] | None = None
     cells: Callable[[dict, dict, Links], list[Cell]] | None = None
-    filters: frozenset[str] = frozenset()
     preview: Callable[[dict, dict, Links], list[list[Text]]] | None = None
 
     def __post_init__(self):
@@ -40,10 +39,10 @@ class Presenter:
 
 PRESENTERS = {
     'source': Presenter(source_sections),
-    'version': Presenter(version_sections, single_column, version_cells, frozenset({'view', 'signal'})),
-    'build': Presenter(build_sections, build_columns, build_cells, frozenset({'build'})),
+    'version': Presenter(version_sections, single_column, version_cells),
+    'build': Presenter(build_sections, build_columns, build_cells),
     'evidence': Presenter(evidence_section, single_column, evidence_cells, preview=evidence_lines),
-    'requires': Presenter(requires_sections, single_column, requires_cells, frozenset({'requires'}), requires_preview),
+    'requires': Presenter(requires_sections, single_column, requires_cells, preview=requires_preview),
 }
 
 

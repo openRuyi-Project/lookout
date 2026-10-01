@@ -7,15 +7,16 @@ import threading
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, Json
 
 from tracker import state
 from tracker.monitors.model import RawFinding
 from tracker.monitors.requires.model import RequirementAssessment
 from tracker.presentation import navigation as presentation_navigation, pages as presentation_pages
 from tracker.presentation.model import DetailDocument, DocumentTheme, ListingDocument
-from tracker.readmodel import monitors as monitor_views, packages as package_list, snapshot as view
+from tracker.readmodel import monitors as monitor_views, snapshot as view
 from tracker.readmodel.cache import ProjectionCache
+from tracker.readmodel.query import FilterQuery, MAX_QUERY_NODES
 
 # Fixed-shape payloads are typed so the response contract cannot silently drift.
 # Raw provenance (source, upstream, per-flavor facts) stays open on purpose.
@@ -298,6 +299,10 @@ class MonitoredList(BaseModel):
     page: int
     per_page: int
     pages: int
+    filters: FilterQuery
+    active_group: int
+    next_logic: Literal['and', 'or']
+    query_node_limit: int = MAX_QUERY_NODES
     counts: dict[str, int]
     targets: list[Target]
     collection: Collection
@@ -328,20 +333,17 @@ class PackageBatch(BaseModel):
 
 
 class ListingQuery(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     q: str = Field('', max_length=100)
-    view: Literal['all', 'updates', 'problems', 'attention', 'untracked'] = 'all'
     page: int = Field(1, ge=1, le=1000000)
     per_page: int = Field(100, ge=1, le=200)
-    buildsystem: str = Field('', max_length=100)
-    maintenance: list[Annotated[str, Field(min_length=1, max_length=40)]] = Field(
-        default_factory=list, max_length=16,
-        description='Repeated issue labels; all must match. Counts retain selected labels when adding another.')
-    requires: Literal['', 'unmet', 'changes'] = ''
-    signal: str = Field('', max_length=64, description='Owning monitor ID of a Version annotation.')
-    freshness: Literal['', 'retained'] = ''
-    build: list[str] = Field(default_factory=list, max_length=16)
+    filters: Json[FilterQuery] = Field(default='{}', validate_default=True,
+        description=f'JSON: groups with explicit AND/OR links on groups and conditions; AND binds before OR. Max {MAX_QUERY_NODES} groups + conditions in total. Empty groups are ignored.')
+    active_group: int = Field(0, ge=0,
+        description='Editor position, not a filter. Candidate counts add a condition to this group; selected conditions are counted idempotently.')
+    next_logic: Literal['and', 'or'] = Field('and',
+        description='Operator for candidate counts and the next addition; does not rewrite the query.')
     monitor: str = Field('', max_length=64)
-    check: str = Field('', max_length=40)
     section: Literal['results', 'coverage'] = 'results'
 
 
@@ -425,41 +427,20 @@ def create_app(db=None):
         catalog = [module.describe() for module in monitor_views.registry(snap)]
         if filters.monitor and filters.monitor not in {m['id'] for m in catalog}:
             raise HTTPException(422, 'Unknown monitor')
-        if document:
-            filters = ListingQuery(**presentation_navigation.listing_query(filters.model_dump(), catalog))
-        q, view_name = filters.q, filters.view
-        page, per_page = filters.page, filters.per_page
-        buildsystem, maintenance, build = filters.buildsystem, filters.maintenance, filters.build
-        monitor, check = filters.monitor, filters.check
+        monitor = filters.monitor
         section = filters.section
-        if check and not monitor:
-            raise HTTPException(422, 'Check status requires a monitor')
-        if filters.freshness and not monitor:
-            raise HTTPException(422, 'Freshness requires a monitor')
-        # Check filters describe collection coverage, not positive findings.
-        section = 'coverage' if check else section
         focused = next((m for m in catalog if m['id'] == monitor), None)
+        if document and focused and not presentation_navigation.presenter(focused).has_results:
+            section = 'coverage'
         try:
-            builds = package_list.build_selections(build, snap['targets'])
+            result = index.select(query=filters.q, monitor=monitor, filters=filters.filters,
+                active_group=filters.active_group, next_logic=filters.next_logic, page=filters.page, per_page=filters.per_page,
+                search=search,
+                findings_only=bool(focused and focused['kind'] in ('evidence', 'requires') and section == 'results'))
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
-        result = index.select(query=q, monitor=monitor,
-            view=view_name, buildsystem=buildsystem, maintenance=maintenance,
-            builds=builds, page=page, per_page=per_page, check=check, requires=filters.requires, signal=filters.signal,
-            freshness=filters.freshness,
-            search=search,
-            findings_only=bool(focused and focused['kind'] in ('evidence', 'requires') and section == 'results'))
         if document:
             result['query'] = {**filters.model_dump(), 'section': section, 'page': result['page']}
-            if focused:
-                # Peer tabs are alternatives. Count their destinations in the
-                # shared search/identity scope, not inside the selected tab.
-                navigation = index.select(query=q, monitor=monitor,
-                    view='all', buildsystem=buildsystem, maintenance='', builds={},
-                    page=1, per_page=1,
-                    findings_only=focused['kind'] in ('evidence', 'requires'))
-                result['navigation_counts'] = {key: navigation[key] for key in
-                    ('counts', 'requires_counts', 'version_signals', 'check_statuses', 'check_groups', 'result_count', 'retained_count')}
         return {**result,
                 'section': section,
                 'monitors': catalog, 'targets': snap['targets'], 'collection': collection,

@@ -1,3 +1,4 @@
+from tests.helpers.query import query_url
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
@@ -36,8 +37,8 @@ def test_uniform_results_preserve_source_facts_and_raw_evidence(snapshot, tmp_pa
     assert 'watch' not in summary['version']['data']
     assert all('flavors' not in b for b in summary['build']['data']['targets'])
     assert listing['build_statuses']['rva20'][0]['count'] >= 0
-    assert [row['name'] for row in client.get('/api/v2/packages?build=rva20:failed').json()['items']] == ['foo3']
-    assert [row['name'] for row in client.get('/api/v2/packages?monitor=build&build=rva20:failed').json()['items']] == ['foo3']
+    assert [row['name'] for row in client.get(query_url('/api/v2/packages', {'build:rva20': 'failed'})).json()['items']] == ['foo3']
+    assert [row['name'] for row in client.get(query_url('/api/v2/packages', {'build:rva20': 'failed'}, monitor='build')).json()['items']] == ['foo3']
 
 
 def test_error_and_expiry_do_not_erase_build_result(snapshot):
@@ -69,7 +70,7 @@ def test_pending_monitor_is_not_a_negative_finding(snapshot, tmp_path):
     assert result['check_statuses'] == {'pending': 5}
     assert result['total'] == 5
     assert all(row['monitors']['future']['check']['status'] == 'pending' for row in result['items'])
-    assert result['maintenance_labels'] == {'Outdated': 2, 'Untracked': 2}
+    assert {k: v for k, v in result['maintenance_labels'].items() if v} == {'Outdated': 2, 'Untracked': 2}
     assert all(not row['monitors']['future']['data']['labels'] for row in result['items'])
 
 
@@ -104,9 +105,9 @@ def test_monitor_focus_does_not_change_other_filter_dimensions(snapshot, tmp_pat
     db = tmp_path / 'state.db'
     state.commit(db, snapshot)
     api = ProjectedClient(create_app(db))
-    original = api.get('/api/v2/packages?maintenance=Signal').json()
+    original = api.get(query_url('/api/v2/packages', {'maintenance': 'Signal'})).json()
     for mid in ('source', 'version', 'build', 'external'):
-        focused = api.get('/api/v2/packages?maintenance=Signal&monitor=' + mid).json()
+        focused = api.get(query_url('/api/v2/packages', {'maintenance': 'Signal'}, monitor=mid)).json()
         assert [row['name'] for row in focused['items']] == ['binutils']
         for key in ('total', 'counts', 'buildsystems', 'build_statuses', 'maintenance_labels'):
             assert focused[key] == original[key]

@@ -1,4 +1,5 @@
 """Package coverage and failed subchecks share the same API and UI selection."""
+from tests.helpers.query import conjunction
 import pytest
 
 from tracker import state
@@ -13,7 +14,7 @@ def test_untracked_is_version_coverage_independent_of_other_monitors(snapshot, t
         subject=model.subject(snapshot, 'untracked'), status=status,
         checked_at=state.utcnow(), findings=[])}}
     client, _ = client_for(snapshot, tmp_path)
-    selection = client.get('/api/v2/packages', params={'maintenance': 'Untracked'}).json()
+    selection = client.get('/api/v2/packages', params={'filters': conjunction({'maintenance': 'Untracked'}).encode()}).json()
     assert {row['name'] for row in selection['items']} == {'untracked', 'unknown'}
 
 
@@ -27,12 +28,12 @@ def test_partial_scope_keeps_facts_and_counts_only_actual_failures(snapshot, tmp
             'upgrade': {'status': scope_status, 'note': 'Fixture upgrade metadata'}},
     )}}
     client, _ = client_for(snapshot, tmp_path)
-    for parameters in ({'maintenance': 'CheckFailed'}, {'monitor': 'fixture', 'check': 'failed'}):
+    for parameters in ({'filters': conjunction({'maintenance': 'CheckFailed'}).encode()}, {'monitor': 'fixture', 'section': 'coverage', 'filters': conjunction({'check:fixture': 'failed'}).encode()}):
         response = client.get('/api/v2/packages', params=parameters).json()
         assert response['total'] == int(failed)
         if failed:
             assert response['items'][0]['monitors']['fixture']['check']['status'] == 'partial'
-    result = client.get('/api/ui/packages', params={'monitor': 'fixture', 'check': 'failed'}).json()
+    result = client.get('/api/ui/packages', params={'filters': conjunction({'check:' + 'fixture': 'failed'}).encode() ,'monitor': 'fixture', 'section': 'coverage'}).json()
     choices = result['controls']['navigation'][0]['choices']
     assert next(c['count'] for c in choices if c['label'] == 'CheckFailed') == int(failed)
     checks = next(s for s in client.get('/api/ui/packages/binutils').json()['sections'] if s['id'] == 'checks')
@@ -56,7 +57,7 @@ def test_failed_watch_history_and_source_parse_reach_checks(snapshot, tmp_path):
     for mid, reasons in failed.items():
         row = next(row for row in checks['table']['rows'] if row['id'] == 'check-' + mid)
         assert set(reasons) <= {v['text'] for cell in row['cells'] for line in cell['lines'] for v in line}
-    listing = client.get('/api/v2/packages', params={'q': 'foo3', 'maintenance': 'CheckFailed'}).json()
+    listing = client.get('/api/v2/packages', params={'filters': conjunction({'maintenance': 'CheckFailed'}).encode() ,'q': 'foo3'}).json()
     assert listing['total'] == 1
 
 
@@ -66,8 +67,8 @@ def test_partial_enrichment_is_failed_not_an_empty_success(snapshot, tmp_path):
         subject=model.subject(snapshot, 'binutils'), status='partial',
         note='Auxiliary provider timed out', checked_at=state.utcnow(), findings=[])}}
     client, _ = client_for(snapshot, tmp_path)
-    result = client.get('/api/v2/packages', params={'monitor': 'fixture', 'check': 'failed'}).json()
+    result = client.get('/api/v2/packages', params={'filters': conjunction({'check:' + 'fixture': 'failed'}).encode() ,'monitor': 'fixture', 'section': 'coverage'}).json()
     assert result['total'] == result['check_groups']['failed'] == 1
-    assert result['check_statuses'] == {'partial': 1, 'pending': 4}
+    assert result['check_statuses'] == {'partial': 1, 'pending': 0}
     check = result['items'][0]['monitors']['fixture']['check']
     assert check['failures'] == ['Auxiliary provider timed out']

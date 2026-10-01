@@ -1,4 +1,5 @@
 """Bounded fact queries share projections; no request collects or rebuilds data."""
+from tests.helpers.query import conjunction
 from copy import deepcopy
 
 from fastapi.testclient import TestClient
@@ -89,7 +90,7 @@ def test_search_focus_filtering_and_inclusion_are_independent(query_client):
     assert response['total'] == response['result_count'] == 1
     assert response['items'][0]['monitors']['fixture']['data']['findings'][0]['facts'][0]['value'] == ['GHSA-fixture-alias']
     assert client.get('/api/v2/packages', params={**parameters, 'monitor': 'version'}).json()['total'] == 0
-    assert client.get('/api/v2/packages', params={**parameters, 'build': 'rva20:succeeded'}).json()['total'] == 0
+    assert client.get('/api/v2/packages', params={**parameters, 'filters': conjunction({'build:rva20': 'succeeded'}).encode()}).json()['total'] == 0
     assert client.get('/api/v2/packages', params={**parameters, 'q': 'foo3', 'monitor': 'version'}).json()['total'] == 1
 
 

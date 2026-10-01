@@ -1,4 +1,5 @@
 """Successful versions are OBS evidence, never inferred from green status alone."""
+from tests.helpers.query import query_url
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
@@ -131,8 +132,9 @@ def test_untracked_filter_is_not_attention(tmp_path, snapshot):
     db = tmp_path / 'snapshot.db'
     state.commit(db, snapshot)
     client = ProjectedClient(create_app(db))
-    payload = client.get('/api/v2/packages?view=untracked').json()
-    assert payload['counts']['attention'] == 3
+    payload = client.get(query_url('/api/v2/packages', {'view': 'untracked'})).json()
+    assert payload['counts']['attention'] == 2
+    assert client.get('/api/v2/packages').json()['counts']['attention'] == 3
     assert payload['counts']['untracked'] == 2
     assert [r['name'] for r in payload['items']] == ['unknown', 'untracked']
     detail = client.get('/api/v2/packages/binutils').json()

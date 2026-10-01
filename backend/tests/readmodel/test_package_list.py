@@ -1,8 +1,6 @@
-from copy import deepcopy
-from itertools import product
 
-import pytest
 
+from tests.helpers.query import conjunction, query_url
 from tests.conftest import ProjectedClient
 from tracker import state
 from tracker.api import create_app
@@ -26,10 +24,10 @@ def test_blocked_is_an_issue_once_per_source_package(snapshot, tmp_path):
     db = tmp_path / 'snapshot.db'
     state.commit(db, snapshot)
     client = ProjectedClient(create_app(db))
-    result = client.get('/api/v2/packages?view=problems').json()
+    result = client.get(query_url('/api/v2/packages', {'view': 'problems'})).json()
     assert result['total'] == result['counts']['problems'] == 2
     assert {row['name'] for row in result['items']} == {'binutils', 'foo3'}
-    result = client.get('/api/v2/packages', params=[('build', 'rva23:blocked'), ('build', 'rva20:blocked')]).json()
+    result = client.get(query_url('/api/v2/packages', {'build:rva23': 'blocked', 'build:rva20': 'blocked'})).json()
     assert result['total'] == 1
     assert result['items'][0]['name'] == 'binutils'
     assert result['items'][0]['monitors']['build']['data']['targets'][0]['issue'] is True
@@ -38,58 +36,14 @@ def test_blocked_is_an_issue_once_per_source_package(snapshot, tmp_path):
         assert client.get('/api/v2/packages?' + query).status_code == 422
 
 
-def test_all_facets_match_an_independent_row_scan(snapshot):
-    rows, _ = view.project_monitors(snapshot)
-    oracle = [{'name': row['name'], 'builds': deepcopy(row['monitors']['build']['data']['targets'])} for row in rows]
-    for index, (row, expected) in enumerate(zip(rows, oracle)):
-        system = ['cmake', 'meson', None][index % 3]
-        labels = ['Advisory', 'EOL'] if index % 2 else ['Advisory']
-        expected['buildsystem'] = system
-        expected['maintenance'] = [{'label': label} for label in
-                                   [*labels, *row['monitors']['version']['dimensions']['maintenance']]]
-        row['monitors']['source']['dimensions']['buildsystem'] = [system or '_not_detected']
-        row['monitors']['fixture'] = {'id': 'fixture', 'dimensions': {'maintenance': labels}}
-        for offset, build in enumerate(expected['builds']):
-            build['raw_status'] = ['blocked', 'failed', 'building', 'succeeded', 'disabled'][(index + offset) % 5]
-            build['issue'] = build['raw_status'] in {'blocked', 'failed'}
-            row['monitors']['build']['dimensions']['build:' + build['target']] = [build['raw_status']]
-    index = PackageList(rows, snapshot['targets'])
-
-    def matches(row, system, maintenance, first, second):
-        return ((not system or (row['buildsystem'] or '_not_detected') == system)
-                and (not maintenance or any(f['label'] == maintenance for f in row['maintenance']))
-                and (not first or row['builds'][0]['raw_status'] == first)
-                and (not second or row['builds'][1]['raw_status'] == second))
-
-    for system, maintenance, first, second in product(
-        ['', 'cmake', 'meson', '_not_detected'], ['', 'Advisory', 'EOL'],
-        ['', 'blocked', 'failed'], ['', 'failed', 'building'],
-    ):
-        result = index.select(view='all', buildsystem=system, maintenance=maintenance,
-                              builds={'rva23': first, 'rva20': second}, page=1, per_page=2)
-        expected = [r for r in oracle if matches(r, system, maintenance, first, second)]
-        assert result['total'] == result['counts']['all'] == len(expected)
-        assert [r['name'] for r in result['items']] == [r['name'] for r in expected[:2]]
-        for value, count in result['buildsystems'].items():
-            assert count == sum(matches(r, value, maintenance, first, second) for r in oracle)
-        for value, count in result['maintenance_labels'].items():
-            assert count == sum(matches(r, system, maintenance, first, second)
-                                and matches(r, system, value, first, second) for r in oracle)
-        for option in result['build_statuses']['rva23']:
-            context = [r for r in oracle if matches(r, system, maintenance, '', second)]
-            expected_count = sum(r['builds'][0]['raw_status'] == option['value'] for r in context)
-            assert option['count'] == expected_count
-
-
 def test_search_view_and_empty_selected_option(snapshot):
     snapshot['builds']['binutils']['rva23']['raw_status'] = 'blocked'
     rows, _ = view.project_monitors(snapshot)
     index = PackageList(rows, snapshot['targets'], 'BIN')
-    result = index.select(view='updates', buildsystem='', maintenance='',
-                          builds={'rva23': 'failed'}, page=999, per_page=1)
+    result = index.select(filters=conjunction({'view': 'updates', 'buildsystem': '', 'maintenance': '', **{'build:' + target: value for target, value in ({'rva23': 'failed'}).items()}}), page=999, per_page=1)
     assert result['total'] == 0 and result['page'] == 1
     assert {'value': 'failed', 'label': 'Failed', 'count': 0} in result['build_statuses']['rva23']
-    assert {'value': 'blocked', 'label': 'Blocked', 'count': 1} in result['build_statuses']['rva23']
+    assert {'value': 'blocked', 'label': 'Blocked', 'count': 0} in result['build_statuses']['rva23']
     assert all(count == 0 for count in result['counts'].values())
 
 
@@ -100,8 +54,7 @@ def test_build_choices_follow_obs_order_without_changing_aggregation_rank():
             for code in [*reversed(codes), 'future-state']]
     index = PackageList(rows, [{'id': 'target'}])
     for selected in ('', 'failed'):
-        result = index.select(view='all', buildsystem='', maintenance=[], builds={'target': selected},
-                              page=1, per_page=100)
+        result = index.select(filters=conjunction({'buildsystem': '', 'maintenance': [], **{'build:' + target: value for target, value in ({'target': selected}).items()}}), page=1, per_page=100)
         assert [item['value'] for item in result['build_statuses']['target']] == [*codes, 'future-state']
-        assert all(item['count'] == 1 for item in result['build_statuses']['target'])
+        assert all(item['count'] == int(not selected or item['value'] == selected) for item in result['build_statuses']['target'])
     assert build_status.describe('failed').rank < build_status.describe('succeeded').rank

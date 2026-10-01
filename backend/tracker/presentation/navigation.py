@@ -1,216 +1,162 @@
-"""Navigation for reading documents; no collection or persistence."""
+"""Server-owned filter edits and links; the browser only renders/navigates."""
 from urllib.parse import urlencode
 
 from tracker.monitors.model import CHECK_GROUPS
 from tracker.monitors.issues import Issue, VERSION_ISSUES
 from tracker.monitors.build import status as build_status
-from tracker.presentation.model import Choice, Controls, Navigation, Parameter
+from tracker.presentation.model import Choice, Controls, FilterEditor, FilterGroup, FilterCondition, Navigation, Parameter
+from tracker.presentation.query_editor import QueryEditor
 from tracker.presentation.registry import presenter
 from tracker.presentation.values import CHECK_LABELS
 from tracker.presentation.labels import appearance, caption, priority, facets
 from tracker.presentation.version import signal_title
+from tracker.readmodel.query import Condition, FilterQuery, MAX_QUERY_NODES
 
 
 class Links:
-    """Page links retain only filters supported by their destination."""
-    def __init__(self, query=None, catalog=None):
+    def __init__(self, query=None):
         self.query = {key: value for key, value in (query or {}).items() if value}
-        if isinstance(self.query.get('maintenance'), str):
-            self.query['maintenance'] = [self.query['maintenance']]
-        self.catalog = catalog
-
-    def toggle(self, name, value, *, multiple=False):
-        selected = self.query.get(name)
-        if multiple:
-            values = selected or []
-            value = [item for item in values if item != value] if value in values else [*values, value]
-        elif selected == value:
-            value = ''
-        return self.to(**{name: value})
-
-    def choose(self, name, value, count, *, multiple=False):
-        if count == 0:
-            return self.only_filter(**{name: [value] if multiple else value})
-        return self.toggle(name, value, multiple=multiple)
-
-    def only_filter(self, **selection):
-        context = {key: self.query[key] for key in ('q', 'per_page') if key in self.query}
-        return Links(context, self.catalog).to(**selection)
+        raw = self.query.get('filters', {})
+        filters = FilterQuery.model_validate_json(raw) if isinstance(raw, str) else FilterQuery.model_validate(raw)
+        self.query['filters'] = filters.model_dump()
+        self.editor = QueryEditor(filters, self.query.get('active_group', 0), self.query.get('next_logic', 'and'))
 
     def to(self, **changes):
         query = {**self.query, 'page': 1, **changes}
-        if self.catalog is not None:
-            query = listing_query(query, self.catalog)
-        query = {key: value for key, value in query.items() if value}
-        return '/?' + urlencode(query, doseq=True)
+        if raw := query.get('filters'):
+            filters = FilterQuery.model_validate(raw)
+            query['filters'] = filters.encode() if filters.groups else ''
+        return '/?' + urlencode({key: value for key, value in query.items() if value})
 
+    def edited(self, editor, **changes):
+        return self.to(filters=editor.query.model_dump(), active_group=editor.active, next_logic=editor.next_logic, **changes)
 
-def listing_filters(focus, section):
-    """A filter is available only where its information is visible."""
-    common = frozenset({'q', 'buildsystem', 'page', 'per_page'})
-    if not focus:
-        return common | {'view', 'maintenance', 'build', 'signal'}
-    return common | (presenter(focus).filters | {'freshness'} if section == 'results' else frozenset())
+    def selected(self, dimension, value):
+        return self.editor.current.contains(Condition(dimension=dimension, value=value))
+
+    def condition(self, dimension, value, **changes):
+        condition = Condition(dimension=dimension, value=value)
+        if not self.editor.current.contains(condition) and self.editor.query.nodes >= MAX_QUERY_NODES:
+            return None
+        return self.edited(self.editor.toggle(condition), **changes)
 
 
 def listing_query(query, catalog):
-    """UI scope, applied before selection and when constructing every page link.
-
-    Raw data API queries remain freely composable. Result subviews and check
-    groups are mutually exclusive modes, not hidden cross-monitor constraints.
-    """
+    # View selection changes columns, never silently drops an explicit predicate.
     focus = next((m for m in catalog if m['id'] == query.get('monitor')), None)
-    check = query.get('check', '') if focus else ''
-    section = 'coverage' if focus and (check or not presenter(focus).has_results) else 'results'
-    allowed = listing_filters(focus, section)
-    result = {key: value for key, value in query.items() if key in allowed}
-    if result.get('view') not in ('all', *VERSION_ISSUES):
-        result.pop('view', None)
-    if focus:
-        result.update(monitor=focus['id'], section=section)
-        if check:
-            result['check'] = check
-    return result
+    if focus and not presenter(focus).has_results:
+        return {**query, 'section': 'coverage'}
+    return query
 
 
-def global_navigation(payload, query, links):
-    counts = payload['buildsystems']
+def condition_label(condition, payload):
+    dimension, value = condition.dimension, condition.value
+    family, _, owner = dimension.partition(':')
+    if family == 'build':
+        target = next((t['label'] for t in payload['targets'] if t['id'] == owner), owner)
+        return target + ': ' + build_status.label(value)
+    if family in ('check', 'retained', 'findings'):
+        title = next((caption(m['title']) for m in payload['monitors'] if m['id'] == owner), owner)
+        return title + ': ' + (CHECK_LABELS.get(value, value) if family == 'check' else
+                              'Stale' if family == 'retained' else 'Results')
+    if dimension == 'buildsystem':
+        return caption('Build system') + ': ' + (caption('Custom') if value == '_not_detected' else value)
+    if dimension == 'view':
+        return caption(VERSION_ISSUES.get(value, value))
+    if dimension == 'requires':
+        return {'unmet': 'DepMismatch', 'changes': 'DepChanges'}.get(value, value)
+    if dimension == 'version_signal':
+        return next((caption(signal_title(m)) for m in payload['monitors'] if m['id'] == value), value)
+    return caption(value)
+
+
+def filter_editor(payload, links):
+    editor = links.editor
+    groups = []
+    can_add = editor.query.nodes + 1 <= MAX_QUERY_NODES
+    for number, group in enumerate(editor.query.groups):
+        selected = editor.select(number)
+        active = number == editor.active
+        groups.append(FilterGroup(id=number, active=active, select=links.edited(selected),
+            logic=group.logic,
+            conditions=[FilterCondition(label=condition_label(c, payload), selected=active, logic=c.logic,
+                href=links.edited(selected.toggle(c) if active else selected)) for c in group.conditions],
+            clear=links.edited(editor.clear(number)),
+            add=links.edited(selected.add()) if can_add else None))
+    return FilterEditor(query=editor.query, active_group=editor.active, groups=groups,
+        operators=[Choice(label=logic.upper(), selected=editor.next_logic == logic,
+            href=links.edited(editor.mode(logic))) for logic in ('and', 'or')],
+        clear=links.edited(QueryEditor(FilterQuery(), next_logic=editor.next_logic)))
+
+
+def global_navigation(payload, links):
     styles = payload.get('presentation', {}).get('buildsystems', {})
     return [Navigation(label=caption('Build system'), choices=[
-        Choice(label=caption('Custom') if value == '_not_detected' else value,
-                 count=count, selected=query.get('buildsystem') == value,
-                 appearance='buildsystem:' + value if value != '_not_detected' else None,
-                 icon=styles.get(value, {}).get('icon') if value != '_not_detected' else None,
-                 href=links.choose('buildsystem', value, count))
-        for value, count in sorted(counts.items(), key=lambda item: item[0] == '_not_detected')
-    ])]
+        Choice(label=caption('Custom') if value == '_not_detected' else value, count=count,
+            selected=links.selected('buildsystem', value),
+            appearance='buildsystem:' + value if value != '_not_detected' else None,
+            icon=styles.get(value, {}).get('icon') if value != '_not_detected' else None,
+            href=links.condition('buildsystem', value))
+        for value, count in sorted(payload['buildsystems'].items(), key=lambda item: item[0] == '_not_detected')])]
 
 
-def filter_link(links, name, value):
-    if name == 'build':
-        target, _, status = value.partition(':')
-        selected = [item for item in links.query.get('build', []) if item.partition(':')[0] != target]
-        add = status and value not in links.query.get('build', [])
-        return links.to(build=selected + ([value] if add else []))
-    return links.to(**{name: value})
+def maintenance_navigation(payload, links):
+    choices = [Choice(label=caption(value), count=count,
+        selected=links.selected('maintenance', value), appearance=appearance(value),
+        href=links.condition('maintenance', value))
+        for value, count in (dict.fromkeys(facets(), 0) | payload['maintenance_labels']).items()]
+    choices.append(Choice(label='DepChanges', count=payload.get('version_signals', {}).get('requires', 0),
+        selected=links.selected('version_signal', 'requires'), appearance=appearance('DepChanges'),
+        href=links.condition('version_signal', 'requires')))
+    return Navigation(label='Alerts', show_label=False, choices=sorted(choices, key=lambda c: priority(c.label)))
 
 
-def maintenance_navigation(payload, query, links):
-    choices = [Choice(label=caption(value), count=count, selected=value in links.query.get('maintenance', []),
-                      appearance=appearance(value),
-                      href=links.choose('maintenance', value, count, multiple=True))
-               for value, count in (dict.fromkeys(facets(), 0) | payload['maintenance_labels']).items()]
-    changes = payload.get('version_signals', {}).get('requires', 0)
-    position = next((i + 1 for i, choice in enumerate(choices)
-                     if choice.label == Issue.DEP_MISMATCH), len(choices))
-    choices.insert(position, Choice(label='DepChanges', count=changes,
-        selected=query.get('signal') == 'requires', appearance=appearance('DepChanges'),
-        href=links.choose('signal', 'requires', changes)))
-    return Navigation(label='Alerts', show_label=False,
-                      choices=sorted(choices, key=lambda c: priority(c.label)))
-
-
-def build_navigation(payload, query, links, *, inline=False):
-    selected = {value.partition(':')[0]: value.partition(':')[2] for value in query.get('build', [])}
-    columns = {item['value']: item['label']
-               for statuses in payload['build_statuses'].values() for item in statuses}
-    codes = build_status.ordered(columns)
-    menus = {}
-    for target in payload['targets']:
-        tid = target['id']
-        statuses = payload['build_statuses'][tid]
-        if inline:
-            # Keep alternatives visible across targets, including a clickable
-            # zero that restarts the query rather than pretending it is unknown.
-            by_code = {item['value']: item for item in statuses}
-            statuses = [by_code.get(code, {'value': code, 'label': columns[code], 'count': 0})
-                        for code in codes]
-        if not inline and not any(item['count'] for item in statuses) and not selected.get(tid):
-            continue
-        choices = [Choice(label=item['label'], count=item['count'], appearance=appearance(item['label']),
-                          selected=selected.get(tid) == item['value'],
-                          href=(links.only_filter(build=[tid + ':' + item['value']]) if item['count'] == 0
-                                else filter_link(links, 'build', tid + ':' + item['value']))) for item in statuses]
-        if selected.get(tid) and not inline:
-            choices.insert(0, Choice(label='Clear filter', href=filter_link(links, 'build', tid + ':')))
-        menus[tid] = Navigation(label=target['label'], icon='⚙', choices=choices)
-    return menus
+def build_navigation(payload, links):
+    return {target['id']: Navigation(label=target['label'], icon='⚙', choices=[
+        Choice(label=item['label'], count=item['count'], appearance=appearance(item['label']),
+            selected=links.selected('build:' + target['id'], item['value']),
+            href=links.condition('build:' + target['id'], item['value']))
+        for item in payload['build_statuses'][target['id']]]) for target in payload['targets']}
 
 
 def listing_controls(payload, query, focus, links):
-    allowed = listing_filters(focus, payload['section'])
     rows = []
-    if focus and 'signal' in allowed:
-        counts = payload.get('version_signals', {})
-        if any(counts.values()) or query.get('signal'):
-            titles = {monitor['id']: caption(signal_title(monitor)) for monitor in payload['monitors']}
-            rows.append(Navigation(label='Related', choices=[
-                Choice(label=titles.get(value, value), count=count, selected=query.get('signal') == value,
-                       href=links.to(signal=value)) for value, count in counts.items()]))
-    if not focus and (maintenance := maintenance_navigation(payload, query, links)):
-        rows.append(maintenance)
-    if 'build' in allowed:
-        build_rows = list(build_navigation(payload, query, links, inline=True).values())
-        rows.extend(row for row in build_rows if row.choices)
-
     navigation = []
-    counts = payload.get('navigation_counts', payload)
-    result_mode = not query.get('check') and not query.get('freshness')
-    if focus and focus['kind'] not in ('version', 'requires'):
-        choices = []
-        if presenter(focus).has_results:
-            choices.append(Choice(label='Results',
-                count=counts['result_count'] if focus['kind'] == 'evidence' else None,
-                href=links.to(section='results', check='', freshness=''), selected=result_mode))
-        navigation.append(Navigation(label='Views', choices=choices))
-    if focus and focus['kind'] == 'version':
-        navigation.append(Navigation(label='Version', choices=[Choice(label=caption(label),
-            count=counts['counts'][value], appearance=appearance(label),
-            href=links.to(view=value, section='results', check='', freshness='', signal=''),
-            selected=result_mode and query.get('view') == value) for value, label in VERSION_ISSUES.items()]))
-    if focus and focus['kind'] == 'requires':
-        navigation.append(Navigation(label='Dependencies', choices=[Choice(label=caption(label),
-            count=counts['requires_counts'][value or 'all'],
-            href=links.to(requires=value, section='results', check='', freshness=''),
-            selected=result_mode and query.get('requires', '') == value)
-            for value, label in [('unmet', Issue.DEP_MISMATCH), ('changes', 'DepChanges')]]))
+    if not focus:
+        rows.append(maintenance_navigation(payload, links))
+    if not focus or (focus['kind'] == 'build' and payload['section'] == 'results'):
+        rows.extend(row for row in build_navigation(payload, links).values() if row.choices)
     if focus:
-        if counts.get('retained_count') or query.get('freshness') == 'retained':
-            navigation[-1].choices.append(Choice(label=CHECK_LABELS['expired'], count=counts.get('retained_count', 0),
-                href=links.to(section='results', check='', freshness='retained', view='', signal='', requires='', build=[]),
-                selected=query.get('freshness') == 'retained'))
-        navigation[-1].choices.extend([
-            Choice(label=CHECK_LABELS.get(group, group.title()), count=counts['check_groups'][group],
-                href=links.to(section='coverage', check=group), selected=query.get('check') == group)
-            for group in CHECK_GROUPS])
-    hidden_keys = ('monitor', 'view', 'section', 'check', 'freshness', 'requires', 'signal', 'buildsystem', 'per_page')
-    hidden = [Parameter(name=key, value=str(query[key])) for key in hidden_keys if query.get(key)]
-    hidden.extend(Parameter(name=key, value=value)
-                  for key in ('build', 'maintenance') for value in links.query.get(key, []))
-    return Controls(query=query.get('q', ''), hidden=hidden, choice_rows=rows,
-                    active=active_filters(payload, query, links), navigation=navigation)
-
-
-def active_filters(payload, query, links):
-    titles = {monitor['id']: caption(signal_title(monitor)) for monitor in payload['monitors']}
-    labels = {
-        'q': 'Search: ' + query.get('q', ''),
-        'buildsystem': caption('Build system') + ': ' + (caption('Custom') if query.get('buildsystem') == '_not_detected'
-                                        else query.get('buildsystem', '')),
-        'signal': titles.get(query.get('signal'), query.get('signal', '')),
-        'view': caption(VERSION_ISSUES.get(query.get('view'), '')),
-        'requires': {'unmet': Issue.DEP_MISMATCH, 'changes': 'DepChanges'}.get(query.get('requires'), ''),
-        'freshness': CHECK_LABELS['expired'] if query.get('freshness') == 'retained' else '',
-        'check': 'Check: ' + CHECK_LABELS.get(query.get('check'), query.get('check', '').title()),
-    }
-    active = [Choice(label=label, href=links.to(**{key: ''}))
-              for key, label in labels.items() if query.get(key) and label]
-    active.extend(Choice(label=caption(value), href=links.to(maintenance=[
-        item for item in links.query.get('maintenance', []) if item != value]))
-        for value in dict.fromkeys(links.query.get('maintenance', [])))
-    for target, menu in build_navigation(payload, query, links).items():
-        for choice in menu.choices:
-            if choice.selected:
-                active.append(Choice(label=menu.label + ': ' + choice.label,
-                                     href=filter_link(links, 'build', target + ':')))
-    return active
+        choices = []
+        if focus['kind'] == 'version':
+            choices.extend(Choice(label=caption(label), count=payload['counts'][value], appearance=appearance(label),
+                selected=links.selected('view', value), href=links.condition('view', value))
+                for value, label in VERSION_ISSUES.items())
+            rows.append(Navigation(label='Related', choices=[Choice(label=caption(signal_title(m)),
+                count=payload['version_signals'].get(m['id'], 0), selected=links.selected('version_signal', m['id']),
+                href=links.condition('version_signal', m['id'])) for m in payload['monitors']
+                if m['id'] in payload['version_signals']]))
+        elif focus['kind'] == 'requires':
+            choices.extend(Choice(label=caption(label), count=payload['requires_counts'][value],
+                selected=links.selected('requires', value), href=links.condition('requires', value))
+                for value, label in [('unmet', Issue.DEP_MISMATCH), ('changes', 'DepChanges')])
+        if presenter(focus).has_results:
+            choices.append(Choice(label='Results', count=payload['result_count'] if focus['kind'] in ('evidence', 'requires') else payload['coverage_count'],
+                selected=payload['section'] == 'results', href=links.to(section='results')))
+        choices.append(Choice(label='Coverage', count=payload['coverage_count'],
+            selected=payload['section'] == 'coverage', href=links.to(section='coverage')))
+        if payload.get('retained_count') or links.selected('retained:' + focus['id'], 'yes'):
+            choices.append(Choice(label=CHECK_LABELS['expired'], count=payload['retained_count'],
+                selected=links.selected('retained:' + focus['id'], 'yes'),
+                href=links.condition('retained:' + focus['id'], 'yes')))
+        choices.extend(Choice(label=CHECK_LABELS.get(group, group.title()), count=payload['check_groups'][group],
+            selected=links.selected('check:' + focus['id'], group),
+            href=links.condition('check:' + focus['id'], group, section='coverage')) for group in CHECK_GROUPS)
+        navigation.append(Navigation(label=caption(focus['title']), choices=choices))
+    hidden = [Parameter(name=key, value=str(query[key]))
+              for key in ('monitor', 'section', 'active_group', 'next_logic', 'per_page') if query.get(key)]
+    if links.editor.query.groups:
+        hidden.append(Parameter(name='filters', value=links.editor.query.encode()))
+    return Controls(query=query.get('q', ''), hidden=hidden, choice_rows=rows, navigation=navigation,
+        active=[Choice(label='Search: ' + query['q'], href=links.to(q=''))] if query.get('q') else [],
+        editor=filter_editor(payload, links))

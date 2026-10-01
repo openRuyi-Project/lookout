@@ -1,21 +1,14 @@
 """Observation clocks do not rewrite content or hide failed and missing evidence."""
-from collections import Counter
-from copy import deepcopy
+from tests.helpers.query import conjunction
 from datetime import datetime, timedelta, timezone
-import json
 import sqlite3
-import subprocess
 from types import SimpleNamespace
 
 import pytest
 
 from tests.conftest import ProjectedClient
 from tests.helpers.obs import FakeOBS
-from tracker import api, collector, config as cfg, state
-from tracker.monitors import runner as monitor
-from tracker.monitors.model import version_query
-from tracker.monitors.source import git as spec_git, rpm as native_spec
-from tracker.monitors.version import nvchecker as nv
+from tracker import api, collector, state
 from tracker.readmodel import cache as read_model, snapshot as view
 
 
@@ -104,7 +97,8 @@ def test_clock_only_freshness_change_reprojects_rows_and_facets(
     expected_rows, expected_collection = project(state.read(db), now)
     expected = next(row for row in expected_rows if row['name'] == 'binutils')['monitors']['build']
     assert after['data'] == expected['data']
-    listing = client.get('/api/v2/packages', params={'monitor': 'build', 'check': after_status}).json()
+    listing = client.get('/api/v2/packages', params={'monitor': 'build', 'section': 'coverage',
+            'filters': conjunction({'check:build': after_status}).encode()}).json()
     assert listing['total'] == len(snapshot['sources'])
     assert listing['check_statuses'] == {after_status: len(snapshot['sources'])}
     assert listing['collection'] == {**expected_collection, 'projection_notice': None}
@@ -112,7 +106,8 @@ def test_clock_only_freshness_change_reprojects_rows_and_facets(
         any('attention' in module['dimensions'].get('view', []) for module in row['monitors'].values())
         for row in expected_rows
     )
-    assert client.get('/api/v2/packages', params={'monitor': 'build', 'check': before_status}).json()['total'] == 0
+    assert client.get('/api/v2/packages', params={'monitor': 'build', 'section': 'coverage',
+        'filters': conjunction({'check:build': before_status}).encode()}).json()['total'] == 0
     assert len(calls) == 2
 
 
@@ -157,8 +152,6 @@ def test_cached_storage_reads_backup_clock(tmp_path, snapshot):
     with sqlite3.connect(db) as src, sqlite3.connect(backup) as dst:
         src.backup(dst)
     assert state.read(backup) == after
-
-
 
 
 def test_restore_with_same_revision_does_not_reuse_a_newer_clock(snapshot, tmp_path, monkeypatch):

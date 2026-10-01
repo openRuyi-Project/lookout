@@ -1,3 +1,4 @@
+from tests.helpers.query import query_url
 from datetime import datetime, timezone
 
 from tests.conftest import ProjectedClient
@@ -29,16 +30,16 @@ def test_results_and_coverage_share_linked_filter_context(snapshot, tmp_path):
     assert (results['result_count'], results['coverage_count']) == (1, 5)
     assert results['check_statuses'] == {'ok': 2, 'pending': 2, 'unsupported': 1}
     assert results['items'][0]['monitors']['license']['data']['entries'][0]['title'] == 'MIT → BSD-2-Clause'
-    assert results['build_statuses']['rva23'] == [
+    assert [s for s in results['build_statuses']['rva23'] if s['count']] == [
         {'value': 'succeeded', 'label': 'Succeeded', 'count': 1},
     ]
     empty = client.get('/api/v2/packages?monitor=license&section=results&q=foo').json()
     assert (empty['total'], empty['result_count'], empty['coverage_count']) == (0, 0, 2)
-    coverage = client.get('/api/v2/packages?monitor=license&section=coverage&build=rva20:failed').json()
+    coverage = client.get(query_url('/api/v2/packages', {'build:rva20': 'failed'}, monitor='license', section='coverage')).json()
     assert [item['name'] for item in coverage['items']] == ['foo3']
     assert (coverage['result_count'], coverage['coverage_count']) == (0, 1)
-    assert coverage['check_statuses'] == {'pending': 1}
-    check_link = client.get('/api/v2/packages?monitor=license&section=results&check=pending').json()
+    assert {k: v for k, v in coverage['check_statuses'].items() if v} == {'pending': 1}
+    check_link = client.get(query_url('/api/v2/packages', {'check:license': 'pending'}, monitor='license', section='coverage')).json()
     assert check_link['section'] == 'coverage' and check_link['total'] == 2
     core = client.get('/api/v2/packages?monitor=build&section=results').json()
     assert core['total'] == 5

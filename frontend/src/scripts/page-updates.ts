@@ -5,6 +5,8 @@ Object.assign(htmx.config, {
   allowEval: false, allowScriptTags: false, selfRequestsOnly: true,
   includeIndicatorStyles: false, historyCacheSize: 0, historyRestoreAsHxRequest: false,
   scrollIntoViewOnBoost: false, allowNestedOobSwaps: false, timeout: 10000,
+  // Settling an inline style attribute is blocked by our style-src 'self' CSP.
+  attributesToSettle: ['class', 'width', 'height'],
 });
 htmx.config.responseHandling.unshift({code: '304', swap: false});
 
@@ -75,6 +77,8 @@ function preserveReadingState() {
 
 document.addEventListener('htmx:configRequest', event => {
   const request = (event as CustomEvent<HtmxRequestConfig>).detail;
+  // Every edit is a complete GET URL; repeating it in a header wastes the HTTP budget.
+  delete request.headers['HX-Current-URL'];
   if (background(request) && validator?.url === currentURL()) {
     request.headers['If-None-Match'] = validator.etag;
   }

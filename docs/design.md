@@ -92,12 +92,59 @@ request/response models; the site's `/api` page owns usage examples.
 
 ## Selection and presentation
 
-`readmodel.packages.PackageList` intersects indexed sets before pagination. Rows
-and counts use the same membership. BuildSystem and each build target exclude
-their own selection when counting alternatives. Targets combine with AND;
-maintenance labels combine with AND, including zero-count alternatives.
-The UI admits only filters visible in its destination; the fact API permits
-cross-monitor combinations. Astro does not repeat this arithmetic.
+`readmodel/query.py` owns the two-level query:
+
+```json
+{"groups":[
+  {"logic":"and","conditions":[{"dimension":"build:rva23","value":"failed"},{"dimension":"build:rva23","value":"unresolvable","logic":"or"}]},
+  {"logic":"and","conditions":[{"dimension":"maintenance","value":"Advisory"},{"dimension":"maintenance","value":"DepMismatch"}]}
+]}
+```
+
+The URL/API `filters` parameter serializes this structure. No category replaces a
+previous condition. Each link belongs to the following term. AND takes precedence
+over OR at each level; rows are parentheses. There is no implicit ALL operand,
+so the first nonempty row/condition starts the expression under either operator.
+Empty groups are omitted from evaluation. Repeated conditions collapse within a group; groups can share conditions.
+Indexed package sets implement the predicates and AND/OR; unions count each
+package once. Search and the chosen results/coverage view bound the dataset.
+
+Candidate counts evaluate **the whole expression after adding the candidate to
+the active group using `next_logic`**, idempotently. Selected choices therefore show the current
+count, not the count after removal. Check choices explicitly open coverage;
+other choices keep the current view. No facet removes other conditions to count
+its alternatives. Pagination follows selection, never precedes it.
+
+`presentation/query_editor.py` performs immutable edits. The active group is a
+positional editor ID outside `FilterQuery`; `next_logic` is also editor state.
+Changing mode or selecting a row never rewrites existing predicates. The first
+addition to an empty row sets its connector; subsequent additions keep that
+connector. Removing the first condition keeps the row connector. Clearing a row
+preserves the others; removing the final condition clears all empty rows and
+resets the active row until the next condition.
+Adding a row inserts it immediately after the chosen row and selects it.
+`presentation/navigation.py` projects edits as GET links and
+`FilterGroups.astro` renders them. The browser has no second expression evaluator.
+The existing HTML navigation/cancellation path updates groups, counts and rows
+atomically; all edits also work without JavaScript.
+
+`MAX_QUERY_NODES` is the single limit: 128 groups + conditions, counted before
+deduplication. The fixed root is not a node. Pydantic rejects extra fields, nested
+groups, unknown operators and over-budget input with 422; dimension/value names
+retain a 100-character identifier bound. Reading documents and the fact API
+publish the same limit, so the UI disables additions but leaves removal and
+operator changes available. There is no per-group or group-count cap.
+
+Budget measurement: `python scripts/benchmark-filters.py` builds 6,000 synthetic
+packages with dense overlapping facts and 141 candidate counts. It measures 31
+parse + selection + count samples for each query size and next-operator context.
+The limit bounds indexed set operations, not network latency. Re-run the benchmark
+before raising the bound; corpus size, deployment CPU and serialization also
+matter. Reverse proxies must accept query URLs at the limit, not truncate them.
+
+The website renders typed display primitives, not provider payloads. Presenters
+own captions, value formatting and evidence links; CSS owns layout, with palette
+identities supplied by the display catalog. OpenAPI generates the frontend types.
 
 Untracked means no configured upstream version track, excluding packages explicitly
 marked not applicable. Other monitors do not change this classification.

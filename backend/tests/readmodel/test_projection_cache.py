@@ -1,4 +1,5 @@
 """Projection caching preserves the exact freshness transitions of saved facts."""
+from tests.helpers.query import query_url
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
@@ -10,6 +11,7 @@ import pytest
 from tests.conftest import ProjectedClient, make_snapshot
 from tracker import api, state
 from tracker.readmodel import cache as read_model, snapshot as view
+from tracker.readmodel.packages import PackageList
 
 NOW = datetime(2026, 9, 19, 12, 0, tzinfo=timezone.utc)
 
@@ -254,14 +256,14 @@ def test_spec_component_failure_does_not_move_success_deadline(config):
 def test_query_index_is_shared_without_sharing_selections(tmp_path, config, monkeypatch):
     client, db, snap, clock, _ = setup_cache(tmp_path, config, monkeypatch)
     builds = []
-    initialize = api.package_list.PackageList.__init__
+    initialize = PackageList.__init__
     def counted(self, *args, **kwargs):
         builds.append(1)
         initialize(self, *args, **kwargs)
-    monkeypatch.setattr(api.package_list.PackageList, '__init__', counted)
+    monkeypatch.setattr(PackageList, '__init__', counted)
     paths = [
         '/api/v2/packages?q=BIN&monitor=version',
-        '/api/v2/packages?q=foo&monitor=build&build=rva23:failed',
+        query_url('/api/v2/packages', {'build:rva23': 'failed'}, q='foo', monitor='build'),
         '/api/v2/packages?q=bin',
         '/api/ui/packages?monitor=source&per_page=2',
         '/api/v2/packages/binutils',

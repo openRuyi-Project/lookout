@@ -1,4 +1,5 @@
 """Aggregate reading contracts on synthetic facts, not live package counts."""
+from tests.helpers.query import conjunction
 from copy import deepcopy
 
 import pytest
@@ -47,7 +48,7 @@ def test_version_dependency_filter_explains_satisfied_changes():
         target={'expression': '>=2', 'url': 'https://example.org/v2'}, target_satisfaction='satisfied'))
     package = {'detail_url': '/packages/fixture'}
     assert requires_preview(package, requirements, Links()) == []
-    lines = requires_preview(package, requirements, Links({'signal': 'requires'}))
+    lines = requires_preview(package, requirements, Links({'filters': conjunction({'version_signal': 'requires'}).model_dump()}))
     assert [value.text for value in lines[0]] == ['RuntimeDeps:', 'changed', '>=1', '✓', '→', '>=2', '✓']
 
 
@@ -78,7 +79,7 @@ def test_display_names_do_not_rewrite_observation_or_query_identifiers():
     assert caption('Out of date') == 'Stale'
     assert caption('KEV') == 'KEV'
     assert 'label:DepMismatch' in palettes()
-    assert Links().to(maintenance='DepMismatch').endswith('maintenance=DepMismatch')
+    assert 'DepMismatch' in Links().condition('maintenance', 'DepMismatch')
     assert caption('ThirdParty') == 'ThirdParty'
 
 

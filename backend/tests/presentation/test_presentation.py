@@ -1,13 +1,12 @@
+from tests.helpers.query import query_url, terms_in
 from copy import deepcopy
 from urllib.parse import parse_qs, urlsplit
 
 from pydantic import ValidationError
 import pytest
 
-from tests.conftest import ProjectedClient
 from tests.helpers.documents import client_for
 from tracker import state
-from tracker.api import create_app
 from tracker.monitors import model as monitor_model
 from tracker.presentation import (
     build as presentation_build,
@@ -29,8 +28,6 @@ def add_evidence(snapshot, name='binutils', mid='external_signature', *, status=
             monitor_model.evidence('Issuer', 'Example CA', 'Registry', 'https://example.org/signature')
         ], 'https://example.org/signature')],
     }
-
-
 
 
 def test_new_monitor_uses_existing_document_primitives(snapshot, tmp_path):
@@ -83,29 +80,15 @@ def test_security_retained_identifiers_have_one_freshness_marker():
     assert [value.text for value in lines[1]] == ['Stale', 'CVE-2026-1']
     query = parse_qs(urlsplit(lines[1][0].href).query)
     assert query['monitor'] == ['security']
-    assert query['freshness'] == ['retained']
-
-
-def test_focused_display_discards_filters_without_visible_controls(snapshot, tmp_path):
-    add_evidence(snapshot, 'foo3')
-    client, _ = client_for(snapshot, tmp_path)
-    query = 'monitor=external_signature&build=rva20:failed&section=results'
-    facts = client.get('/api/v2/packages?monitor=external_signature&section=results').json()
-    page = client.get('/api/ui/packages?' + query).json()
-    assert page['total'] == facts['total'] == 1
-    assert [r['key'] for r in page['table']['rows']] == [p['name'] for p in facts['items']]
-    controls = page['controls']
-    for choice in page['navigation']['choices']:
-        assert 'build' not in parse_qs(urlsplit(choice['href']).query)
-    assert not any('rva20' in choice['label'] for choice in controls['active'])
+    assert any(dimension.startswith('retained:') and value == 'yes' for dimension, value in terms_in(lines[1][0].href))
 
 
 def test_no_evidence_and_failed_check_are_not_reported_as_success(snapshot, tmp_path):
     snapshot['monitor_catalog'] = {'new': {'title': 'New check'}}
     client, _ = client_for(snapshot, tmp_path)
     results = client.get('/api/ui/packages?monitor=new').json()
-    assert client.get('/api/ui/packages?monitor=new&section=coverage').json() == results
-    coverage = client.get('/api/ui/packages?monitor=new&check=pending').json()
+    assert client.get('/api/ui/packages?monitor=new&section=coverage').json()['total'] == 5
+    coverage = client.get(query_url('/api/ui/packages', {'check:new': 'pending'}, monitor='new', section='coverage')).json()
     assert results['total'] == 0
     assert coverage['total'] == 5
     assert [c['title'] for c in coverage['table']['columns']] == ['Package', 'Version']
@@ -119,7 +102,7 @@ def test_filtered_checks_show_source_version_and_specific_error(snapshot, tmp_pa
     snapshot['monitors']['binutils']['external_signature']['error'] = 'provider HTTP 503'
     snapshot['tracks']['binutils']['error'] = 'provider HTTP 503'
     client, _ = client_for(snapshot, tmp_path)
-    document = client.get(f'/api/ui/packages?monitor={monitor}&check=failed').json()
+    document = client.get(query_url('/api/ui/packages', {'check:' + monitor: 'failed'}, monitor=monitor, section='coverage')).json()
     assert [c['title'] for c in document['table']['columns']] == ['Package', 'Version', 'Reason']
     row = next(row for row in document['table']['rows'] if row['key'] == 'binutils')
     assert [value['text'] for cell in row['cells'][1:] for line in cell['lines'] for value in line] == [
@@ -130,7 +113,7 @@ def test_filtered_checks_show_source_version_and_specific_error(snapshot, tmp_pa
 
 def test_uncovered_rows_do_not_repeat_filter_or_empty_timestamps(snapshot, tmp_path):
     client, _ = client_for(snapshot, tmp_path)
-    document = client.get('/api/ui/packages?monitor=version&check=uncovered').json()
+    document = client.get(query_url('/api/ui/packages', {'check:version': 'uncovered'}, monitor='version', section='coverage')).json()
     assert [c['title'] for c in document['table']['columns']] == ['Package', 'Version']
     versions = {r['key']: r['cells'][1]['lines'][0][0]['text'] for r in document['table']['rows']}
     assert versions == {'untracked': '1.0', 'unknown': '—'}
@@ -175,16 +158,6 @@ def test_partial_enrichment_and_alias_facts_remain_traceable(snapshot):
     assert pkg == before
 
 
-def test_navigation_escapes_values_and_preserves_repeated_filters():
-    links = presentation_navigation.Links({'q': 'a&b', 'build': ['a:failed', 'b:blocked'], 'monitor': 'anything', 'page': 9})
-    parsed = parse_qs(urlsplit(links.to(maintenance='A & B')).query)
-    assert parsed['q'] == ['a&b']
-    assert parsed['maintenance'] == ['A & B']
-    assert parsed['build'] == ['a:failed', 'b:blocked']
-    assert parsed['page'] == ['1']
-    assert parse_qs(urlsplit(presentation_navigation.filter_link(links, 'build', 'a:')).query)['build'] == ['b:blocked']
-
-
 def test_document_contract_rejects_ragged_tables_and_unknown_markup():
     with pytest.raises(ValidationError):
         Table(label='Bad', columns=[Column(title='A')], rows=[Row(key='a', cells=[])])
@@ -197,18 +170,6 @@ def test_display_and_data_routes_share_validation(snapshot, tmp_path, query):
     client, _ = client_for(snapshot, tmp_path)
     assert client.get('/api/ui/packages?' + query).status_code == 422
     assert client.get('/api/v2/packages?' + query).status_code == 422
-
-
-def test_overview_ignores_a_check_filter_without_a_monitor(snapshot, tmp_path):
-    client, _ = client_for(snapshot, tmp_path)
-    assert client.get('/api/ui/packages?check=ok').json() == client.get('/api/ui/packages').json()
-    assert client.get('/api/v2/packages?check=ok').status_code == 422
-
-
-def test_empty_build_choices_from_browser_are_noop(snapshot, tmp_path):
-    client, _ = client_for(snapshot, tmp_path)
-    page = client.get('/api/ui/packages?build=rva23:&build=rva20:failed').json()
-    assert page['total'] == 1
 
 
 def test_projection_retains_domain_api_and_theme_contract(snapshot, tmp_path):

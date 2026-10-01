@@ -1,5 +1,5 @@
-import json
 
+from tests.helpers.query import query_url
 from tests.conftest import ProjectedClient
 from tracker import state
 from tracker.api import create_app
@@ -13,7 +13,7 @@ def test_list_filters_counts_pagination(tmp_path,snapshot):
     d=c.get('/api/v2/packages').json()
     assert d['total']==5 and d['counts']=={'all':5,'updates':2,'problems':1,'attention':2,'untracked':2}
     assert [r['name'] for r in d['items']]==['binutils','foo3','foo4','unknown','untracked']
-    assert c.get('/api/v2/packages?q=BIN&view=updates').json()['items'][0]['name']=='binutils'
+    assert c.get(query_url('/api/v2/packages', {'view': 'updates'}, q='BIN')).json()['items'][0]['name']=='binutils'
     assert c.get('/api/v2/packages?q=no-match').json()['total']==0
     assert c.get('/api/v2/packages?per_page=2&page=2').json()['items'][0]['name']=='foo4'
     assert c.get('/api/v2/packages?per_page=2&page=999').json()['page']==3

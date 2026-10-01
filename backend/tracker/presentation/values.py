@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from tracker.monitors.issues import Issue
 from tracker.presentation.model import Cell, Column, Field, Text
-from tracker.presentation.labels import appearance, caption
+from tracker.presentation.labels import appearance
 
 
 CHECK_LABELS = {
@@ -42,7 +42,7 @@ def module(pkg, kind):
 
 def buildsystem(value, links):
     return text(value, kind='tag', variant='solid', appearance='buildsystem:' + value,
-                href=links.only_filter(buildsystem=value))
+                href=links.condition('buildsystem', value))
 
 
 def short_commit(value, other=None):
@@ -75,7 +75,7 @@ def version_value(pkg, *, compact=True, links=None):
     if value['relation'] == 'unknown' and not untracked:
         title += '; source and upstream cannot currently be compared'
     annotation = ([text(Issue.UNTRACKED, kind='tag', appearance=appearance(Issue.UNTRACKED),
-                        href=links.only_filter(maintenance=[Issue.UNTRACKED]) if links else '/?maintenance=Untracked')]
+                        href=links.condition('maintenance', Issue.UNTRACKED) if links else None)]
                   if untracked else [])
     decoration = 'dashed' if untracked and value['current'] else None
     revision = value.get('revision')

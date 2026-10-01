@@ -1,6 +1,6 @@
 // This UI boundary imports only display primitives, never monitor payloads.
 export type {Text, Cell, Table, Field, Entry, Section, Navigation,
-  Controls, ListingDocument, DetailDocument, DocumentTheme} from './api.generated';
+  FilterEditor, Controls, ListingDocument, DetailDocument, DocumentTheme} from './api.generated';
 
 export function safeHref(value?: string | null): string | undefined {
   if (!value || /[\u0000-\u0020\\]/.test(value)) return undefined;
