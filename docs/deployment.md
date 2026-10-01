@@ -285,7 +285,15 @@ and require existing ones to have finished:
 ```sh
 UPDATE_WAS_ACTIVE=$(systemctl --user is-active "$NAME-update.timer" || true)
 BACKUP_WAS_ACTIVE=$(systemctl --user is-active "$NAME-backup.timer" || true)
-systemctl --user stop "$NAME-update.timer" "$NAME-backup.timer"
+if ! systemctl --user stop "$NAME-update.timer" "$NAME-backup.timer"; then
+  printf 'Timer stop returned an error; checking state.\n' >&2
+fi
+for TIMER in "$NAME-update.timer" "$NAME-backup.timer"; do
+  case "$(systemctl --user show "$TIMER" --property=ActiveState --value)" in
+    inactive|failed) ;;
+    *) printf '%s is not paused; do not edit the instance.\n' "$TIMER" >&2; exit 1 ;;
+  esac
+done
 for JOB in "$NAME-update.service" "$NAME-backup.service"; do
   case "$(systemctl --user show "$JOB" --property=ActiveState --value)" in
     inactive|failed) ;;
