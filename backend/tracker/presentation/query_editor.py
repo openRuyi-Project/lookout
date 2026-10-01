@@ -16,7 +16,7 @@ class QueryEditor:
 
     @property
     def groups(self):
-        return self.query.groups or (Group(logic=self.next_logic),)
+        return self.query.groups or (Group(),)
 
     @property
     def current(self):

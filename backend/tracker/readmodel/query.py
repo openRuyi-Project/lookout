@@ -38,8 +38,9 @@ class Group(QueryModel):
                 seen.add(condition.identity)
                 terms.append(condition)
         if terms:
-            # The first link is the row's connector, not an implicit ALL operand.
-            terms[0] = terms[0].model_copy(update={'logic': self.logic})
+            # A leading condition NOT is independent of the row connector.
+            if terms[0].logic != 'not' or self.logic == 'not':
+                terms[0] = terms[0].model_copy(update={'logic': self.logic})
         object.__setattr__(self, 'conditions', tuple(terms))
         return self
 
@@ -49,7 +50,8 @@ class Group(QueryModel):
     def append(self, condition, logic):
         if self.contains(condition):
             return self
-        return Group(logic=self.logic if self.conditions else logic,
+        connector = self.logic if self.conditions or logic == 'not' else logic
+        return Group(logic=connector,
             conditions=(*self.conditions, condition.model_copy(update={'logic': logic})))
 
 
@@ -99,7 +101,9 @@ class FilterQuery(QueryModel):
         """A single row is an ordered list of links; multiple rows need brackets."""
         if not self.groups:
             return []
-        if len(self.groups) == 1 and self.groups[0].conditions:
+        if (len(self.groups) == 1 and self.groups[0].conditions
+                and self.groups[0].logic != 'not'
+                and not (self.groups[0].logic == 'or' and self.groups[0].conditions[0].logic == 'not')):
             return [(term.logic.upper() + '-' + term.dimension, term.value)
                     for term in self.groups[0].conditions]
         return [('filters', self.encode())]
@@ -120,7 +124,7 @@ class FilterQuery(QueryModel):
             raise ValueError('Use ordered AND-/OR-/NOT- parameters or one filters parameter, not both')
         if terms:
             # Validate raw terms before Group deduplication, including its node cost.
-            query = cls.model_validate({'groups': [{'logic': terms[0]['logic'], 'conditions': terms}]})
+            query = cls.model_validate({'groups': [{'logic': 'and' if terms[0]['logic'] == 'not' else terms[0]['logic'], 'conditions': terms}]})
         else:
             query = cls.decode(serialized[0]) if serialized else cls()
         return query, remaining
@@ -182,7 +186,7 @@ class Evaluation:
 
     def operands(self, group):
         # The row connector is applied outside its parentheses, exactly once.
-        return ((c.logic if i else 'and', self.predicate(c))
+        return ((c.logic if i or (c.logic == 'not' and group.logic != 'not') else 'and', self.predicate(c))
                 for i, c in enumerate(group.conditions))
 
     def group(self, group):
@@ -193,7 +197,8 @@ class Evaluation:
         if self.current.contains(condition):
             count = len(self.matches)
         else:
-            candidate = members
+            candidate = (self.scope - members if self.tail is None
+                         and self.next_logic == 'not' and self.current.logic != 'not' else members)
             if self.tail is not None:
                 candidate = self.alternatives | (self.tail & members if self.next_logic == 'and'
                     else self.tail - members if self.next_logic == 'not' else self.tail | members)
@@ -202,7 +207,7 @@ class Evaluation:
 
     def substitute(self, candidate):
         groups = list(zip((g.logic for g in self.query.groups), self.groups))
-        replacement = (self.current.logic if self.current.conditions else self.next_logic, candidate)
+        replacement = (self.current.logic if self.current.conditions or self.next_logic == 'not' else self.next_logic, candidate)
         if groups:
             groups[self.active] = replacement
         else:

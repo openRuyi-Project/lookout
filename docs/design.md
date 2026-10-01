@@ -104,7 +104,8 @@ request/response models; the site's `/api` page owns usage examples.
 The URL/API `filters` parameter serializes this structure. No category replaces a
 previous condition. Each link belongs to the following term. AND and NOT take precedence
 over OR at each level; rows are parentheses. NOT subtracts its condition or group.
-A leading NOT group complements that row within the scoped package universe;
+A leading NOT condition complements only that condition within the scoped package universe.
+An explicit NOT group complements its whole row;
 leading AND/OR starts from the first nonempty row.
 Empty groups are omitted from evaluation. Repeated conditions collapse within a group; groups can share conditions.
 Indexed package sets implement the predicates and intersection/union/difference; unions count each
@@ -132,7 +133,8 @@ resets the active row until the next condition.
 One row uses ordered `AND-dimension=value` / `OR-dimension=value` / `NOT-dimension=value` parameters.
 Repeated keys retain their positions, e.g. `AND-maintenance=A&OR-maintenance=B&AND-maintenance=C`
 means `A OR (B AND C)`. Multiple rows use `filters` JSON, omitting default fields;
-an empty editor row also needs JSON to retain its position. Mixing inline terms
+an empty editor row also needs JSON to retain its position. NOT groups use JSON
+even for one row, so they cannot be confused with a leading NOT condition. Mixing inline terms
 with `filters` is rejected, as are repeated `filters` parameters. The HTTP adapter
 reads ordered query pairs before Pydantic validation, which still owns all field
 constraints. OpenAPI parameters are derived from those same model fields.

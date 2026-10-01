@@ -19,7 +19,7 @@ const filterFrom = href => {
   const conditions = [...parameters].filter(([key]) => /^(AND|OR|NOT)-/.test(key)).map(([key, value]) => ({
     dimension: key.slice(key.indexOf('-') + 1), value, logic: key.slice(0, key.indexOf('-')).toLowerCase(),
   }));
-  if (conditions.length) return {groups: [{logic: conditions[0].logic, conditions}]};
+  if (conditions.length) return {groups: [{logic: conditions[0].logic === 'not' ? 'and' : conditions[0].logic, conditions}]};
   const wire = parameters.get('filters') || '{"groups":[]}';
   const split = wire.indexOf('=');
   const parsed = wire.startsWith('{') ? JSON.parse(wire) :
@@ -434,6 +434,10 @@ try {
   assert.match(excludedPage, /name="NOT-maintenance" value="Advisory"/);
   assert.match(excludedPage, /class="condition-operator">NOT/);
   assert.match(excludedPage, /aria-current="true"[^>]*>NOT|>NOT<\/a>/);
+  const leadingNot = await read('/?NOT-maintenance=Outdated&AND-maintenance=Advisory');
+  assert.deepEqual(rowKeys(leadingNot), advisoryKeys.difference(outdatedKeys));
+  const leadingNotJSON = await read('/?' + new URLSearchParams({filters: JSON.stringify(filterFrom('/?NOT-maintenance=Outdated&AND-maintenance=Advisory'))}));
+  assert.deepEqual(rowKeys(leadingNot), rowKeys(leadingNotJSON));
   console.log('PASS NOT: set subtraction, ordered URL/JSON equivalence and retained search inputs');
   const alertCount = (html, label) => {
     const alerts = html.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];

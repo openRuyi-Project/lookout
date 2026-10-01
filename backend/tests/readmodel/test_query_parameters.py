@@ -20,7 +20,7 @@ def read_inline(parameters):
 def test_single_row_roundtrip_preserves_each_link_and_first_connector(operators):
     parameters = [(logic + '-maintenance', value) for logic, value in zip(operators, 'ABC')]
     query = read_inline(parameters)
-    assert query.groups[0].logic == operators[0].lower()
+    assert query.groups[0].logic == ('and' if operators[0] == 'NOT' else operators[0].lower())
     assert [(term.logic, term.value) for term in query.groups[0].conditions] == [
         (logic.lower(), value) for logic, value in zip(operators, 'ABC')]
     assert query.parameters() == parameters

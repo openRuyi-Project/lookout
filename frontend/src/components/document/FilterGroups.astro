@@ -11,7 +11,7 @@ const nodes = editor.query.groups.reduce((sum, group) => sum + 1 + group.conditi
     <div class="group-conditions">
       {group.conditions.length === 0 && <span class="empty-group" aria-label="Empty group">—</span>}
       {group.conditions.map((condition, index) => <>
-        {index > 0 && <span class="condition-operator">{condition.logic.toUpperCase()}</span>}
+        {(index > 0 || (condition.logic === 'not' && group.logic !== 'not')) && <span class="condition-operator">{condition.logic.toUpperCase()}</span>}
         <a href={safeHref(condition.href)} aria-label={group.active ? `Remove ${condition.label} from group ${group.id + 1}` : `Edit group ${group.id + 1}: ${condition.label}`}>
           {condition.label}{group.active && <span aria-hidden="true"> ×</span>}
         </a>

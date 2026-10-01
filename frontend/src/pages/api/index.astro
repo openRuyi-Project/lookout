@@ -42,7 +42,7 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         Keep repeated keys in order. Multiple rows use <code>filters</code> JSON <code>groups</code>; each group has
         <code>logic</code> (<code>and</code>/<code>or</code>/<code>not</code>) + <code>conditions</code>
         (<code>dimension</code>, <code>value</code>, <code>logic</code>). Each logic joins the preceding term;
-        AND and NOT bind before OR; NOT excludes its condition or row. Rows are parentheses. The first condition shares its row’s connector.
+        AND and NOT bind before OR; NOT excludes its condition or row. Rows are parentheses. A leading NOT parameter negates only its condition; NOT groups use JSON.
         Empty groups do not filter. Do not mix inline parameters with <code>filters</code>.
         The response returns the normalized query and <code>query_node_limit</code>.</li>
       <li>Counts evaluate the complete expression after adding a candidate to <code>active_group</code>

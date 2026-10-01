@@ -26,7 +26,7 @@ def truth(terms):
 
 
 def oracle(query, number):
-    return truth((group.logic, truth((term.logic if i else 'and', number in INDEX['maintenance'][term.value])
+    return truth((group.logic, truth((term.logic if i or (term.logic == 'not' and group.logic != 'not') else 'and', number in INDEX['maintenance'][term.value])
                  for i, term in enumerate(group.conditions))) for group in query.groups if group.conditions)
 
 
@@ -80,3 +80,33 @@ def test_or_expands_positive_row_but_not_group_reverses_inclusion():
         assert second <= first if connector == 'not' else first <= second
         for mode in MODES:
             assert Evaluation(INDEX, range(16), after, next_logic=mode).matches == second
+
+
+def test_leading_not_is_a_condition_not_an_outer_group_complement():
+    index = {'maintenance': {'Outdated': {0, 1}, 'Yanked': {1, 2}}}
+    first = ('NOT-maintenance', 'Outdated')
+    conjunction, _ = FilterQuery.extract([first, ('AND-maintenance', 'Yanked')])
+    union, _ = FilterQuery.extract([first, ('OR-maintenance', 'Yanked')])
+    assert Evaluation(index, range(4), conjunction).matches == {2}
+    assert Evaluation(index, range(4), union).matches == {1, 2, 3}
+    assert FilterQuery.extract(conjunction.parameters())[0] == conjunction
+    excluded_group = FilterQuery(groups=(Group(logic='not', conditions=(
+        Condition(dimension='maintenance', value='Outdated'),
+        Condition(dimension='maintenance', value='Yanked'))),))
+    assert Evaluation(index, range(4), excluded_group).matches == {0, 2, 3}
+    assert excluded_group.parameters()[0][0] == 'filters'
+    assert FilterQuery.extract(excluded_group.parameters())[0] == excluded_group
+    editor = QueryEditor(FilterQuery()).mode('not').toggle(Condition(dimension='maintenance', value='Outdated'))
+    assert editor.query.groups[0].logic == 'and'
+    edited = editor.mode('and').toggle(Condition(dimension='maintenance', value='Yanked'))
+    assert edited.query == conjunction
+
+
+@pytest.mark.parametrize('connector', MODES)
+def test_first_not_candidate_in_empty_row_preserves_its_group_connector(connector):
+    query = FilterQuery(groups=(Group(conditions=(TERMS[0],)), Group(logic=connector)))
+    evaluation = Evaluation(INDEX, range(16), query, active=1, next_logic='not')
+    edited = QueryEditor(query, active=1, next_logic='not').toggle(TERMS[1]).query
+    actual = Evaluation(INDEX, range(16), edited).matches
+    assert evaluation.count(TERMS[1]) == min(len(actual), len(INDEX['maintenance']['B']))
+    assert actual == {i for i in range(16) if oracle(edited, i)}
