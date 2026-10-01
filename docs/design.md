@@ -111,6 +111,14 @@ identical facts. Full provider fields and dependency conditions remain in detail
 Issue styles are declared once in `presentation/labels.toml`; BuildSystem identity
 styles live in operator config.
 
+Read pages progressively enhance native links and GET forms with locally bundled
+htmx. One rendered-result frame owns rows, counts and pagination. Foreground polls
+revalidate HTML with ETag and compare document fingerprints before swapping; hidden
+tabs, offline clients and active forms/menus pause polling. Failed or superseded
+requests leave the previous frame intact. These checks reduce transfer and DOM
+work, not server computation. Response scripts and dynamic evaluation are disabled;
+changed application assets require a full navigation.
+
 ## Observation identity and time
 
 `monitors.version.compare.evaluate` owns the version decision; `evaluate_all`

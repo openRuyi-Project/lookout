@@ -1,9 +1,11 @@
 ---
 import '../styles/base.css';
 import '../styles/app.css';
-interface Props {title?: string}
+import {createHash} from 'node:crypto';
+import PageUpdates from '../components/PageUpdates.astro';
+interface Props {title?: string; result?: object}
 const siteName = 'openRuyi Lookout';
-const {title} = Astro.props;
+const {title, result} = Astro.props;
 
 // Cookie-backed themes also work when scripting is disabled.
 // No cookie means follow the system preference, which the CSS handles on its own.
@@ -16,6 +18,8 @@ const label = {auto: 'Auto', light: 'Light', dark: 'Dark'};
 // Return to the current page after switching; same-origin path only.
 const back = Astro.url.pathname + Astro.url.search;
 const themeHref = `/theme?to=${next}&from=${encodeURIComponent(back)}`;
+const fingerprint = result && createHash('sha256')
+  .update(JSON.stringify({title, theme, result})).digest('hex');
 ---
 <!doctype html>
 <!-- SPDX-License-Identifier: MulanPSL-2.0 -->
@@ -28,24 +32,32 @@ const themeHref = `/theme?to=${next}&from=${encodeURIComponent(back)}`;
     <link rel="icon" type="image/svg+xml" href="/openruyi.svg"/>
     <link rel="stylesheet" href="/presentation.css"/>
   </head>
-  <body>
+  <body hx-boost={result ? 'true' : undefined} hx-target="#page" hx-select="#page"
+    hx-swap="outerHTML show:none" hx-sync="body:replace" hx-push-url="true">
     <a class="skip" href="#main">Skip to content</a>
-    <div class="shell">
+    <p id="page-status" class="notice" role="status" aria-live="polite" hidden></p>
+    <div class="shell" id="page" data-page-fingerprint={fingerprint} hx-history-elt>
       <header class="masthead">
         <a class="brand" href="/"><img src="/openruyi.svg" width="38" height="28" alt=""/><span>{siteName}</span></a>
         <nav aria-label="Site links">
-          <a class="theme-toggle" href={themeHref} aria-label={`Color theme: ${label[theme]}. Activate for ${label[next]}.`}>
+          <a class="theme-toggle" hx-boost="false" href={themeHref} aria-label={`Color theme: ${label[theme]}. Activate for ${label[next]}.`}>
             <span aria-hidden="true">{icon[theme]}</span>{label[theme]}
           </a>
-          <a href="/api">API</a>
-          <a href="/about">About</a>
+          <a href="/api" hx-boost="false">API</a>
+          <a href="/about" hx-boost="false">About</a>
         </nav>
       </header>
-      <main id="main"><slot /></main>
+      <main id="main" tabindex="-1"><slot /></main>
       <footer class="footer">
         <span class="count">{siteName}</span>
-        <a href="/LICENSE.txt">License</a>
+        <a href="/LICENSE.txt" hx-boost="false">License</a>
       </footer>
     </div>
+    {result && <>
+      <button id="page-refresh" hidden type="button" hx-get="" hx-trigger="refresh"
+        hx-sync="body:drop" hx-push-url="false"/>
+      <button id="page-history" hidden type="button" hx-push-url="unset" hx-replace-url="true"/>
+      <PageUpdates/>
+    </>}
   </body>
 </html>

@@ -10,7 +10,7 @@ import NavigationMenu from '../components/document/NavigationMenu.astro';
 const {data, status} = await api<ListingDocument>('/api/ui/packages' + Astro.url.search);
 if (!data) Astro.response.status = status === 422 ? 422 : 503;
 ---
-<Base>
+<Base result={data || undefined}>
   {data ? <section class="listing" aria-label="Package list">
       {!data.navigation.choices[0]?.selected && <header class="listing-heading">
         <h1>{data.title}</h1><NavigationMenu title="Views" menus={[data.navigation]} id="view-menu"/>

@@ -8,7 +8,7 @@ const name = Astro.params.name || '';
 const {data, status} = await api<DetailDocument>('/api/ui/packages/' + encodeURIComponent(name));
 if (!data) Astro.response.status = status === 404 ? 404 : 503;
 ---
-<Base title={name}>
+<Base title={name} result={data || undefined}>
   <div class="package-detail"><a class="back" href="/">← Packages</a>
   {data ? <>
     {data.notices.map(notice => <p class="notice">{notice}</p>)}
@@ -22,5 +22,4 @@ if (!data) Astro.response.status = status === 404 ? 404 : 503;
     </div>
   </> : <div role="alert" class="notice">{status === 404 ? 'No such source package.' : 'Snapshot unavailable. Please try again later.'}</div>}
   </div>
-  {data && <script is:inline type="module" src="/reveal-anchor.js"></script>}
 </Base>

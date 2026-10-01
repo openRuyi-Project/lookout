@@ -1,4 +1,4 @@
-function revealAnchor() {
+export function revealAnchor() {
   let id;
   try { id = decodeURIComponent(location.hash.slice(1)); }
   catch { return; }
@@ -11,6 +11,3 @@ function revealAnchor() {
   }
   target.scrollIntoView({block: 'start'});
 }
-
-revealAnchor();
-window.addEventListener('hashchange', revealAnchor);

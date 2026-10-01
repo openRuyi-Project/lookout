@@ -6,6 +6,10 @@ import {once} from 'node:events';
 import {createServer, request} from 'node:http';
 import {gunzipSync, brotliDecompressSync} from 'node:zlib';
 
+const serving = process.argv.includes('--serve');
+let delays = {};
+let revision = 0;
+
 const targets = ['rva23', 'rva20', 'x86_64'].map(id => ({id, label: id, repository: id, architecture: 'riscv64'}));
 const makePackage = (name, patch = {}) => ({
   buildsystem: null, buildsystem_status: 'not_declared', maintenance: [], maintenance_findings: [], monitor_checks: [], presentation: {buildsystems: {}},
@@ -185,6 +189,21 @@ const publicPaths = [
 ];
 const forwardedRequests = [];
 const mock = createServer((req, res) => {
+  if (serving && req.url === '/_fixture' && req.method === 'POST') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      const change = JSON.parse(body);
+      if ('unavailable' in change) unavailable = change.unavailable;
+      if ('delays' in change) delays = change.delays;
+      if ('current' in change) packages[0].current = change.current;
+      if ('revision' in change) revision = change.revision;
+      if (change.add) packages.push(makePackage(change.add));
+      res.writeHead(200, {'Content-Type': 'application/json'});
+      res.end(JSON.stringify({packages: packages.length, revision}));
+    });
+    return;
+  }
   forwardedRequests.push(req.url);
   if (unavailable) { res.writeHead(503, {'Content-Type':'application/json'});res.end('{}');return; }
   const url = new URL(req.url, 'http://localhost');
@@ -215,7 +234,8 @@ const mock = createServer((req, res) => {
   const evidenceFocus = catalog.some(m => m.id === focus && ['evidence', 'requires'].includes(m.kind));
   const resultRows = packages.filter(pkg => pkg.maintenance_findings.some(f => f.monitor === focus)
     || (focus === 'requires' && pkg.requirements?.length));
-  const rows = evidenceFocus && section === 'results' ? resultRows : packages;
+  let rows = evidenceFocus && section === 'results' ? resultRows : packages;
+  if (serving && url.searchParams.get('q')) rows = rows.filter(pkg => pkg.name.includes(url.searchParams.get('q')));
   const perPage = Math.max(1, Math.min(200, Number(url.searchParams.get('per_page')) || 100));
   const pages = Math.max(1, Math.ceil(rows.length / perPage));
   const page = Math.max(1, Math.min(pages, Number(url.searchParams.get('page')) || 1));
@@ -231,7 +251,7 @@ const mock = createServer((req, res) => {
       build_statuses: Object.fromEntries(targets.map(target => [target.id, [{value:'failed',label:'Failed',count:2}, {value:'blocked',label:'Blocked',count:1}]])),
       items: (url.searchParams.get('q') === 'quiet' ? rows.map(pkg=>({...pkg,maintenance:[],maintenance_findings:[]})) : rows).slice((page - 1) * perPage, page * perPage).map(pkg => monitored(pkg, true, focus)),
       total: rows.length, page, per_page: perPage, pages,
-      counts: {all: packages.length, updates: 3, problems: 1, attention: 1, untracked: 1}, targets,
+      counts: {all: packages.length, updates: 3 + revision, problems: 1, attention: 1, untracked: 1}, targets,
       collection: {build_service_url: 'https://build.example.org', source_repository: {url: 'https://github.com/fixture/repo.git', branch: 'stable/3', revision: 'abcdef0123456789abcdef0123456789abcdef01'}, obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
         packages: packages.length, tracked_packages: packages.length - 1}};
   const query = Object.fromEntries(url.searchParams);
@@ -239,13 +259,16 @@ const mock = createServer((req, res) => {
   query.maintenance = url.searchParams.getAll('maintenance');
   query.section = section;
   const document = project(url.pathname === '/api/ui/theme' ? 'theme' : selected ? 'detail' : 'list', payload, query);
-  res.writeHead(200, {'Content-Type': 'application/json'}); res.end(JSON.stringify(url.pathname.startsWith('/api/ui/') ? document : payload));
+  const response = JSON.stringify(url.pathname.startsWith('/api/ui/') ? document : payload);
+  const send = () => { res.writeHead(200, {'Content-Type': 'application/json'}); res.end(response); };
+  if (delays[url.searchParams.get('q')]) setTimeout(send, delays[url.searchParams.get('q')]);
+  else send();
 });
-mock.listen(0, '127.0.0.1'); await once(mock, 'listening');
+mock.listen(serving ? 8099 : 0, serving ? '0.0.0.0' : '127.0.0.1'); await once(mock, 'listening');
 const reserve = createServer(); reserve.listen(0, '127.0.0.1'); await once(reserve, 'listening');
-const port = reserve.address().port; await new Promise(resolve => reserve.close(resolve));
+const port = serving ? 8080 : reserve.address().port; await new Promise(resolve => reserve.close(resolve));
 const child = spawn(process.execPath, ['server.mjs'], {env: {...process.env,
-  HOST: '127.0.0.1', PORT: String(port), TRACKER_API_URL: `http://127.0.0.1:${mock.address().port}`}, stdio: ['ignore', 'pipe', 'pipe']});
+  HOST: serving ? '0.0.0.0' : '127.0.0.1', PORT: String(port), TRACKER_API_URL: `http://127.0.0.1:${mock.address().port}`}, stdio: ['ignore', 'pipe', 'pipe']});
 let logs = ''; child.stdout.on('data', chunk => logs += chunk); child.stderr.on('data', chunk => logs += chunk);
 async function read(path, cookie) {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, {headers: cookie ? {cookie} : {}});
@@ -278,6 +301,10 @@ try {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   }
+  if (serving) {
+    console.log(JSON.stringify({web: port, fixture: mock.address().port}));
+    await once(process, 'SIGTERM');
+  } else {
   async function probe(path, expected, body) {
     const result = await fetch(`http://127.0.0.1:${port}${path}`, {signal: AbortSignal.timeout(5000)});
     assert.equal(result.status, expected, path);
@@ -698,11 +725,18 @@ try {
   assert.doesNotMatch(detailResponse.headers['content-security-policy'], /unsafe-inline|unsafe-eval/);
   const scripts = [...detailResponse.body.toString().matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)];
   assert.equal(scripts.length, 1);
-  assert.match(scripts[0][1], /src="\/reveal-anchor\.js"/);
+  const scriptPath = scripts[0][1].match(/src="(\/_astro\/[^"]+\.js)"/)[1];
   assert.equal(scripts[0][2].trim(), '');
-  const anchorScript = await wire('/reveal-anchor.js');
-  assert.equal(anchorScript.status, 200);
-  assert.match(anchorScript.headers['content-type'], /javascript/);
+  assert.match(identity.body.toString(), new RegExp(`src="${scriptPath.replaceAll('.', '\\.')}"`));
+  const script = await wire(scriptPath, {'Accept-Encoding': 'gzip'});
+  assert.equal(script.status, 200);
+  assert.match(script.headers['content-type'], /javascript/);
+  assert.match(script.headers['cache-control'], /immutable/);
+  console.log(`NAVIGATION gzip: ${script.body.length} bytes`);
+  const fingerprint = response => response.body.toString().match(/data-page-fingerprint="([0-9a-f]{64})"/)[1];
+  assert.match(identity.body.toString(), /hx-select="#page"/);
+  assert.equal(fingerprint(identity), fingerprint(await wire('/')));
+  assert.equal(fingerprint(identity), fingerprint(await wire('/', {'HX-Request': 'true'})));
   assert.match((await wire('/livez')).headers['content-security-policy'], /script-src 'none'/);
   assert.match(identity.headers.vary,/Cookie/);
   const etag=identity.headers.etag;assert.match(etag,/^W\/"[0-9a-f]{64}"$/);
@@ -723,9 +757,11 @@ try {
   assert.equal(validated.headers['cache-control'],'private, no-cache');assert.match(validated.headers.vary,/Cookie/);
   assert.equal((await wire('/',{'If-None-Match':'"not-this", '+etag.slice(2)})).status,304);
   const themed=await wire('/',{'If-None-Match':etag,Cookie:'theme=dark'});assert.equal(themed.status,200);assert.notEqual(themed.headers.etag,etag);
+  assert.notEqual(fingerprint(themed), fingerprint(identity));
   assert.equal((await wire('/?q=success',{'If-None-Match':etag})).status,200);
   packages[0].current='2.0.1';
   const changed=await wire('/',{'If-None-Match':etag});assert.equal(changed.status,200);assert.notEqual(changed.headers.etag,etag);
+  assert.notEqual(fingerprint(changed), fingerprint(identity));
   packages[0].current='2.0';
   const cssPath=identity.body.toString().match(/href="(\/_astro\/[^"]+\.css)"/)[1];
   const css=await wire(cssPath,{'Accept-Encoding':'gzip'});assert.equal(css.status,200);assert.equal(css.headers['content-encoding'],'gzip');assert.match(css.headers['cache-control'],/immutable/);assert.ok(gunzipSync(css.body).length>css.body.length);
@@ -756,6 +792,7 @@ try {
   unavailable=false;
   console.log('PASS transport: gzip/br, identity/q=0, decoded equality, ETag304, changed data/theme/query, immutable CSS GET, ranges, HEAD, JSON, errors, cookies and CSP');
   console.log('PASS SSR document renderer');
+  }
 } finally {
   child.kill('SIGTERM'); await once(child, 'exit'); mock.closeAllConnections(); await new Promise(resolve => mock.close(resolve));
 }
