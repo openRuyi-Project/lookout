@@ -1,8 +1,8 @@
 """Load exactly one native nvchecker file. Package policy lives in packages.toml."""
-from dataclasses import dataclass
 import hashlib
-from pathlib import Path
 import tomllib
+from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)

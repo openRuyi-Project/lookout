@@ -444,3 +444,68 @@ def test_podman_bare_image_ids_are_normalized(monkeypatch, reference):
         return '["0.1.0", 2]'
     monkeypatch.setattr(operations, 'run', run)
     assert operations.resolve_image('podman', reference)['image'] == NEW
+
+
+@pytest.mark.parametrize('replace', [False, True])
+def test_publication_syncs_file_before_publish_and_directory_after(tmp_path, monkeypatch, replace):
+    staged, destination = tmp_path / 'staged', tmp_path / 'result'
+    staged.write_bytes(b'complete')
+    events = []
+    real_sync = operations.os.fsync
+    real_publish = operations.os.replace if replace else operations.os.link
+
+    def sync(fd):
+        events.append('sync')
+        return real_sync(fd)
+
+    def publish(*args):
+        events.append('publish')
+        return real_publish(*args)
+
+    monkeypatch.setattr(operations.os, 'fsync', sync)
+    monkeypatch.setattr(operations.os, 'replace' if replace else 'link', publish)
+    operations.publish_file(staged, destination, replace=replace)
+    assert events == ['sync', 'publish', 'sync']
+    assert destination.read_bytes() == b'complete'
+    assert staged.exists() is not replace
+
+
+def test_exclusive_publication_rejects_dangling_symlink(tmp_path):
+    destination = tmp_path / 'result'
+    destination.symlink_to('missing')
+    with pytest.raises(FileExistsError):
+        operations.write_exclusive(destination, b'complete')
+    assert destination.is_symlink()
+    assert not (tmp_path / 'missing').exists()
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+def test_reviewed_unit_replacement_preserves_permissions(tmp_path):
+    unit = tmp_path / 'unit'
+    unit.write_text('reviewed')
+    unit.chmod(0o640)
+    operations.write_unit(unit, 'reviewed', 'replacement')
+    assert unit.read_text() == 'replacement'
+    assert unit.stat().st_mode & 0o777 == 0o640
+    assert list(tmp_path.iterdir()) == [unit]
+
+
+@pytest.mark.parametrize('failure_at,published', [(1, False), (2, True)])
+def test_publication_sync_failures_are_reported_and_staging_is_cleaned(tmp_path, monkeypatch,
+                                                                       failure_at, published):
+    destination = tmp_path / 'result'
+    count = 0
+    real_sync = operations.os.fsync
+
+    def fail_sync(fd):
+        nonlocal count
+        count += 1
+        if count == failure_at:
+            raise OSError('injected sync failure')
+        return real_sync(fd)
+
+    monkeypatch.setattr(operations.os, 'fsync', fail_sync)
+    with pytest.raises(OSError, match='injected sync failure'):
+        operations.write_exclusive(destination, b'complete')
+    assert destination.exists() is published
+    assert list(tmp_path.iterdir()) == ([destination] if published else [])

@@ -93,3 +93,26 @@ def test_static_commit_cannot_outlive_the_corroborating_source(mismatch):
 def test_private_or_non_https_repository_is_rejected(url):
     with pytest.raises(ValueError):
         monitor.query({'version': '1.2.3'}, {'ecosystem': 'GIT', 'name': url})
+
+
+@pytest.mark.parametrize('host,path,repository', [
+    ('github.com', 'team/pkg', 'https://github.com/team/pkg'),
+    ('github.com', 'team/pkg.git', 'https://github.com/team/pkg'),
+    ('github.com', 'team/subgroup/pkg', None),
+    ('github.com', 'team/../pkg', None),
+    ('github.com', 'team/./pkg', None),
+    ('forge.example.org', 'team/subgroup/pkg', 'https://forge.example.org/team/subgroup/pkg'),
+    ('forge.example.org', 'team//pkg', None),
+    ('forge.example.org', 'team/pkg!', None),
+])
+def test_commit_and_tag_archives_share_repository_validation(host, path, repository):
+    from tracker.monitors.source.release import pinned_revision
+
+    commit = 'a' * 40
+    tag = pinned_tag(source(f'https://{host}/{path}/archive/v1.2.3.tar.gz'))
+    revision = pinned_revision(source(f'https://{host}/{path}/archive/{commit}.tar.gz',
+                                     '0+git20260901.' + commit[:7]))
+    if repository is None:
+        assert tag is revision is None
+    else:
+        assert tag['repository'] == revision.repository == repository

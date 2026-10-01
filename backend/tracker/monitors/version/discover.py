@@ -1,4 +1,3 @@
-from tracker.monitors.version import rules as version_rules
 # SPDX-FileCopyrightText: (C) 2026 Institute of Software, Chinese Academy of Sciences (ISCAS)
 # SPDX-FileCopyrightText: (C) 2026 openRuyi Project Contributors
 # SPDX-License-Identifier: MulanPSL-2.0
@@ -9,21 +8,24 @@ requires the SPEC homepage, current version history and a unique project to agre
 The resulting native TOML remains the only tracking authority after review.
 """
 import argparse
-from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
 import hashlib
 import json
-from pathlib import Path
 import re
 import time
 import tomllib
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
+from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 import httpx
 
-from tracker import config as cfg, config_change, state
-from tracker.monitors.version import candidates as sources, nvchecker as nv, rules as version_rules
+from tracker import config as cfg
+from tracker import config_change, state
+from tracker.monitors.version import candidates as sources
+from tracker.monitors.version import nvchecker as nv
+from tracker.monitors.version import rules as version_rules
 from tracker.providers.http import read_response
 
 API = 'https://release-monitoring.org'
@@ -350,7 +352,7 @@ def main(argv=None):
         if row.get('project_homepage') and identity_url(row['homepage']) != identity_url(row['project_homepage']):
             row['url_review'] = {'status': 'corroborated_by_source' if row['reason']=='verified' else 'needs_review',
                                  'spec_homepage':row['homepage'], 'provider_homepage':row['project_homepage']}
-    report = {'schema': 2, 'at': datetime.now(timezone.utc).isoformat(),
+    report = {'schema': 2, 'at': datetime.now(UTC).isoformat(),
               'snapshot_generation': snapshot['generation'], 'native_sha256': config['nv_digest'],
               'untracked_considered': len(rows), 'queried': len(selected), 'verified': sum(r['reason']=='verified' for r in rows), 'new_native_rules':len(accepted), 'new_bindings':len(bindings),
               'command_error': command_error, 'reasons': dict(Counter(r['reason'] for r in rows)),

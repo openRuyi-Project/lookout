@@ -7,7 +7,9 @@ from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
-from tracker import config as cfg, identity as package_identity, state
+from tracker import config as cfg
+from tracker import identity as package_identity
+from tracker import state
 from tracker.monitors.observations import visible
 from tracker.monitors.requires import compare as requirement_versions
 from tracker.monitors.requires.markers import applies
@@ -272,7 +274,7 @@ def assess(change, snapshot, now, *, stale=False, target_stale=False, resolver=N
             reason = {'not_mapped': 'dependency_not_mapped', 'ambiguous': 'dependency_ambiguous',
                       'not_packaged': 'dependency_unavailable'}[mapping]
             return 'unknown', reason
-        if observed['stale'] or not observed['version'] or not observed['revision']:
+        if observed is None or observed['stale'] or not observed['version'] or not observed['revision']:
             return 'unknown', 'dependency_unavailable'
         satisfied, reason = requirement_versions.satisfies(change['scheme'], constraint['expression'], observed['version'])
         return ('unknown', reason) if satisfied is None else ('satisfied' if satisfied else 'unsatisfied', None)

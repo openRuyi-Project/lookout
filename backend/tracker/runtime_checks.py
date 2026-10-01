@@ -1,13 +1,13 @@
 """Fail-closed checks performed before the supervisor starts children."""
 import argparse
-from contextlib import closing, contextmanager
 import fcntl
 import os
-from pathlib import Path
 import re
 import sqlite3
 import sys
 import tempfile
+from contextlib import closing, contextmanager
+from pathlib import Path
 
 from tracker import state, storage
 from tracker.config import load

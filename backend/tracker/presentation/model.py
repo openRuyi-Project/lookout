@@ -5,9 +5,10 @@ values. This is a disposable projection, never a second stored observation.
 """
 from typing import Literal
 
-from tracker.readmodel.query import FilterQuery, MAX_QUERY_NODES
+from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import Field as Constraint
 
-from pydantic import BaseModel, ConfigDict, Field as Constraint, model_validator
+from tracker.readmodel.query import MAX_QUERY_NODES, FilterQuery
 
 
 class DocumentModel(BaseModel):

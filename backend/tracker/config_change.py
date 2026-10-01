@@ -6,21 +6,22 @@ Plan never writes runtime. Apply creates a NEW configuration directory, never
 replaces live mounts. The existing deployment/restart selects that directory.
 """
 
-from collections.abc import MutableMapping
-from contextlib import contextmanager
 import difflib
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import tempfile
 import tomllib
+from collections.abc import MutableMapping
+from contextlib import contextmanager
+from pathlib import Path
 
 import tomlkit
 from tomlkit.items import Comment, InlineTable, Table, Whitespace
 
-from tracker import catalog, config as cfg
+from tracker import catalog
+from tracker import config as cfg
 from tracker.monitors.version import rules as version_rules
 
 
@@ -298,7 +299,7 @@ def plan(base_path, candidate_path, runtime_path, output):
     local = catalog.local_inputs(runtime, runtime_file.parent)
     texts = {str(Path(name).relative_to(runtime_file.parent)): Path(name).read_text() for name in local}
     texts[runtime_file.name] = tracker_text
-    if distribution_styles:
+    if distribution_styles and distribution is not None:
         name = str(Path(distribution).relative_to(runtime_file.parent))
         texts[name] = edit_tables(texts[name], distribution_styles, ('buildsystems',))
     for kind, changes in (('native', native_changes), ('packages', binding_changes)):
@@ -308,7 +309,8 @@ def plan(base_path, candidate_path, runtime_path, output):
             if kind == 'native':
                 sources = [editable_file(config, path.parent, kind)
                            for config, path in ((base, base_file), (candidate, candidate_file), (runtime, runtime_file))]
-                texts[name] = merge_text(*(p.read_text() if p else None for p in sources), name)
+                base_text, candidate_text, runtime_text = (p.read_text() if p else None for p in sources)
+                texts[name] = merge_text(base_text, candidate_text, runtime_text, name)
             else:
                 texts[name] = edit_tables(file.read_text(), changes)
         elif changes:

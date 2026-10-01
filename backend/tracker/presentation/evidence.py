@@ -1,8 +1,8 @@
 """Evidence for reading documents; no collection or persistence."""
 from urllib.parse import urlsplit
 
-from tracker.presentation.model import Entry, Section
 from tracker.presentation.labels import appearance, caption
+from tracker.presentation.model import Entry, Section
 from tracker.presentation.values import CHECK_LABELS, cell, field, retained_marker, text, version_value
 
 
@@ -73,7 +73,7 @@ def evidence_section(result, links):
         facts = [{**f, 'key': f['key'].removesuffix(' · ' + finding['title'])}
                  for f in finding['facts'] if f not in shared]
         facts.sort(key=lambda f: {'summary': 0, 'fixed_events': 1, 'epss_probability': 2,
-                                 'kev_added': 3, 'kev_ransomware': 4}.get(f.get('code'), 5))
+                                 'kev_added': 3, 'kev_ransomware': 4}.get(f.get('code') or '', 5))
         fields = fact_fields(facts)
         if finding['scope'] == 'upgrade' and not shared_target:
             fields.insert(0, field('Target', text(finding.get('target_version'), kind='code')))

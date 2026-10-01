@@ -1,8 +1,8 @@
 """Version for reading documents; no collection or persistence."""
 from urllib.parse import quote
 
-from tracker.presentation.model import Entry, Section
 from tracker.presentation.labels import appearance, caption
+from tracker.presentation.model import Entry, Section
 from tracker.presentation.values import cell, field, module, retained_marker, stamp, text, version_value
 
 

@@ -3,16 +3,18 @@
 Every monitor supplies the same envelope and query dimensions. Payload kinds keep
 source, version, build and evidence semantics distinct; no network imports here.
 """
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from typing import Callable
+from typing import Any
 from urllib.parse import quote
 
-from tracker import config as cfg, state
+from tracker import config as cfg
+from tracker import state
 from tracker.monitors import model as monitor_model
-from tracker.monitors.issues import Issue, VERSION_ISSUES, observation_label
 from tracker.monitors.build import status as build_status
+from tracker.monitors.issues import VERSION_ISSUES, Issue, observation_label
 from tracker.monitors.requires import model as requirements
 from tracker.monitors.source import release as source_release
 from tracker.monitors.version import compare as version_status
@@ -262,7 +264,7 @@ def build(context):
                           source_success=combined_match(all_entries), last_successful_version=previous))
 
 
-def evidence(context, monitor_id):
+def evidence(context, monitor_id) -> dict[str, Any]:
     facts = [f for f in context.evidence['findings'] if f['monitor'] == monitor_id]
     saved = next((c for c in context.evidence['checks'] if c['monitor'] == monitor_id), None)
     check = {k: v for k, v in (saved or {}).items() if k != 'monitor'}

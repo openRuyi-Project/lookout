@@ -1,10 +1,10 @@
 """Read-only REST. HTTP processes never import or invoke the collector."""
-from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 import os
-from pathlib import Path
 import threading
-from typing import Annotated, Literal, get_origin
+from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated, Any, Literal, get_origin
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -13,11 +13,14 @@ from pydantic import BaseModel, ConfigDict, Field, Json, ValidationError, WithJs
 from tracker import state
 from tracker.monitors.model import RawFinding
 from tracker.monitors.requires.model import RequirementAssessment
-from tracker.presentation import navigation as presentation_navigation, pages as presentation_pages
+from tracker.presentation import navigation as presentation_navigation
+from tracker.presentation import pages as presentation_pages
 from tracker.presentation.model import DetailDocument, DocumentTheme, ListingDocument
-from tracker.readmodel import monitors as monitor_views, snapshot as view
+from tracker.readmodel import monitors as monitor_views
+from tracker.readmodel import snapshot as view
 from tracker.readmodel.cache import ProjectionCache
-from tracker.readmodel.query import FilterQuery, MAX_QUERY_NODES
+from tracker.readmodel.query import MAX_QUERY_NODES, FilterQuery
+
 
 # Fixed-shape payloads are typed so the response contract cannot silently drift.
 # Raw provenance (source, upstream, per-flavor facts) stays open on purpose.
@@ -213,16 +216,20 @@ class VersionObservation(VersionSummary):
     watch: list[Watch]
 
 
-class BuildSummary(BaseModel):
+class BuildData[TargetBuild: Build](BaseModel):
     kind: Literal['build']
-    targets: list[Build]
+    targets: list[TargetBuild]
     source_version: str | None
     source_success: bool | None
     last_successful_version: str | None
 
 
-class BuildObservation(BuildSummary):
-    targets: list[BuildDetail]
+class BuildSummary(BuildData[Build]):
+    pass
+
+
+class BuildObservation(BuildData[BuildDetail]):
+    pass
 
 
 class EvidenceEntry(BaseModel):
@@ -279,14 +286,18 @@ class MonitorObservation(BaseModel):
     data: Annotated[SourceObservation | VersionObservation | BuildObservation | EvidenceObservation | RequiresObservation, Field(discriminator='kind')]
 
 
-class MonitoredPackage(BaseModel):
+class PackageData[Observation: MonitorSummary | MonitorObservation](BaseModel):
     name: str
     detail_url: str
-    monitors: dict[str, MonitorSummary]
+    monitors: dict[str, Observation]
 
 
-class MonitoredObservation(MonitoredPackage):
-    monitors: dict[str, MonitorObservation]
+class MonitoredPackage(PackageData[MonitorSummary]):
+    pass
+
+
+class MonitoredObservation(PackageData[MonitorObservation]):
+    pass
 
 
 class MonitoredDetail(MonitoredObservation):
@@ -357,7 +368,7 @@ class ListingQuery(BaseModel):
     @classmethod
     def from_parameters(cls, parameters):
         query, remaining = FilterQuery.extract(parameters)
-        values = {'filters': query.model_dump_json()}
+        values: dict[str, Any] = {'filters': query.model_dump_json()}
         arrays = {name for name, field in cls.model_fields.items() if get_origin(field.annotation) is list}
         for name, value in remaining:
             if name in arrays:
@@ -545,7 +556,7 @@ def create_app(db=None):
         if track_id not in snap['tracks']:
             raise HTTPException(404, 'Track not found')
         fact = snap['tracks'][track_id]
-        return dict(id=track_id, **fact, stale=state.stale(fact, datetime.now(timezone.utc), snap.get('stale_after_seconds', 86400)))
+        return dict(id=track_id, **fact, stale=state.stale(fact, datetime.now(UTC), snap.get('stale_after_seconds', 86400)))
     @app.get('/api/v2/targets', response_model=list[Target])
     def targets():
         snap, _, _ = data()

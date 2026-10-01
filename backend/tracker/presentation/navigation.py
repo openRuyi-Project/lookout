@@ -1,16 +1,24 @@
 """Server-owned filter edits and links; the browser only renders/navigates."""
 from urllib.parse import urlencode
 
-from tracker.monitors.model import CHECK_GROUPS
-from tracker.monitors.issues import Issue, VERSION_ISSUES
 from tracker.monitors.build import status as build_status
-from tracker.presentation.model import Choice, Controls, FilterEditor, FilterGroup, FilterCondition, Navigation, Parameter
+from tracker.monitors.issues import VERSION_ISSUES, Issue
+from tracker.monitors.model import CHECK_GROUPS
+from tracker.presentation.labels import appearance, caption, facets, priority
+from tracker.presentation.model import (
+    Choice,
+    Controls,
+    FilterCondition,
+    FilterEditor,
+    FilterGroup,
+    Navigation,
+    Parameter,
+)
 from tracker.presentation.query_editor import QueryEditor
 from tracker.presentation.registry import presenter
 from tracker.presentation.values import CHECK_LABELS
-from tracker.presentation.labels import appearance, caption, priority, facets
 from tracker.presentation.version import signal_title
-from tracker.readmodel.query import Condition, FilterQuery, MAX_QUERY_NODES
+from tracker.readmodel.query import MAX_QUERY_NODES, Condition, FilterQuery
 
 
 class Links:
@@ -81,7 +89,7 @@ def filter_editor(payload, links):
         active = number == editor.active
         groups.append(FilterGroup(id=number, active=active, select=links.edited(selected),
             logic=group.logic,
-            conditions=[FilterCondition(label=condition_label(c, payload), selected=active, logic=c.logic,
+            conditions=[FilterCondition(label=condition_label(c, payload) or c.value, selected=active, logic=c.logic,
                 href=links.edited(selected.toggle(c) if active else selected)) for c in group.conditions],
             clear=links.edited(editor.clear(number)),
             add=links.edited(selected.add()) if can_add else None))

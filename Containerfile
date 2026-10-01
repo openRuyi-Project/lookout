@@ -20,7 +20,7 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 ENV ASTRO_TELEMETRY_DISABLED=1
-RUN npm run check && npm run build && npm prune --omit=dev
+RUN npm run quality && npm run check && npm run build && npm prune --omit=dev
 
 # ---- Python dependency build stage ----------------------------------------
 FROM ${FEDORA_IMAGE} AS python-builder

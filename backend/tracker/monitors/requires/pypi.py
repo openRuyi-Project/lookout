@@ -2,13 +2,16 @@
 
 from dataclasses import replace
 
-from packaging.requirements import InvalidRequirement, Requirement as PyPIRequirement
+from packaging.requirements import InvalidRequirement
+from packaging.requirements import Requirement as PyPIRequirement
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.utils import canonicalize_name
 
+from tracker.monitors.requires.markers import all_of, any_of, fold
 from tracker.monitors.requires.model import Requirement, UnsupportedRequirements
-from tracker.providers.pypi import HOSTS, inputs, project, release
-
+from tracker.providers.pypi import HOSTS as HOSTS
+from tracker.providers.pypi import inputs as inputs
+from tracker.providers.pypi import project, release
 
 MAX_DECLARATION = 1024
 MAX_DEPENDENCIES = 256
@@ -26,50 +29,30 @@ def _optional(marker):
     if marker is None:
         return False
     try:
-        from packaging._parser import Value
-        from packaging._parser import Variable
+        from packaging._parser import Value, Variable
 
-        budget = 256
-
-        def required(node, depth=0):
-            nonlocal budget
-            budget -= 1
-            if budget < 0 or depth > 32:
-                raise ValueError('marker analysis budget exceeded')
-            if isinstance(node, tuple) and len(node) == 3:
-                left, operator, right = node
-                operands = (left, right)
-                if not all(isinstance(item, (Variable, Value)) for item in operands):
-                    raise ValueError('unknown marker operands')
-                variables = [item.value for item in operands if isinstance(item, Variable)]
-                if any(name in ('extras', 'dependency_groups') for name in variables):
-                    return None  # Lock-file selectors are not PyPI metadata extras.
-                if 'extra' not in variables:
-                    return False
-                if len(variables) != 1:
-                    return None
-                value = next(item.value for item in operands if isinstance(item, Value))
-                if operator.value == '==':
-                    return bool(value)
-                if operator.value == '!=':
-                    return not bool(value)
+        def required(node):
+            left, operator, right = node
+            operands = (left, right)
+            if not all(isinstance(item, (Variable, Value)) for item in operands):
+                raise ValueError('unknown marker operands')
+            variables = [item.value for item in operands if isinstance(item, Variable)]
+            if any(name in ('extras', 'dependency_groups') for name in variables):
+                return None  # Lock-file selectors are not PyPI metadata extras.
+            if 'extra' not in variables:
+                return False
+            if len(variables) != 1:
                 return None
-            if not isinstance(node, list) or not node or len(node) % 2 != 1:
-                raise ValueError('unknown marker tree')
-            alternatives = [[]]
-            for index, item in enumerate(node):
-                if index % 2 == 0:
-                    alternatives[-1].append(required(item, depth + 1))
-                elif item == 'or':
-                    alternatives.append([])
-                elif item != 'and':
-                    raise ValueError('unknown marker operator')
-            # One required feature gates a conjunction; every alternative must
-            # be gated to make the entire declaration exclusively optional.
-            gates = [True if True in group else None if None in group else False for group in alternatives]
-            return False if False in gates else None if None in gates else True
+            value = next(item.value for item in operands if isinstance(item, Value))
+            if operator.value == '==':
+                return bool(value)
+            if operator.value == '!=':
+                return not bool(value)
+            return None
 
-        return required(marker._markers)
+        # One feature gates a conjunction; every alternative must be gated.
+        # This analyzes optionality, not whether the expression applies here.
+        return fold(marker, required, any_of, all_of)
     except (ImportError, AttributeError, TypeError, ValueError, RecursionError):
         return None
 

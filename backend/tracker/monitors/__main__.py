@@ -1,11 +1,12 @@
 """Locate, inspect or check one monitor without publishing observations."""
 import argparse
-from datetime import datetime, timezone
 import json
-from pathlib import Path
 import sqlite3
+from datetime import UTC, datetime
+from pathlib import Path
 
-from tracker import config as cfg, identity, state
+from tracker import config as cfg
+from tracker import identity, state
 from tracker.monitors.registry import REGISTRY
 from tracker.monitors.runner import execute, plan, refresh_policy, settings
 from tracker.monitors.version import compare
@@ -46,7 +47,7 @@ def describe(config, snapshot, name, monitor):
         'code': str(Path(adapter.__file__).resolve()),
         'observation_available': observed,
         'refresh': {**vars(policy), 'due': proposed['status'] == 'pending' and
-                    policy.due(previous, proposed['fingerprint'], datetime.now(timezone.utc))},
+                    policy.due(previous, proposed['fingerprint'], datetime.now(UTC))},
         'read_only': True,
     }, policy
 

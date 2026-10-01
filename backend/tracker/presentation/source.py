@@ -1,6 +1,6 @@
 """Source for reading documents; no collection or persistence."""
-from tracker.presentation.model import Entry, Section
 from tracker.presentation.labels import caption
+from tracker.presentation.model import Entry, Section
 from tracker.presentation.values import field, stamp, text
 
 

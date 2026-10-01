@@ -36,7 +36,7 @@ def packages(repo, revision='HEAD', git='git'):
     """Complete source-package directory names from regular SPEC blobs at one revision."""
     listing, error = _git_text(['-C', repo, 'ls-tree', '-r', '-z', '--full-tree',
                                 revision, '--', 'SPECS'], git)
-    if error:
+    if error or listing is None:
         return None, error
     names = set()
     for record in listing.split('\0'):
@@ -152,7 +152,7 @@ def changelogs(repo, limit=20, git='git', *, since=None, names=None):
     revisions = [f'{since}..HEAD'] if since else []
     stdout, error = _git_text(['-C', repo, 'log', '--no-show-signature',
                               f'--format={fmt}', '--name-status', *revisions, '--', *paths], git)
-    if error is not None:
+    if error is not None or stdout is None:
         return {}, error
     return _bucket_log(stdout, limit), None
 
@@ -160,7 +160,7 @@ def changelogs(repo, limit=20, git='git', *, since=None, names=None):
 def read_spec(repo, name, git='git'):
     """Current SPEC bytes for a package, read from the bare clone via cat-file (offline)."""
     listing, error = _git_text(['-C', repo, 'ls-tree', '--name-only', f'HEAD:SPECS/{name}'], git)
-    if error is not None:
+    if error is not None or listing is None:
         return None
     specs = sorted(f for f in listing.splitlines() if f.endswith('.spec'))
     if not specs:
@@ -178,7 +178,7 @@ def read_macros(repo, macro_package, git='git'):
     if not macro_package:
         return []
     listing, error = _git_text(['-C', repo, 'ls-tree', '--name-only', f'HEAD:SPECS/{macro_package}'], git)
-    if error is not None:
+    if error is not None or listing is None:
         raise MacroReadError('SPEC macro directory unavailable')
     macros = []
     for filename in sorted(listing.splitlines()):

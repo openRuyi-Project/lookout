@@ -1,6 +1,6 @@
 """Read-only package composition from current monitor observations."""
-from datetime import datetime, timezone
 import re
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 from tracker import state
@@ -48,7 +48,7 @@ def next_transition(snapshot, now):
     return min((change for change in changes if change is not None), default=None)
 
 def project_monitors(snapshot, now=None):
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     flavors = {}
     for name, owner in snapshot['inventory'].items():
         flavors.setdefault(owner, []).append(name)

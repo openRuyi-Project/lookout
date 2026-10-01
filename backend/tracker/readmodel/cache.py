@@ -3,16 +3,17 @@
 The SQLite snapshot remains the authority. This cache is disposable, carries its
 own freshness deadline, and never modifies the database or invokes collectors.
 """
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import logging
-from pathlib import Path
 import threading
 import time
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
 
 from tracker import state
+from tracker.readmodel import packages as package_list
+from tracker.readmodel import snapshot as view
 from tracker.storage import Revision
-from tracker.readmodel import packages as package_list, snapshot as view
 
 LOG = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class ProjectionCache:
 
     @staticmethod
     def now():
-        return datetime.fromtimestamp(time.time(), timezone.utc)
+        return datetime.fromtimestamp(time.time(), UTC)
 
     def refresh(self):
         """Serialize producers, but hold no publication lock during IO/CPU work."""
@@ -71,17 +72,18 @@ class ProjectionCache:
         if changed:
             previous = (old.snapshot, old.revision) if old and signature[:2] == old.signature[:2] else None
             snapshot, revision = state.read_cached(self.db, previous)
-            clock_only = bool(previous and revision is not None and revision == old.revision)
-            if clock_only:
+            clock_only = bool(old and previous and revision is not None and revision == old.revision)
+            if clock_only and old is not None:
                 before = old.snapshot['components'].get('builds', {}).get('fetched_at')
                 after = snapshot['components'].get('builds', {}).get('fetched_at')
                 clock_only = bool(before and after and datetime.fromisoformat(after) >= datetime.fromisoformat(before))
         else:
+            assert old is not None
             snapshot, revision = old.snapshot, old.revision
         if not snapshot['generation']:
             raise ValueError('No collected snapshot yet')
         if changed or expired or backwards:
-            if clock_only and not expired and not backwards:
+            if old is not None and clock_only and not expired and not backwards:
                 rows, collection = view.refresh_build_clock(snapshot, old.index.rows, now)
             else:
                 rows, collection = view.project_monitors(snapshot, now)

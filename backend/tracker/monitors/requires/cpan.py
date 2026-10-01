@@ -2,7 +2,9 @@
 import re
 
 from tracker.monitors.requires.model import Requirement, UnsupportedRequirements
-from tracker.providers.cpan import HOSTS, inputs, project, release
+from tracker.providers.cpan import HOSTS as HOSTS
+from tracker.providers.cpan import inputs as inputs
+from tracker.providers.cpan import project, release
 
 
 def read(version, settings, io):

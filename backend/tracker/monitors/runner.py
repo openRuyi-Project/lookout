@@ -1,21 +1,22 @@
 """Internal monitor runner and contributor CLI. HTTP imports neither this nor adapters."""
+import json
+import time
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
-import json
+from datetime import UTC, datetime
 from pathlib import Path
-import time
 
-from tracker import config as cfg, identity as package_identity, state
-from tracker.monitors.model import CORE_IDS, fingerprint, validate_findings, validate_url
-from tracker.monitors.requires.model import validate_provides
-from tracker.monitors.registry import REGISTRY
+from tracker import config as cfg
+from tracker import identity as package_identity
+from tracker import state
 from tracker.monitors import observations as history
+from tracker.monitors.model import CORE_IDS, fingerprint, validate_findings, validate_url
+from tracker.monitors.registry import REGISTRY
+from tracker.monitors.requires.model import validate_provides
 from tracker.monitors.schedule import Schedule
 from tracker.monitors.source.release import pinned_revision, pinned_tag
 from tracker.monitors.version import compare as version_status
 from tracker.providers.client import IO
-
 
 DEFAULT_REFRESH = Schedule(interval_seconds=21600)
 
@@ -312,7 +313,7 @@ def collect(config, config_path, db, *, io=None):
         with state.writer_lock(str(db) + '.monitors'):
             snapshot = state.read(db)
             observations, jobs = {}, []
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             versions = version_status.evaluate_all(snapshot, now)
             for name, version in versions.items():
                 observations[name] = {}

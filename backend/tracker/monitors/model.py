@@ -17,11 +17,10 @@ from pydantic import (
 )
 
 from tracker import state
-from tracker.monitors.observations import visible
 from tracker.monitors.issues import observation_label
+from tracker.monitors.observations import visible
 from tracker.monitors.requires.model import RequirementDeclaration
 from tracker.monitors.version import compare as version_status
-
 
 CORE_IDS = frozenset(('source', 'version', 'build'))
 

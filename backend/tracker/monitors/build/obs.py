@@ -1,11 +1,11 @@
 """Consume structured OBS facts; never evaluate a spec file."""
-from datetime import datetime, timezone
 import re
 import time
+from datetime import UTC, datetime
 from urllib.parse import quote, unquote, urlsplit
 
-from defusedxml import ElementTree as ET
 import httpx
+from defusedxml import ElementTree as ET
 
 from tracker.monitors.schedule import Schedule
 from tracker.providers.http import USER_AGENT, read_response
@@ -120,7 +120,7 @@ def last_successes(data):
             epoch = int(entry.get('endtime', ''))
             if epoch <= 0:
                 raise ValueError('invalid build completion time')
-            stamp = datetime.fromtimestamp(epoch, timezone.utc).isoformat(timespec='seconds')
+            stamp = datetime.fromtimestamp(epoch, UTC).isoformat(timespec='seconds')
         except (ValueError, OverflowError, OSError) as e:
             raise ValueError('invalid build completion time') from e
         fact = {'version': version, 'time': stamp, 'srcmd5': entry.get('srcmd5')}

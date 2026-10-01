@@ -1,27 +1,25 @@
-"""OpenAPI schema references and declarations must name the same TS types."""
+"""UI schemas are selected by reachability and compiled by the standard generator."""
 from pathlib import Path
 import runpy
 from types import SimpleNamespace
 
-import pytest
 
-
-def generator(names):
+def generator(schemas, response):
     module = runpy.run_path(str(Path(__file__).resolve().parents[3] / 'scripts/api-types.py'))
-    schema = {'anyOf': [{'$ref': '#/components/schemas/' + name} for name in names]}
-    document = {'components': {'schemas': {name: {'type': 'string'} for name in names}},
-                'paths': {'/api/ui/packages': {'get': {'responses': {'200': schema}}}}}
+    document = {'openapi': '3.1.0', 'info': {'title': 'Fixture', 'version': '1'},
+                'components': {'schemas': schemas},
+                'paths': {'/api/ui/packages': {'get': {'responses': {'200': response}}}}}
     module['render'].__globals__['create_app'] = lambda: SimpleNamespace(openapi=lambda: document)
-    return module
+    return module, document
 
 
-def test_schema_names_have_valid_consistent_typescript_identifiers():
-    module = generator(['FilterQuery-Input', 'FilterQuery-Output'])
-    assert module['ts']({'$ref': '#/components/schemas/FilterQuery-Output'}) == 'FilterQuery_Output'
-    assert module['render']().endswith(
-        'export type FilterQuery_Input = string;\nexport type FilterQuery_Output = string;\n')
-
-
-def test_name_normalization_rejects_collisions():
-    with pytest.raises(ValueError, match='collide'):
-        generator(['A-B', 'A_B'])['render']()
+def test_ui_contract_follows_references_without_domain_payloads():
+    module, document = generator({
+        'Page': {'type': 'object', 'properties': {'child': {'$ref': '#/components/schemas/Child'}}},
+        'Child': {'type': 'object', 'properties': {'parent': {'$ref': '#/components/schemas/Page'}}},
+        'ProviderResult': {'type': 'string'},
+    }, {'$ref': '#/components/schemas/Page'})
+    selected = module['ui_contract'](document)
+    assert set(selected['components']['schemas']) == {'Page', 'Child'}
+    assert selected['paths'] == {}
+    assert 'ProviderResult' in document['components']['schemas']

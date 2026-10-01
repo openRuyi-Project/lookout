@@ -8,7 +8,6 @@ from packaging.version import InvalidVersion, Version
 from tracker.identity import from_package
 from tracker.providers.model import Release
 
-
 HOSTS = {"pypi.org"}
 
 

@@ -1,8 +1,9 @@
 """Registry for reading documents; no collection or persistence."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from tracker.presentation.build import build_cells, build_columns, build_sections
 from tracker.presentation.evidence import evidence_cells, evidence_lines, evidence_section

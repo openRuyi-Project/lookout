@@ -3,10 +3,9 @@ from collections import defaultdict
 from types import MappingProxyType
 
 from tracker.monitors import model as monitor_model
-from tracker.monitors.issues import Issue
-from tracker.readmodel.query import Condition, Evaluation, FilterQuery
 from tracker.monitors.build import status as build_status
-
+from tracker.monitors.issues import Issue
+from tracker.readmodel.query import Condition, Evaluation, FilterQuery, Logic
 
 VIEWS = ('all', 'updates', 'problems', 'attention', 'untracked')
 
@@ -61,15 +60,15 @@ class PackageList:
             if status not in monitor_model.CHECK_GROUPS and members
         } for dimension, options in self.index.items() if dimension.startswith('check:')}
 
-    def select(self, *, filters=FilterQuery(), active_group=0, next_logic='and', page=1, per_page=100,
+    def select(self, *, filters=FilterQuery(), active_group=0, next_logic: Logic = 'and', page=1, per_page=100,
                query=None, monitor=None, findings_only=False, search='name'):
         query = (self.query if query is None else query).strip().casefold()
         monitor = self.monitor if monitor is None else monitor
         scope = {number for number, name in enumerate(self.names) if query in name} if query else self.all
         if query and search == 'observations':
-            scope.update(number for number, observations in enumerate(self.observations)
-                         if any(query in text for mid, text in observations.items()
-                                if not monitor or mid == monitor))
+            scope = scope | {number for number, observations in enumerate(self.observations)
+                             if any(query in text for mid, text in observations.items()
+                                    if not monitor or mid == monitor)}
         coverage = Evaluation(self.index, scope, filters, active_group, next_logic)
         findings = self.index.get('findings:' + monitor, {}).get('yes', frozenset())
         selection = (Evaluation(self.index, scope & findings, filters, active_group, next_logic)

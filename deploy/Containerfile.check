@@ -7,4 +7,8 @@ RUN /opt/venv/bin/python -m ensurepip \
     && /opt/venv/bin/python -m pip install --no-cache-dir --upgrade pip==26.2.1 \
     && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements-test.lock \
     && rm /tmp/requirements-test.lock
+# The generator is a development dependency, absent from the application image.
+COPY frontend/package.json frontend/package-lock.json /app/frontend/
+RUN dnf install -y npm && dnf clean all \
+    && cd /app/frontend && npm ci --ignore-scripts --no-audit --no-fund
 USER 10001:10001

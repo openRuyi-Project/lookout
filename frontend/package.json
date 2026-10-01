@@ -9,7 +9,13 @@
     "build": "astro build",
     "start": "node server.mjs",
     "check": "astro check",
-    "test": "npm run build && node tests/render.mjs"
+    "test": "npm run build && node tests/render.mjs",
+    "lint": "eslint .",
+    "unused": "knip",
+    "boundaries": "depcruise --config dependency-cruiser.config.mjs src --include-only \"^src/\"",
+    "quality": "npm run lint && npm run unused && npm run boundaries",
+    "duplicates": "cd .. && jscpd --config .jscpd.json --no-gitignore --fail-on-empty --no-tips",
+    "duplicates:similar": "npm run duplicates -- --min-lines 5 --min-tokens 50 --ignore-identifiers"
   },
   "dependencies": {
     "@astrojs/node": "11.1.5",
@@ -20,7 +26,14 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
     "@types/node": "24.13.5",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "eslint": "10.11.0",
+    "eslint-plugin-astro": "1.6.0",
+    "typescript-eslint": "8.71.0",
+    "knip": "6.39.0",
+    "dependency-cruiser": "18.5.0",
+    "openapi-typescript": "7.13.0",
+    "jscpd": "5.4.0"
   },
   "engines": {
     "node": ">=22.12.0"

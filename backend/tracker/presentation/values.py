@@ -1,10 +1,9 @@
 """Values for reading documents; no collection or persistence."""
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from tracker.monitors.issues import Issue
-from tracker.presentation.model import Cell, Column, Field, Text
 from tracker.presentation.labels import appearance
-
+from tracker.presentation.model import Cell, Column, Field, Text
 
 CHECK_LABELS = {
     'ok': 'Checked', 'partial': 'Partial evidence', 'error': Issue.CHECK_FAILED,
@@ -30,7 +29,7 @@ def field(label, *values):
 
 def stamp(value):
     try:
-        date = datetime.fromisoformat(value).astimezone(timezone.utc)
+        date = datetime.fromisoformat(value).astimezone(UTC)
         return text(date.strftime('%Y-%m-%d %H:%M:%S UTC'), kind='time', datetime=value)
     except (ValueError, TypeError):
         return text('—', tone='muted')

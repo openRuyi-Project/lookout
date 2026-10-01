@@ -1,10 +1,13 @@
 """A registry's current-release withdrawal assertion, independent of upgrades."""
 
-from tracker.monitors.model import evidence, finding, version_query as query_subject
 from tracker.monitors.issues import Issue
+from tracker.monitors.model import evidence, finding
+from tracker.monitors.model import version_query as query_subject
 from tracker.monitors.schedule import Schedule
 from tracker.providers import release
 from tracker.providers.model import UnsupportedRelease
+
+__all__ = ['query_subject']
 
 
 TITLE = Issue.YANKED

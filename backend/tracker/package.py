@@ -4,10 +4,11 @@
 
 import argparse
 import json
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
-from tracker import config as cfg, config_change, state
+from tracker import config as cfg
+from tracker import config_change, state
 from tracker.monitors.version import nvchecker as nv
 from tracker.monitors.version.rules import same_values
 

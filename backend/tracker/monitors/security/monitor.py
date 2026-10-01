@@ -1,16 +1,19 @@
 """Security candidates, not a claim that distribution backports are absent."""
 
-from datetime import date
-from ipaddress import ip_address
 import json
 import re
+from datetime import date
+from ipaddress import ip_address
 from urllib.parse import quote, urlsplit
 
-from tracker.monitors.model import evidence, finding, version_query as query_subject
 from tracker.monitors.issues import Issue
+from tracker.monitors.model import evidence, finding
+from tracker.monitors.model import version_query as query_subject
 from tracker.monitors.schedule import Schedule
-from tracker.monitors.source.release import commit_hash, tag_matches_version
 from tracker.monitors.security import nvd
+from tracker.monitors.source.release import commit_hash, tag_matches_version
+
+__all__ = ['query_subject']
 
 
 TITLE = Issue.ADVISORY
@@ -54,7 +57,7 @@ def inputs(package, configured):
 
 def query_version(version, ecosystem):
     if ecosystem == 'PyPI':
-        from packaging.version import Version, InvalidVersion
+        from packaging.version import InvalidVersion, Version
         try:
             Version(version)
         except (InvalidVersion, TypeError):
@@ -114,7 +117,9 @@ def group_aliases(entries):
         matching = [g for g in groups if g[0] & aliases]
         members = [entry]
         for old in matching:
-            aliases |= old[0]; members += old[1]; groups.remove(old)
+            aliases |= old[0]
+            members += old[1]
+            groups.remove(old)
         groups.append((aliases, members))
     return groups
 
@@ -237,6 +242,17 @@ def check(subject, settings, io):
         entries = osv(subject, settings, io)
     if entries is None:
         return {"status": "unsupported", "findings": [], "note": "Upstream version identity is not established."}
+    provider = "NVD" if "vendor" in settings else "OSV"
+    source_url = nvd.query_url(settings, subject['version']) if provider == "NVD" else "https://api.osv.dev/v1/query"
+    if provider == 'NVD':
+        queried = {**{k: v for k, v in settings.items() if k != 'source'}, 'version': subject['version']}
+    else:
+        request = query(subject, settings)
+        if request is None:
+            return {"status": "unsupported", "findings": [], "note": "Upstream version identity is not established."}
+        queried = {'commit': request['commit']} if 'commit' in request else {**request['package'], 'version': request['version']}
+    query_facts = [evidence("Query " + key, value, provider, source_url, code="query")
+                   for key, value in queried.items()]
     groups = group_aliases(entries)
     cves = sorted({a for aliases, _ in groups for a in aliases if CVE.fullmatch(a)})
     kev, epss, errors = {}, {}, []
@@ -264,24 +280,12 @@ def check(subject, settings, io):
         ids = sorted(a for a in aliases if CVE.fullmatch(a))
         identity = ids[0] if ids else min(aliases)
         active = bool(set(ids) & set(kev))
-        provider = "NVD" if "vendor" in settings else "OSV"
         link = (
             "https://nvd.nist.gov/vuln/detail/" + identity
             if ids
             else "https://osv.dev/vulnerability/" + quote(identity, safe="")
         )
-        source_url = (
-            nvd.query_url(settings, subject['version']) if "vendor" in settings else "https://api.osv.dev/v1/query"
-        )
-        if provider == 'NVD':
-            queried = {**{k: v for k, v in settings.items() if k != 'source'}, 'version': subject['version']}
-        else:
-            request = query(subject, settings)
-            queried = {'commit': request['commit']} if 'commit' in request else {**request['package'], 'version': request['version']}
-        facts = [
-            evidence("Query " + key, value, provider, source_url, code="query")
-            for key, value in queried.items()
-        ]
+        facts = list(query_facts)
         if 'commit' in settings:
             facts.append(evidence('Source repository', settings['repository'], 'RPM Source0',
                                   settings['repository'], code='query'))

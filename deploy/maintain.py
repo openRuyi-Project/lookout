@@ -3,7 +3,6 @@
 import argparse
 from datetime import datetime, timezone
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,7 +11,7 @@ import tempfile
 import time
 import uuid
 
-from deployment import Docker, Quadlet, PYTHON, run, instance_lock, upgrade_lock
+from deployment import Docker, Quadlet, PYTHON, run, instance_lock, upgrade_lock, publish_file
 
 
 def backup(service, output):
@@ -27,14 +26,7 @@ def backup(service, output):
             staged = Path(directory) / 'snapshot.sqlite3'
             run([service.engine, 'cp', service.name + ':' + remote, str(staged)])
             staged.chmod(0o600)
-            with staged.open('rb') as stream:
-                os.fsync(stream.fileno())
-            os.link(staged, output)
-            fd = os.open(output.parent, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(fd)
-            finally:
-                os.close(fd)
+            publish_file(staged, output)
     finally:
         run([service.engine, 'exec', service.name, PYTHON, '-c',
              'from pathlib import Path; import sys; Path(sys.argv[1]).unlink()', remote])

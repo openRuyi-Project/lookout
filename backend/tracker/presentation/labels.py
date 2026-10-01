@@ -1,7 +1,6 @@
 """Display vocabulary, independent of stored facts and query identities."""
-from pathlib import Path
 import tomllib
-
+from pathlib import Path
 
 _CONFIG = tomllib.loads(Path(__file__).with_suffix('.toml').read_text())
 CATALOG = _CONFIG['labels']

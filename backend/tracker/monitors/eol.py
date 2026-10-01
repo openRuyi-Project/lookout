@@ -1,12 +1,11 @@
 """Lifecycle adapter. Product/cycle policy belongs to package configuration."""
 
-from datetime import date
 import re
+from datetime import date
 from urllib.parse import quote
 
 from tracker.monitors.model import evidence, finding
 from tracker.monitors.schedule import Schedule
-
 
 TITLE = 'EOL'
 VERSION = 2

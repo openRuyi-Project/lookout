@@ -2,15 +2,15 @@
 import hashlib
 import json
 import os
-from pathlib import Path
 import selectors
 import signal
 import socket
 import subprocess
 import sys
-from tempfile import TemporaryDirectory
 import threading
 import time
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from urllib.parse import quote
 
 from tracker.state import usable_version
@@ -61,6 +61,7 @@ def _run(inputs, work):
         deadline = time.monotonic() + _TIMEOUT
         with selectors.DefaultSelector() as selector:
             selector.register(reader, selectors.EVENT_READ, 'result')
+            assert process.stderr is not None
             selector.register(process.stderr, selectors.EVENT_READ, 'stderr')
             while selector.get_map():
                 remaining = deadline - time.monotonic()
@@ -126,7 +127,8 @@ def _run(inputs, work):
         if process is not None:
             # Remove descendants even if the direct worker already exited.
             _kill_group(process)
-            process.stderr.close()
+            if process.stderr is not None:
+                process.stderr.close()
         reader.close()
         writer.close()
 
@@ -157,7 +159,8 @@ def _parse(spec, macros, local_sources=()):
         context['local_sources'] = [p for p, _ in local_sources]
     with _WORKERS, TemporaryDirectory(prefix='openruyi-rpmspec-') as temp:
         inputs, work = Path(temp) / 'inputs', Path(temp) / 'work'
-        inputs.mkdir(); work.mkdir()
+        inputs.mkdir()
+        work.mkdir()
         (inputs / 'package.spec').write_bytes(spec)
         for provenance, data in local_sources:
             (work / provenance['name']).write_bytes(data)

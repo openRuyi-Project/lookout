@@ -4,9 +4,8 @@ from urllib.parse import quote
 
 from tracker.identity import from_package
 from tracker.monitors.source.release import semver
-from tracker.providers.model import Release, UnsupportedRelease
 from tracker.providers.go_mod import retractions, version_key
-
+from tracker.providers.model import Release, UnsupportedRelease
 
 HOSTS = {'api.deps.dev', 'proxy.golang.org'}
 

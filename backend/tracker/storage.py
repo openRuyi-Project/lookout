@@ -1,11 +1,14 @@
 """SQLite row storage; public snapshots are assembled views, not database blobs."""
-from contextlib import closing
-from dataclasses import dataclass, field
 import hashlib
 import json
-from pathlib import Path
 import sqlite3
 import uuid
+from contextlib import closing
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+type Snapshot = dict[str, Any]
 
 
 FORMAT = 2
@@ -25,11 +28,12 @@ def encode(value):
     return json.dumps(value, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(',', ':'))
 
 
-def validate(snapshot):
+def validate(snapshot) -> Snapshot:
     if (not isinstance(snapshot, dict) or type(snapshot.get('schema')) is not int
             or snapshot['schema'] != 1 or type(snapshot.get('generation')) is not int
             or snapshot['generation'] < 0):
         raise ValueError('snapshot payload is invalid')
+    return snapshot
 
 
 def pack(snapshot, previous=None):
@@ -152,7 +156,7 @@ def commit(db, snapshot, *, previous=None):
             raise
 
 
-def read(db, previous=None):
+def read(db, previous: tuple[Snapshot, Revision | None] | None = None) -> tuple[Snapshot, Revision, str | None]:
     """Capture rows in one read transaction, then decode after releasing its lock."""
     with closing(sqlite3.connect(Path(db).resolve().as_uri() + '?mode=ro', uri=True, timeout=10)) as conn:
         conn.execute('BEGIN')
@@ -165,7 +169,7 @@ def read(db, previous=None):
         token, stamp = clock
         prior = previous[1] if previous and isinstance(previous[1], Revision) else None
         clock_rewound = bool(prior and prior.build_stamp and (not stamp or stamp < prior.build_stamp))
-        if prior and prior.token == token and not clock_rewound:
+        if previous is not None and prior and prior.token == token and not clock_rewound:
             return previous[0], Revision(token, prior.rows, stamp), stamp
         row = conn.execute('SELECT payload FROM snapshot WHERE id=1').fetchone()
         if row is None:
@@ -194,8 +198,7 @@ def read(db, previous=None):
         return header, Revision(token, build_stamp=stamp), stamp
     if not isinstance(header, dict) or header.get('storage') != FORMAT:
         raise ValueError('snapshot payload is invalid')
-    snapshot = header.get('snapshot')
-    validate(snapshot)
+    snapshot = validate(header.get('snapshot'))
     sections = header.get('sections')
     if not isinstance(sections, dict) or set(sections) - DEPTH.keys():
         raise ValueError('snapshot collections are invalid')
@@ -208,6 +211,8 @@ def read(db, previous=None):
         if key in payloads:
             value = json.loads(payloads[key])
         else:
+            if previous is None:
+                raise ValueError('unchanged observation requires a prior snapshot')
             value = previous[0][section][subject]
             if DEPTH[section] == 2:
                 value = value[slot]

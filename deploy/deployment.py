@@ -109,6 +109,25 @@ def upgrade_lock(path):
         yield
 
 
+def publish_file(staged, destination, *, replace=False):
+    """Sync and publish a staged file; only reviewed replacements may overwrite.
+
+    Staging must be on the destination filesystem. A failed directory sync is
+    reported even if publication succeeded; callers must not assume no file exists.
+    """
+    with staged.open('rb') as stream:
+        os.fsync(stream.fileno())
+    if replace:
+        os.replace(staged, destination)
+    else:
+        os.link(staged, destination)
+    directory = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
 def write_exclusive(path, data):
     """Publish a fully synced file without overwriting a concurrently created one."""
     temporary = None
@@ -116,14 +135,7 @@ def write_exclusive(path, data):
         with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as stream:
             temporary = Path(stream.name)
             stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.link(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        publish_file(temporary, path)
     finally:
         if temporary:
             temporary.unlink(missing_ok=True)
@@ -288,15 +300,8 @@ class Docker:
             with tempfile.TemporaryDirectory(dir=destination.parent) as temporary:
                 staged = Path(temporary) / 'backup.sqlite3'
                 run(['docker', 'cp', f'{helper}:/backup/{filename}', str(staged)])
-                with staged.open('rb') as stream:
-                    os.fsync(stream.fileno())
                 staged.chmod(0o600)
-                os.link(staged, destination)
-                fd = os.open(destination.parent, os.O_RDONLY | os.O_DIRECTORY)
-                try:
-                    os.fsync(fd)
-                finally:
-                    os.close(fd)
+                publish_file(staged, destination)
         finally:
             run(['docker', 'rm', helper])
 
@@ -390,14 +395,7 @@ def write_unit(path, expected, replacement):
             temporary = Path(stream.name)
             os.fchmod(stream.fileno(), path.stat().st_mode & 0o777)
             stream.write(replacement)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-        fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        publish_file(temporary, path, replace=True)
     finally:
         if temporary:
             temporary.unlink(missing_ok=True)

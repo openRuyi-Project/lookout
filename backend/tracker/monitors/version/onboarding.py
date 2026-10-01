@@ -1,7 +1,8 @@
 """Offline proposals from confined RPM facts; never a runtime version authority."""
 from pathlib import Path
 
-from tracker import config as cfg, state
+from tracker import config as cfg
+from tracker import state
 from tracker.monitors.version import candidates as discover_sources
 
 

@@ -2,7 +2,6 @@
 import re
 from urllib.parse import urlencode
 
-
 URL = 'https://services.nvd.nist.gov/rest/json/cves/2.0'
 MIN_INTERVAL = 6.5
 

@@ -1,15 +1,16 @@
 """A bounded, single-writer collection command, independent of HTTP request handling."""
 import argparse
 import concurrent.futures
+import json
 from copy import deepcopy
 from datetime import datetime
-import json
-from pathlib import Path
 from urllib.parse import quote
 
-from tracker import config as cfg, state
+from tracker import config as cfg
+from tracker import state
 from tracker.monitors.build import obs
-from tracker.monitors.source import git as spec_git, rpm as native_spec
+from tracker.monitors.source import git as spec_git
+from tracker.monitors.source import rpm as native_spec
 from tracker.monitors.version import nvchecker as nv
 
 HISTORY_VERSION_BATCH_SIZE = 12  # at most 24 extra OBS requests per collection (before HTTP retries)
@@ -419,7 +420,7 @@ def check_upstreams(config, config_path, db, run_nv=nv.run, tracks=None, attempt
                 successes = [fact.get('fetched_at') for fact in retained.values()]
                 prior = latest['components'].get('nvchecker', {})
                 complete = len(retained) == len(config['native']) and all(successes)
-                component = {**prior, 'attempted_at': now, 'selected_track_count': len(selected),
+                component = {**prior, 'attempted_at': now, 'selected_track_count': len(selected or ()),
                              'options_fingerprint': cfg.track_fingerprint(config.get('native_options', {})),
                              'error': error or ('some upstream tracks failed' if not complete or
                                                any(fact.get('error') for fact in retained.values()) else None)}
@@ -529,6 +530,8 @@ def main():
     except BlockingIOError:
         print(json.dumps({'error': 'collector already running'}))
         return 75
+    if snapshot is None:
+        raise ValueError('No collection phase selected')
     collection_errors = [v['error'] for v in snapshot['components'].values() if v.get('error')]
     owners = {'obs': ('obs', 'builds'), 'obs-metadata': ('obs',)}.get(args.only, (args.only,))
     errors = [v['error'] for key, v in snapshot['components'].items() if v.get('error')

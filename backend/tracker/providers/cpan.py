@@ -5,7 +5,6 @@ from urllib.parse import quote
 from tracker.identity import from_package
 from tracker.providers.model import Release, UnsupportedRelease
 
-
 HOSTS = {'fastapi.metacpan.org'}
 # CPAN::Meta::Spec license codes, not guesses from license prose. Multiple
 # codes have no specified AND/OR relationship and are deliberately not joined.

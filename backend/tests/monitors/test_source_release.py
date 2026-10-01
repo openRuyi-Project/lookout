@@ -128,3 +128,11 @@ def test_registry_parser_is_shared_by_runtime_and_offline_candidates():
     assert entry['cratesio'] == release.name == 'widget'
     assert entry['include_regex'] == r'^1\.[0-9]+\.[0-9]+$'
     assert 'use_pre_release' not in entry
+
+
+@pytest.mark.parametrize('version', ['not-semver', '1.2', '01.2.3', None])
+def test_invalid_release_identity_cannot_match_the_rpm_version(version):
+    from tracker.monitors.source import release as source_release
+
+    identity = source_release.Release('crates.io', 'fixture', version, 'https://example.org/fixture')
+    assert not source_release.matches_rpm(identity, '1.2.3')

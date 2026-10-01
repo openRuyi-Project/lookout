@@ -1,12 +1,16 @@
 """Cargo's published minimum toolchain declaration, not a build guarantee."""
 from tracker.monitors.requires.compare import numeric_release
 from tracker.monitors.requires.model import Requirement, UnsupportedRequirements
-from tracker.providers.cratesio import HOSTS, inputs, project, release
+from tracker.providers.cratesio import HOSTS as HOSTS
+from tracker.providers.cratesio import inputs as inputs
+from tracker.providers.cratesio import project, release
 
 
 def read(version, settings, io):
     info, url = release(project(settings), version, io)
     declaration = info.get("rust_version")
+    if not isinstance(declaration, str):
+        raise UnsupportedRequirements("Comparable rust-version declarations are missing or invalid.")
     try:
         normalized = numeric_release(declaration)
     except ValueError as error:

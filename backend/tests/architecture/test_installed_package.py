@@ -59,3 +59,17 @@ runpy.run_module('tracker.monitors', run_name='__main__')
 '''
     output = run([sys.executable, '-I', '-c', program, str(installed)], tmp_path)
     assert 'explain' in output and '--monitor' in output
+
+
+def test_native_rpm_type_surface_matches_installed_bindings():
+    import ast
+    import rpm
+
+    interface = ast.parse((BACKEND / 'typings/rpm/__init__.pyi').read_text())
+    for declaration in interface.body:
+        if isinstance(declaration, ast.AnnAssign):
+            value = getattr(rpm, declaration.target.id)
+            expected = {'str': str, 'int': int}[declaration.annotation.id]
+            assert isinstance(value, expected)
+        elif isinstance(declaration, (ast.FunctionDef, ast.ClassDef)):
+            assert callable(getattr(rpm, declaration.name))

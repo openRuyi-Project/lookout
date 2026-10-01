@@ -1,8 +1,10 @@
 """One version decision from saved observations, shared by readers and monitors."""
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from tracker import config as cfg, identity as package_identity, state
+from tracker import config as cfg
+from tracker import identity as package_identity
+from tracker import state
 from tracker.monitors.source import release as source_release
 
 
@@ -49,7 +51,7 @@ class VersionStatus:
 
 
 def evaluate(snapshot, name, now=None, *, native_ids=None):
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     binding = cfg.resolve_binding(name, native_ids if native_ids is not None else snapshot.get('native_ids', ()),
                                   snapshot.get('bindings', {}).get(name, {}))
     source = state.current_source(snapshot, name)
@@ -63,11 +65,11 @@ def evaluate(snapshot, name, now=None, *, native_ids=None):
     upstream_stale = state.stale(upstream, now, snapshot.get('stale_after_seconds', 86400)) if track else False
     # Historical comparison is retained for API evidence, never upgrade eligibility.
     current, target = source.get('version'), upstream.get('version')
-    if release:
+    released = source_release.semver(release.version) if release else None
+    if released is not None:
         # Main comparison selects formal releases. A prerelease with the same
         # numeric base is still older; RPM's display version may have lost that
         # suffix. Keep native RPM comparison for the numeric release versions.
-        released = source_release.semver(release.version)
         wanted = source_release.semver(target)
         current = released['base']
         target = wanted['base'] if wanted and not wanted['preview'] else None
@@ -77,7 +79,7 @@ def evaluate(snapshot, name, now=None, *, native_ids=None):
             revision and source_release.commit_hash(target) and binding.get('comparable', True)) else 'unknown'
     else:
         last = state.compare(current, target, binding.get('comparable', True))
-    if release and last == 'current' and released['preview']:
+    if released is not None and last == 'current' and released['preview']:
         last = 'outdated'
     identity = package_identity.from_native(upstream.get('source') or {})
     conflict = bool(release and identity and release.identity != identity)
@@ -107,7 +109,7 @@ def evaluate(snapshot, name, now=None, *, native_ids=None):
 
 def evaluate_all(snapshot, now=None):
     """Resolve each package once per read/collection pass; share the track-ID set."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     native_ids = frozenset(snapshot.get('native_ids', ()))
     return {name: evaluate(snapshot, name, now, native_ids=native_ids)
             for name in state.package_names(snapshot)}

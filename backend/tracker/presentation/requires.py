@@ -3,10 +3,9 @@ import json
 from urllib.parse import quote
 
 from tracker.monitors.requires.model import unsatisfied
-from tracker.presentation.model import Column, Entry, Row, Section, Table
 from tracker.presentation.labels import caption
+from tracker.presentation.model import Column, Entry, Row, Section, Table
 from tracker.presentation.values import cell, field, retained_marker, text, version_value
-
 
 DEPENDENCY_TITLES = {'runtime': 'RuntimeDeps', 'build': 'BuildDeps'}
 

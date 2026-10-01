@@ -1,24 +1,26 @@
 """Phase-owned observation updates and atomic SQLite snapshot views."""
-from contextlib import closing, contextmanager
-from copy import deepcopy
-from datetime import datetime, timedelta, timezone
 import fcntl
 import hashlib
 import json
-from pathlib import Path
 import re
 import sqlite3
 import time
+from contextlib import closing, contextmanager
+from copy import deepcopy
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
 from tracker import storage
 
-def utcnow():
-    return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
-def empty():
+def utcnow():
+    return datetime.now(UTC).isoformat(timespec='seconds')
+
+def empty() -> storage.Snapshot:
     return dict(schema=1, generation=0, mode='live', sources={}, tracks={}, builds={}, specs={},
                 inventory={}, index={}, components={}, last_attempt=None)
 
-def read(db):
+def read(db) -> storage.Snapshot:
     return read_cached(db)[0]
 
 
@@ -40,7 +42,7 @@ def recover(db):
     return True
 
 
-def read_cached(db, previous=None):
+def read_cached(db, previous: tuple[storage.Snapshot, storage.Revision | None] | None = None) -> tuple[storage.Snapshot, storage.Revision | None]:
     """Read one SQLite transaction, reusing payload only for its exact storage revision.
 
     Successful, unchanged build polls have a small clock row. They never relabel

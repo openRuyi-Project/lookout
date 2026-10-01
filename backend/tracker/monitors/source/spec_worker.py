@@ -1,15 +1,16 @@
 """One request, one confined RPM process. Not a general command execution service."""
+import importlib.util
 import json
 import os
-from pathlib import Path
 import sys
 import threading
-
-import importlib.util
+from pathlib import Path
 
 # -I excludes cwd and script directory from sys.path; load this immutable sibling
 # explicitly before reading or executing any SPEC bytes.
 _module = importlib.util.spec_from_file_location("spec_sandbox", Path(__file__).with_name("spec_sandbox.py"))
+if _module is None or _module.loader is None:
+    raise RuntimeError("SPEC sandbox module is unavailable")
 _sandbox = importlib.util.module_from_spec(_module)
 _module.loader.exec_module(_sandbox)
 confine = _sandbox.confine
@@ -34,7 +35,7 @@ def main():
             try:
                 rpm.addMacro('_sourcedir', str(work))
                 for macro in sorted(inputs.glob('macros.*')):
-                    rpm.expandMacro('%%{load:%s}' % macro)
+                    rpm.expandMacro(f'%{{load:{macro}}}')
                 # RPM's declarative BuildSystem parser creates internal script
                 # files using _tmppath, not TMPDIR. Keep those inside this workdir.
                 rpm.addMacro('_tmppath', str(work))

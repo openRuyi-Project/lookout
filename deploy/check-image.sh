@@ -28,10 +28,18 @@ fi
     unset TRACKER_CONFIG TRACKER_DB TRACKER_SPEC_REPO HOST PORT API_PORT
     export PYTHONDONTWRITEBYTECODE=1
     export HYPOTHESIS_STORAGE_DIRECTORY=/tmp/hypothesis
+    export RUFF_CACHE_DIR=/tmp/ruff-cache
+    export NODE_PATH=/app/frontend/node_modules
+    export PYTHONPATH=/testsrc/backend:/app/backend
     cd /testsrc
     python scripts/check-architecture.py
     python scripts/api-types.py --check
     cd backend
+    ruff check tracker nvchecker_source
+    pyright --pythonpath /opt/venv/bin/python
+    lint-imports --no-cache --no-logo
+    deptry .
+    vulture tracker nvchecker_source --min-confidence 100
     python -m pytest -q -p no:cacheprovider --junitxml=/tmp/results.xml
     python -c '\''import xml.etree.ElementTree as E; r=E.parse("/tmp/results.xml"); assert not r.findall(".//skipped"), "Skipped tests are not allowed in the native release gate"'\''
     cd /app/frontend

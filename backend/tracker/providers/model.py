@@ -1,5 +1,30 @@
 """Normalized release facts shared by registry adapters."""
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Protocol
+
+
+class IdentityProvider(Protocol):
+    @property
+    def HOSTS(self) -> set[str]: ...
+
+    def inputs(self, package: dict, configured: dict | None, /) -> dict | None: ...
+
+
+def resolve_inputs(providers: Mapping[str, IdentityProvider], package: dict, configured: dict | None) -> dict | None:
+    """Explicit identities select one provider; inference stops at the first match."""
+    if configured is not None:
+        if not isinstance(configured, dict) or len(configured) != 1:
+            raise ValueError('Expected one supported registry identity')
+        provider = providers.get(next(iter(configured)))
+        if provider is None:
+            raise ValueError('Unsupported release registry')
+        return provider.inputs(package, configured)
+    for provider in providers.values():
+        resolved = provider.inputs(package, None)
+        if resolved is not None:
+            return resolved
+    return None
 
 
 class UnsupportedRelease(ValueError):

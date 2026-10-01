@@ -2,14 +2,15 @@
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import tomllib
+from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit, urlunsplit
 
-from tracker.identity import request_url
 from tracker import catalog
 from tracker.catalog import read_input
+from tracker.identity import request_url
+
 
 def load(path):
     path = Path(path).absolute()
@@ -21,6 +22,18 @@ def load(path):
     # Hash the bytes parsed, not a later read: collectors use these stamps to
     # reject publication after an in-flight configuration edit.
     input_hashes = {str(path): hashlib.sha256(raw).hexdigest()}
+    _collector_settings(config)
+    catalog.load(config, path, input_hashes)
+    config['input_hashes'] = input_hashes
+    config['config_digest'] = input_hashes[str(path)]
+    _distribution_settings(config)
+    _target_bindings(config)
+    _spec_settings(config)
+    _origin_settings(config)
+    return config
+
+
+def _collector_settings(config):
     for key, default in (('obs_interval_seconds', 60), ('build_interval_seconds', 15), ('nvchecker_interval_seconds', 21600),
                          ('nvchecker_timeout_seconds', 7200), ('build_history_interval_seconds', 300)):
         value = config['collector'].setdefault(key, default)
@@ -33,9 +46,9 @@ def load(path):
                                       ('nvchecker_interval_seconds', 'stale_after_seconds', 86400)):
         if config['collector'].get(stale, default) <= config['collector'][interval]:
             raise ValueError(f'{stale} must exceed {interval}')
-    catalog.load(config, path, input_hashes)
-    config['input_hashes'] = input_hashes
-    config['config_digest'] = input_hashes[str(path)]
+
+
+def _distribution_settings(config):
     # Distribution presentation data has one owner; the frontend knows no
     # BuildSystem categories. CSS values are deliberately limited to hex colors.
     config.setdefault('openruyi', {}).setdefault('buildsystems', {})
@@ -64,6 +77,9 @@ def load(path):
                 or ('icon' in appearance and (not isinstance(appearance['icon'], str)
                     or not re.fullmatch(r'[a-z][a-z0-9-]{0,47}', appearance['icon'])))):
             raise ValueError('openruyi.buildsystems requires hex colors and an optional local icon identifier')
+
+
+def _target_bindings(config):
     ids = [t['id'] for t in config['targets']]
     identities = [(t['repository'], t['architecture']) for t in config['targets']]
     if len(ids) != 3 or len(set(ids)) != 3 or len(set(identities)) != 3:
@@ -72,6 +88,9 @@ def load(path):
         for track in [binding.get('compare'), *binding.get('watch', [])]:
             if track and track not in config['native']:
                 raise ValueError(f'unknown configured track: {track}')
+
+
+def _spec_settings(config):
     spec = config.get('spec', {})
     config['spec'] = {
         # The image sets TRACKER_SPEC_REPO: it enables SPEC collection even
@@ -118,6 +137,9 @@ def load(path):
     if repo is not None and (not isinstance(repo, str) or not repo):
         raise ValueError('spec.repo must be a non-empty path or omitted')
 
+
+
+def _origin_settings(config):
     for value in (config['obs']['api_url'], config['obs']['web_url']):
         u = urlsplit(value)
         if u.scheme not in ('http', 'https') or not u.hostname or u.username or u.password or u.query or u.fragment:
@@ -125,7 +147,6 @@ def load(path):
     template = config['spec']['source_url_template']
     if template is not None and not spec_source_url({'url': config['spec']['url'], 'source_url_template': template}, 'PACKAGE', 'REF'):
         raise ValueError('spec.source_url_template must be a public HTTP(S) URL containing {ref} and {path}')
-    return config
 
 
 def require_unchanged(config, path=None):

@@ -1,0 +1,17 @@
+{
+  "entry": [
+    "scripts/api-types.cjs"
+  ],
+  "project": [
+    "**/*.{ts,astro,mjs,cjs}"
+  ],
+  "ignoreIssues": {
+    "src/lib/api.generated.ts": [
+      "exports",
+      "types"
+    ]
+  },
+  "ignoreUnresolved": [
+    "^\\./dist/server/entry\\.mjs$"
+  ]
+}

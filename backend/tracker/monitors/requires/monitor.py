@@ -1,19 +1,20 @@
 """Exact upstream release declarations; comparison and local assessment are read-side."""
 from typing import Protocol
 
-from tracker.monitors.model import finding, fingerprint, version_query as query_subject
-from tracker.monitors.requires import cpan as requires_cpan, cratesio as requires_cratesio, pypi as requires_pypi
+from tracker.monitors.model import finding, fingerprint
+from tracker.monitors.model import version_query as query_subject
+from tracker.monitors.requires import cpan as requires_cpan
+from tracker.monitors.requires import cratesio as requires_cratesio
+from tracker.monitors.requires import pypi as requires_pypi
 from tracker.monitors.requires.model import Requirement, UnsupportedRequirements, key
 from tracker.monitors.schedule import Schedule
-from tracker.providers.model import UnsupportedRelease
+from tracker.providers.model import IdentityProvider, UnsupportedRelease, resolve_inputs
+
+__all__ = ['query_subject']
 
 
-class Backend(Protocol):
-    HOSTS: set[str]
-
-    def inputs(self, package: dict, configured: dict | None) -> dict | None: ...
-
-    def read(self, version: str, settings: dict, io) -> list[Requirement]: ...
+class Backend(IdentityProvider, Protocol):
+    def read(self, version: str, settings: dict, io, /) -> list[Requirement]: ...
 
 
 TITLE = 'Dependencies'
@@ -24,18 +25,7 @@ HOSTS = set().union(*(backend.HOSTS for backend in BACKENDS.values()))
 
 
 def inputs(package, configured):
-    if configured is not None:
-        if not isinstance(configured, dict) or len(configured) != 1:
-            raise ValueError('Requires needs one supported provider identity')
-        provider = next(iter(configured))
-        if provider not in BACKENDS:
-            raise ValueError('unsupported Requires provider')
-        return BACKENDS[provider].inputs(package, configured)
-    for backend in BACKENDS.values():
-        resolved = backend.inputs(package, None)
-        if resolved is not None:
-            return resolved
-    return None
+    return resolve_inputs(BACKENDS, package, configured)
 
 
 def refresh(subject, inputs, previous):

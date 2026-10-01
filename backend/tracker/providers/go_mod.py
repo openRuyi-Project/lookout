@@ -4,7 +4,6 @@ import re
 from tracker.monitors.source.release import semver
 from tracker.providers.model import UnsupportedRelease
 
-
 _TOKEN = re.compile(r'\s+|//.*|"(?:\\[^\r\n]|[^"\\\r\n])*"|`[^`\r\n]*`|[()\[\],]|'
                     r'(?:(?!//|/\*|\*/)[^\s"`()\[\],])+')
 

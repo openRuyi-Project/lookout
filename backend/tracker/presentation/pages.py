@@ -1,14 +1,27 @@
 """Pages for reading documents; no collection or persistence."""
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from tracker.monitors.model import check_failed
 from tracker.monitors.issues import Issue
-from tracker.presentation.evidence import evidence_labels
+from tracker.monitors.model import check_failed
 from tracker.presentation.build import build_note
+from tracker.presentation.evidence import evidence_labels
 from tracker.presentation.labels import appearance, caption, palettes, priority
-from tracker.presentation.model import Choice, Column, DetailDocument, Field, ListingDocument, Navigation, Row, Section, Table
+from tracker.presentation.model import (
+    Choice,
+    Column,
+    DetailDocument,
+    Field,
+    ListingDocument,
+    Navigation,
+    Row,
+    Section,
+    Table,
+)
 from tracker.presentation.navigation import (
-    Links, global_navigation, listing_controls, listing_query,
+    Links,
+    global_navigation,
+    listing_controls,
+    listing_query,
 )
 from tracker.presentation.registry import PRESENTERS, presenter
 from tracker.presentation.source import changelog_section
@@ -82,58 +95,15 @@ def listing(payload, query):
     focus = next((m for m in payload['monitors'] if m['id'] == query.get('monitor')), None)
     payload = {**payload, 'section': query.get('section', 'results')}
     links = Links(query)
-    coverage = bool(focus and payload['section'] == 'coverage')
-    filtered_checks = coverage and any(c.dimension == 'check:' + focus['id']
-            for g in links.editor.query.groups for c in g.conditions)
-    reasons = {pkg['name']: pkg['monitors'][focus['id']]['check'].get('error') or
-               pkg['monitors'][focus['id']]['check'].get('note')
-               for pkg in payload['items']} if filtered_checks else {}
-    show_reason = any(reasons.values())
-    descriptors = ([focus] if focus else [m for m in payload['monitors'] if m['kind'] in ('version', 'build')])
-    columns = [Column(title='Package', role='identity')]
-    if filtered_checks:
-        columns.append(Column(title='Version'))
-        if show_reason:
-            columns.append(Column(title='Reason'))
-    elif coverage:
-        columns += [Column(title='Check'), Column(title='Last checked')]
-    else:
-        for descriptor in descriptors:
-            projected = presenter(descriptor).columns(caption(descriptor['title']), payload['targets'])
-            columns.extend(projected)
-    rows = []
-    for pkg in payload['items']:
-        cells = [identity_cell(pkg, links, labels=not focus)]
-        notes = []
-        if filtered_checks:
-            source = module(pkg, 'source')
-            cells.append(cell([text(source['data'].get('version') if source else None, kind='code')]))
-            if show_reason:
-                cells.append(cell([text(reasons[pkg['name']], tone='notice')]))
-        elif coverage:
-            check = pkg['monitors'][focus['id']]['check']
-            cells += [cell([check_value(check)]), cell([stamp(check.get('checked_at'))])]
-        else:
-            for descriptor in descriptors:
-                result = pkg['monitors'][descriptor['id']]
-                column = len(cells)
-                if not focus and descriptor['kind'] == 'version':
-                    cells.append(cell(version_value(pkg, links=links)))
-                    for related in sorted(pkg['monitors'].values(), key=lambda m: m['id'] == 'eol'):
-                        preview = presenter({'kind': related['data']['kind']}).preview
-                        if preview:
-                            cells[column].lines.extend(preview(pkg, related, links))
-                else:
-                    cells.extend(presenter(descriptor).cells(pkg, result, links))
-                if not focus and descriptor['kind'] == 'build':
-                    notes.extend(build_note(pkg, result, column))
-        rows.append(Row(key=pkg['name'], cells=cells, notes=notes))
     title = caption(focus['title']) if focus else 'Packages'
     navigation = Navigation(label='Monitors', choices=[
         Choice(label='Packages', href=links.to(monitor='', section=''), selected=not focus),
         *[Choice(label=caption(m['title']), href=links.to(monitor=m['id'], section='results'),
                  selected=m == focus) for m in sorted(payload['monitors'], key=lambda m: m['id'] == 'eol')
           if presenter(m).has_results and m['id'] != 'yanked']])
+    table = (_coverage_table(payload, focus, links, title)
+             if focus is not None and payload['section'] == 'coverage'
+             else _results_table(payload, focus, links, title))
     controls = listing_controls(payload, query, focus, links)
     pagination = []
     if payload['page'] > 1:
@@ -145,10 +115,71 @@ def listing(payload, query):
     if notice := payload['collection'].get('projection_notice'):
         notices.append(notice)
     return ListingDocument(title=title, navigation=navigation, global_navigation=global_navigation(payload, links), controls=controls,
-        table=Table(label=title, columns=columns, rows=rows), total=payload['total'], page=payload['page'],
+        table=table, total=payload['total'], page=payload['page'],
         pages=payload['pages'], pagination=pagination, meta=meta,
         notices=notices)
 
+
+
+def _coverage_table(payload, focus, links, title):
+    filtered = any(c.dimension == 'check:' + focus['id']
+                   for g in links.editor.query.groups for c in g.conditions)
+    reasons = {pkg['name']: pkg['monitors'][focus['id']]['check'].get('error') or
+               pkg['monitors'][focus['id']]['check'].get('note')
+               for pkg in payload['items']} if filtered else {}
+    show_reason = any(reasons.values())
+    columns = [Column(title='Package', role='identity')]
+    if filtered:
+        columns.append(Column(title='Version'))
+        if show_reason:
+            columns.append(Column(title='Reason'))
+    else:
+        columns += [Column(title='Check'), Column(title='Last checked')]
+    rows = []
+    for pkg in payload['items']:
+        cells = [identity_cell(pkg, links, labels=False)]
+        if filtered:
+            source = module(pkg, 'source')
+            cells.append(cell([text(source['data'].get('version') if source else None, kind='code')]))
+            if show_reason:
+                cells.append(cell([text(reasons[pkg['name']], tone='notice')]))
+        else:
+            check = pkg['monitors'][focus['id']]['check']
+            cells += [cell([check_value(check)]), cell([stamp(check.get('checked_at'))])]
+        rows.append(Row(key=pkg['name'], cells=cells))
+    return Table(label=title, columns=columns, rows=rows)
+
+
+def _results_table(payload, focus, links, title):
+    descriptors = [focus] if focus else [m for m in payload['monitors'] if m['kind'] in ('version', 'build')]
+    columns = [Column(title='Package', role='identity')]
+    for descriptor in descriptors:
+        columns_for = presenter(descriptor).columns
+        assert columns_for is not None
+        columns.extend(columns_for(caption(descriptor['title']), payload['targets']))
+    return Table(label=title, columns=columns,
+                 rows=[_result_row(pkg, descriptors, focus is None, links) for pkg in payload['items']])
+
+
+def _result_row(pkg, descriptors, aggregate, links):
+    cells = [identity_cell(pkg, links, labels=aggregate)]
+    notes = []
+    for descriptor in descriptors:
+        result = pkg['monitors'][descriptor['id']]
+        column = len(cells)
+        if aggregate and descriptor['kind'] == 'version':
+            cells.append(cell(version_value(pkg, links=links)))
+            for related in sorted(pkg['monitors'].values(), key=lambda m: m['id'] == 'eol'):
+                preview = presenter({'kind': related['data']['kind']}).preview
+                if preview:
+                    cells[column].lines.extend(preview(pkg, related, links))
+        else:
+            cells_for = presenter(descriptor).cells
+            assert cells_for is not None
+            cells.extend(cells_for(pkg, result, links))
+        if aggregate and descriptor['kind'] == 'build':
+            notes.extend(build_note(pkg, result, column))
+    return Row(key=pkg['name'], cells=cells, notes=notes)
 
 def detail(pkg):
     links = Links()

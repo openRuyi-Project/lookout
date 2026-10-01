@@ -3,11 +3,10 @@
 RPM Version remains the distribution/display version. This projection neither
 creates nvchecker rules nor fetches metadata; consumers share the same identity.
 """
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
 import re
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from urllib.parse import quote, urlsplit, urlunsplit
-
 
 _NUMBER = r'(?:0|[1-9][0-9]*)'
 _SEMVER = re.compile(
@@ -73,7 +72,7 @@ def from_url(value):
 def matches_rpm(release, current):
     """Recognize the observed numeric-base/tilde packaging forms, not any mismatch."""
     parsed = semver(release.version)
-    return current in (release.version, parsed['base'], release.version.replace('-', '~', 1))
+    return bool(parsed and current in (release.version, parsed['base'], release.version.replace('-', '~', 1)))
 
 
 def primary_source_url(source):
@@ -132,7 +131,7 @@ def revision_time(value):
         return None
     try:
         stamp = datetime.fromisoformat(value)
-        return stamp.astimezone(timezone.utc).isoformat() if stamp.tzinfo else None
+        return stamp.astimezone(UTC).isoformat() if stamp.tzinfo else None
     except ValueError:
         return None
 
@@ -151,6 +150,14 @@ def observed_commit(upstream):
     entry = upstream.get('source') or {}
     value = upstream.get('version') if entry.get('source') == 'git' else upstream.get('revision')
     return value if tracks_commits(entry) and commit_hash(value) else None
+
+
+def _archive_repository(host, path):
+    parts = path.split('/')[1:]
+    if (any(not re.fullmatch(r'[A-Za-z0-9_.-]+', part) or part in ('.', '..') for part in parts)
+            or (host == 'github.com' and len(parts) != 2)):
+        return None
+    return 'https://' + host + path.removesuffix('.git')
 
 
 def pinned_revision(source):
@@ -189,11 +196,9 @@ def pinned_revision(source):
     match = re.fullmatch(pattern, url.path)
     if not match:
         return None
-    parts = match['repo'].split('/')[1:]
-    if (any(not re.fullmatch(r'[A-Za-z0-9_.-]+', part) or part in ('.', '..') for part in parts)
-            or (host == 'github.com' and len(parts) != 2)):
+    repository = _archive_repository(host, match['repo'])
+    if not repository:
         return None
-    repository = 'https://' + host + match['repo'].removesuffix('.git')
     commit = match['commit']
     # RPM's abbreviated hash must agree with the complete Source0 identity.
     # The date is packaging text, never a revision ordering key.
@@ -244,16 +249,15 @@ def pinned_tag(source):
     match = re.fullmatch(pattern, url.path)
     if not match:
         return None
-    parts = match['repo'].split('/')[1:]
-    if (any(not re.fullmatch(r'[A-Za-z0-9_.-]+', p) or p in ('.', '..') for p in parts)
-            or (host == 'github.com' and len(parts) != 2)):
+    repository = _archive_repository(host, match['repo'])
+    if not repository:
         return None
     tag, version = match['tag'], source.get('version')
     # curl-8_5_0 and v8.5.0 identify the same numeric release; main/master and
     # unrelated component tags cannot acquire an identity from an archive URL.
     if not tag_matches_version(tag, version):
         return None
-    return {'repository': 'https://' + host + match['repo'].removesuffix('.git'), 'tag': tag}
+    return {'repository': repository, 'tag': tag}
 
 
 def revision(source, entry):

@@ -1,7 +1,7 @@
 """Structural contract for trusted, independently scheduled evidence adapters."""
 from __future__ import annotations
 
-from typing import Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from tracker.providers.client import ProviderIO
@@ -16,9 +16,15 @@ class Adapter(Protocol):
     Optional refresh(subject, inputs, previous) returns Schedule; otherwise the
     runner uses DEFAULT_REFRESH. Both hooks are pure.
     """
-    VERSION: int
-    HOSTS: set[str]
+    __name__: str
+    __file__: str
+
+    @property
+    def VERSION(self) -> int: ...
+
+    @property
+    def HOSTS(self) -> set[str]: ...
 
     def inputs(self, package: dict, configured: dict | None) -> dict | None: ...
 
-    def check(self, subject: dict, inputs: dict, io: ProviderIO) -> dict: ...
+    def check(self, subject: dict, settings: dict, io: ProviderIO, /) -> dict: ...

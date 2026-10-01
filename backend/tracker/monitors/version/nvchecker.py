@@ -1,11 +1,6 @@
-from tracker.monitors.source import release as source_release
-from tracker.monitors.version import rules as version_rules
 """Only the documented nvchecker CLI/JSON interface. Candidate ordering remains native."""
-from contextlib import contextmanager
-import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import selectors
 import signal
@@ -13,11 +8,15 @@ import subprocess
 import tempfile
 import time
 import tomllib
+from contextlib import contextmanager
+from pathlib import Path
 
 import tomlkit
 
 from tracker.config import public_source, require_unchanged, track_fingerprint
 from tracker.monitors.schedule import Schedule
+from tracker.monitors.source import release as source_release
+from tracker.monitors.version import rules as version_rules
 from tracker.state import failure, success
 
 # The snapshot is tens of MiB: publish the first completion immediately, then
@@ -109,9 +108,9 @@ def import_events(stdout, native, previous, now, command_error=None):
                         committed_at))
             else:
                 errors[name] = 'invalid nvchecker version'
-    result = {}
+    result: dict[str, dict] = {}
     for name, entry in native.items():
-        old = previous.get(name, {})
+        old: dict = previous.get(name, {})
         fingerprint = track_fingerprint(entry)
         if old and old.get('configuration_fingerprint') != fingerprint:
             # Do not relabel a result from another source/branch after a config edit.
@@ -201,8 +200,11 @@ def stream_command(command, timeout, native, previous, now, on_results=None):
     the exact existing failure/timeout semantics, including unreported tracks.
     """
     lines, pending = [], {}
-    buffer = b''; total = 0; error = None
-    deadline = time.monotonic() + timeout; flushed = time.monotonic() - _PUBLISH_INTERVAL_SECONDS
+    buffer = b''
+    total = 0
+    error = None
+    deadline = time.monotonic() + timeout
+    flushed = time.monotonic() - _PUBLISH_INTERVAL_SECONDS
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                start_new_session=True)
     def line(value):
@@ -211,7 +213,8 @@ def stream_command(command, timeout, native, previous, now, on_results=None):
         if on_results is None:
             return
         try:
-            event = json.loads(text); name = event.get('name')
+            event = json.loads(text)
+            name = event.get('name')
             if name in native and event.get('event') in ('updated', 'up-to-date'):
                 facts, _ = import_events(text, {name: native[name]}, previous, now)
                 if not facts[name].get('error'):
@@ -220,28 +223,35 @@ def stream_command(command, timeout, native, previous, now, on_results=None):
             pass  # final import reports malformed native output
     try:
         with selectors.DefaultSelector() as selector:
+            assert process.stdout is not None
             selector.register(process.stdout, selectors.EVENT_READ)
             while selector.get_map():
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    error = 'nvchecker timeout'; break
+                    error = 'nvchecker timeout'
+                    break
                 for key, _ in selector.select(min(0.5, remaining)):
                     chunk = os.read(key.fd, 65536)
                     if not chunk:
                         selector.unregister(key.fileobj)
                     else:
-                        total += len(chunk); buffer += chunk
+                        total += len(chunk)
+                        buffer += chunk
                         if total > 16*1024*1024 or len(buffer) > 1024*1024:
-                            error = 'nvchecker output limit exceeded'; break
+                            error = 'nvchecker output limit exceeded'
+                            break
                         while b'\n' in buffer:
-                            value, buffer = buffer.split(b'\n', 1); line(value)
+                            value, buffer = buffer.split(b'\n', 1)
+                            line(value)
                 if error:
                     break
-                if pending and time.monotonic()-flushed >= _PUBLISH_INTERVAL_SECONDS:
-                    on_results(dict(pending)); pending.clear(); flushed = time.monotonic()
+                if on_results is not None and pending and time.monotonic()-flushed >= _PUBLISH_INTERVAL_SECONDS:
+                    on_results(dict(pending))
+                    pending.clear()
+                    flushed = time.monotonic()
         if buffer and not error:
             line(buffer)
-        if pending:
+        if pending and on_results is not None:
             on_results(dict(pending))
         if not error:
             try:
@@ -255,7 +265,9 @@ def stream_command(command, timeout, native, previous, now, on_results=None):
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
-        process.wait(); process.stdout.close()
+        process.wait()
+        if process.stdout is not None:
+            process.stdout.close()
     return import_events('\n'.join(lines), native, previous, now, error)
 
 

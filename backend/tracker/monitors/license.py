@@ -3,11 +3,16 @@
 from license_expression import ExpressionError, Licensing
 from packaging.licenses import InvalidLicenseExpression, canonicalize_license_expression
 
-from tracker.monitors.model import evidence, finding, version_query as query_subject
 from tracker.monitors.issues import Issue
+from tracker.monitors.model import evidence, finding
+from tracker.monitors.model import version_query as query_subject
 from tracker.monitors.schedule import Schedule
-from tracker.providers.release import HOSTS, inputs, read
 from tracker.providers.model import UnsupportedRelease
+from tracker.providers.release import HOSTS as HOSTS
+from tracker.providers.release import inputs as inputs
+from tracker.providers.release import read
+
+__all__ = ['query_subject']
 
 
 TITLE = Issue.LICENSE_DIFF

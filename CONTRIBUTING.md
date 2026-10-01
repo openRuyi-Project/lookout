@@ -28,27 +28,50 @@ mappings, not name guessing or remote icon services. Unknown icons remain text.
 
 ## Run checks
 
-Use Python 3.14+. In a Linux environment with the backend dependencies, native
-RPM bindings, Landlock ABI 6+ and seccomp:
+Local checks require Python 3.14+ and Node 22.13+. Native tests also require Linux,
+RPM bindings, Landlock ABI 6+ and seccomp. Install the backend `test` and `quality`
+extras (or the test lock), then run `npm ci` in `frontend`:
 
 ```sh
 python3 scripts/check-architecture.py
 python3 scripts/api-types.py --check
-(cd backend && python3 -m pytest -q)
-(cd frontend && npm ci && npm run check && npm test)
+(cd backend && ruff check tracker nvchecker_source && pyright && lint-imports --no-cache && deptry .)
+(cd backend && vulture tracker nvchecker_source --min-confidence 100 && python3 -m pytest -q)
+(cd frontend && npm run quality && npm run check && npm test)
 ```
 
 For the full image and real-entrypoint checks, use [Image checks](#image-checks).
 
 After changing response models, run `python3 scripts/api-types.py` and review the
-resulting `frontend/src/lib/api.generated.ts`. Do not hand-edit generated types.
+resulting `frontend/src/lib/api.generated.ts`. `openapi-typescript` compiles the
+reachable UI schemas; `src/lib/document.ts` selects display primitives. Do not
+hand-edit generated types or copy provider models into components.
+
+Import Linter guards backend dependency direction. `scripts/check-architecture.py`
+additionally guards transitive runtime I/O and configuration policy. Frontend
+`quality` runs ESLint, Knip and dependency-cruiser; Astro checks and Knip cover
+`.astro` while dependency-cruiser checks the TS/JS graph. Generated schema exports
+and the built SSR entry are not unused-source candidates.
+
+Use `radon cc backend/tracker -s -n C` to locate complex functions. Treat scores and
+lower-confidence dead-code reports as investigation input, not deletion approval.
+
+Run `(cd frontend && npm run duplicates)` for copy/paste candidates, or
+`npm run duplicates:similar` in the same directory to include renamed blocks.
+The root `.jscpd.json` scopes hand-written production code; tests and generated
+API types are excluded. Reports do not fail on a duplication percentage. Review
+whether a shared rule must change in both locations before extracting it; imports,
+provider-specific policies and independent upgrade entrypoints may stay separate.
+Keep release behavior and project-owned contract regressions in the suite.
+Third-party tool evaluations, refactor comparisons and one-off audit experiments
+belong outside the source tree, not in permanent regression tests.
 
 Dependencies are declared in `backend/pyproject.toml`. Update the runtime and test
 locks together when changing them (`uv` is a development tool):
 
 ```sh
 uv pip compile backend/pyproject.toml --python-version 3.14 --python-platform linux --no-header --no-annotate -o backend/requirements.lock
-uv pip compile backend/pyproject.toml --extra test --python-version 3.14 --python-platform linux --constraint backend/requirements.lock --no-header --no-annotate -o backend/requirements-test.lock
+uv pip compile backend/pyproject.toml --extra test --extra quality --python-version 3.14 --python-platform linux --constraint backend/requirements.lock --no-header --no-annotate -o backend/requirements-test.lock
 ```
 
 Regression tests fix their inputs, not today's upstream versions or package

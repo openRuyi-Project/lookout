@@ -1,15 +1,15 @@
 """Bounded provider HTTP with shared, dated cache. Never used by the API."""
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
 import hashlib
 import json
 import math
 import os
-from pathlib import Path
-from queue import Empty, LifoQueue
 import threading
 import time
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+from queue import Empty, LifoQueue
 from urllib.parse import urlsplit
 
 import httpx
@@ -35,7 +35,7 @@ class IO:
         for _ in range(workers):
             self.clients.put(None)
         self.ttl = ttl
-        self.today = datetime.now(timezone.utc).date()
+        self.today = datetime.now(UTC).date()
         self.memory, self.locks = {}, {}
         self.guard = threading.Lock()
         self.host_locks, self.next_request, self.cooldowns = {}, {}, {}
@@ -95,7 +95,7 @@ class IO:
             delay = float(retry_after)
         except (TypeError, ValueError):
             try:
-                delay = (parsedate_to_datetime(retry_after) - datetime.now(timezone.utc)).total_seconds()
+                delay = (parsedate_to_datetime(retry_after) - datetime.now(UTC)).total_seconds()
             except (TypeError, ValueError, OverflowError):
                 delay = 60
         if not math.isfinite(delay):
@@ -186,7 +186,7 @@ class ProviderIO:
     def observed_at(self):
         """Oldest successful response used by this check, including cache hits."""
         if self.observed:
-            return datetime.fromtimestamp(min(self.observed), timezone.utc).isoformat(timespec='seconds')
+            return datetime.fromtimestamp(min(self.observed), UTC).isoformat(timespec='seconds')
         return None
 
     def json(self, method, url, body=None, *, min_interval=0):

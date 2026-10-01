@@ -1,0 +1,1 @@
+{"path":["backend/tracker","backend/nvchecker_source","frontend/src","frontend/scripts","frontend/server.mjs","scripts","deploy"],"minLines":6,"minTokens":70,"mode":"weak","ignore":["**/api.generated.ts","**/__pycache__/**"],"reporters":["console"]}
