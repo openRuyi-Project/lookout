@@ -72,59 +72,14 @@
   background: var(--head);
   color: var(--amber);
 }
-.workspace {
-  display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
-  gap: 24px;
+.listing {
+  min-width: 0;
   padding-top: 20px;
-}
-.monitor-rail {
-  padding-right: 16px;
-  border-right: 1px solid var(--line);
-  min-width: 0;
-}
-.rail-workspace {
-  position: sticky;
-  top: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  max-height: calc(100dvh - 32px);
-}
-.global-navigation {
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-}
-.global-navigation-group {
-  padding-top: 0;
-}
-.global-navigation-group h2 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--fg);
-  padding: 5px 9px 10px;
-}
-.global-navigation .document-nav a {
-  justify-content: space-between;
-  gap: 6px;
-}
-.global-navigation .document-nav span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.global-navigation .document-nav b {
-  flex-shrink: 0;
 }
 .document-nav {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 8px;
-}
-.document-nav.rail {
-  flex-direction: column;
 }
 .document-nav a {
   display: flex;
@@ -251,15 +206,24 @@
 .navigation-menu {
   font-weight: 400;
   text-align: left;
-  min-width: 160px;
+  min-width: 224px;
   max-width: min(24rem, calc(100vw - 1rem));
   max-height: min(22rem, calc(100dvh - 2rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--bg);
   color: var(--fg);
   box-shadow: 0 4px 16px #0002;
+}
+.navigation-menu-group h2 {
+  margin: 0;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
 }
 @supports (position-area: bottom span-right) {
   .navigation-menu {
@@ -277,6 +241,9 @@
 .navigation-menu .document-nav a {
   justify-content: space-between;
   min-height: 28px;
+}
+.navigation-menu .document-nav b {
+  flex-shrink: 0;
 }
 .active-filters {
   display: flex;
@@ -623,32 +590,9 @@ a.value-tag {
   .shell {
     padding: 0 18px;
   }
-  .workspace, .detail-workspace, .detail-workspace:has(.document-context) {
+  .detail-workspace, .detail-workspace:has(.document-context) {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
-  }
-  .monitor-rail {
-    border: 0;
-    padding: 0;
-  }
-  .rail-workspace {
-    height: auto;
-    position: static;
-    min-height: 0;
-    max-height: none;
-    gap: 12px;
-  }
-  .global-navigation {
-    margin-top: 0;
-    overflow: visible;
-  }
-  .global-navigation .document-nav {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    column-gap: 4px;
-  }
-  .document-nav.rail {
-    flex-direction: row;
   }
   .document-context {
     border: 0;
@@ -670,11 +614,8 @@ a.value-tag {
   .masthead nav {
     gap: 14px;
   }
-  .workspace {
+  .listing {
     padding-top: 14px;
-  }
-  .global-navigation .document-nav {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .document-nav a {
     padding: 5px 7px;
@@ -716,9 +657,6 @@ a.value-tag {
   }
 }
 
-.listing {
-  min-width: 0;
-}
 .data-table .row-note td {
   padding-top: 0;
   font-size: 11px;

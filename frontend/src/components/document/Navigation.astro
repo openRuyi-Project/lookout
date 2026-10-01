@@ -1,10 +1,10 @@
 ---
 import {safeHref, type Navigation} from '../../lib/document';
 import {logo} from '../../lib/logos';
-interface Props {navigation: Navigation; rail?: boolean}
-const {navigation, rail = false} = Astro.props;
+interface Props {navigation: Navigation}
+const {navigation} = Astro.props;
 ---
-<nav class:list={['document-nav', {rail}]} aria-label={navigation.label}>
+<nav class="document-nav" aria-label={navigation.label}>
   {navigation.choices.map(choice => {
     const image = logo(choice.icon);
     return <a href={safeHref(choice.href)} aria-current={choice.selected ? 'page' : undefined}

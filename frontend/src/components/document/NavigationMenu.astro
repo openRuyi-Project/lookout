@@ -1,10 +1,14 @@
 ---
 import type {Navigation} from '../../lib/document';
 import Links from './Navigation.astro';
-interface Props {title: string; menu: Navigation; id: string}
-const {title, menu, id} = Astro.props;
+interface Props {title: string; menus: Navigation[]; id: string}
+const {title, menus, id} = Astro.props;
 ---
 <button type="button" class="navigation-menu-trigger" popovertarget={id} aria-label={`Filter ${title}`}>
   {title} <span aria-hidden="true">▾</span>
 </button>
-<div id={id} popover="auto" class="navigation-menu"><Links navigation={menu}/></div>
+<div id={id} popover="auto" class="navigation-menu">
+  {menus.filter(menu => menu.choices.length).map(menu => <section class="navigation-menu-group">
+    <h2>{menu.label}</h2><Links navigation={menu}/>
+  </section>)}
+</div>

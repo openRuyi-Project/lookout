@@ -351,9 +351,9 @@ try {
     assert.match(html, /class="count">openRuyi Lookout<\/span>/);
   }
   assert.match(listing, /lang="en"/);
-  const globalNavigation = listing.match(/<div class="global-navigation"[^]*?<\/section>\s*<\/div>/)?.[0];
-  assert.ok(globalNavigation, 'global filters have a persistent sidebar location');
-  assert.doesNotMatch(globalNavigation, /<details\b|<summary\b/);
+  const packageHeader = listing.match(/<thead>[^]*?<\/thead>/)[0];
+  const packageMenuID = packageHeader.match(/popovertarget="([^"]+)"[^>]*aria-label="Filter Package"/)[1];
+  const globalNavigation = packageHeader.match(new RegExp(`<div id="${packageMenuID}"[^>]*popover="auto"[^]*?<\\/div>`))[0];
   assert.match(globalNavigation, /<h2>BuildSystem<\/h2>/);
   assert.match(globalNavigation, /aria-label="BuildSystem"/);
   assert.match(globalNavigation, /buildsystem=custom[^]*?>custom<\/span><\/span>\s*<b>1<\/b>/);

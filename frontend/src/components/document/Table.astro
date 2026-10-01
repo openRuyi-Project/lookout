@@ -1,8 +1,9 @@
 ---
-import type {Table} from '../../lib/document';
+import type {Navigation, Table} from '../../lib/document';
 import Values from './Values.astro';
-interface Props {table: Table}
-const {table} = Astro.props;
+import NavigationMenu from './NavigationMenu.astro';
+interface Props {table: Table; identityMenus?: Navigation[]}
+const {table, identityMenus = []} = Astro.props;
 const wide = table.columns.some(column => column.role === 'status');
 const statusMatrix = table.columns[0]?.role === 'identity' && table.columns.length > 1
   && table.columns.slice(1).every(column => column.role === 'status');
@@ -10,7 +11,12 @@ const statusMatrix = table.columns[0]?.role === 'identity' && table.columns.leng
 <div class:list={['table-wrap', {wide}]} role="region" tabindex="0" aria-label={table.label}>
   <table class:list={['data-table', {wide, 'status-matrix': statusMatrix}]}>
     <colgroup>{table.columns.map(column => <col class={`column-${column.role}`}/>)}</colgroup>
-    <thead><tr>{table.columns.map(column => <th scope="col" class={`column-${column.role}`}>{column.title}</th>)}</tr></thead>
+    <thead><tr>{table.columns.map((column, index) => <th scope="col" class={`column-${column.role}`}>
+      {column.role === 'identity' && identityMenus.some(menu => menu.choices.length)
+        ? <NavigationMenu title={column.title} menus={identityMenus}
+            id={`table-${encodeURIComponent(table.label)}-${index}-menu`}/>
+        : column.title}
+    </th>)}</tr></thead>
     {table.rows.map((row, rowIndex) => <tbody>
     <tr data-key={row.key} id={row.id || undefined}>
       {row.cells.map((cell, index) => {

@@ -2,7 +2,6 @@
 import Base from '../layouts/Base.astro';
 import Controls from '../components/document/Controls.astro';
 import Table from '../components/document/Table.astro';
-import Navigation from '../components/document/Navigation.astro';
 import Fields from '../components/document/Fields.astro';
 import Pagination from '../components/document/Pagination.astro';
 import {api} from '../lib/api';
@@ -12,27 +11,15 @@ const {data, status} = await api<ListingDocument>('/api/ui/packages' + Astro.url
 if (!data) Astro.response.status = status === 422 ? 422 : 503;
 ---
 <Base>
-  {data ? <div class="workspace">
-    <aside class="monitor-rail">
-      <div class="rail-workspace">
-        {data.global_navigation.length > 0 && <div class="global-navigation">
-          {data.global_navigation.map(navigation => <section class="global-navigation-group">
-            <h2>{navigation.label}</h2>
-            <Navigation navigation={navigation} rail/>
-          </section>)}
-        </div>}
-      </div>
-    </aside>
-    <section class="listing" aria-label="Package list">
+  {data ? <section class="listing" aria-label="Package list">
       {!data.navigation.choices[0]?.selected && <header class="listing-heading">
-        <h1>{data.title}</h1><NavigationMenu title="Views" menu={data.navigation} id="view-menu"/>
+        <h1>{data.title}</h1><NavigationMenu title="Views" menus={[data.navigation]} id="view-menu"/>
       </header>}
       <Controls controls={data.controls}/>
       {data.notices.map(notice => <p class="notice">{notice}</p>)}
       <Pagination page={data} label="Pages above results" controls={data.controls}/>
-      <Table table={data.table}/>
+      <Table table={data.table} identityMenus={data.global_navigation}/>
       <Pagination page={data} label="Pages below results"/>
       <div class="collection-meta"><Fields fields={data.meta} compact/></div>
-    </section>
-  </div> : <div role="alert" class="notice">{status === 422 ? 'Invalid filter selection.' : 'Snapshot unavailable.'} <a href="/">Packages</a></div>}
+    </section> : <div role="alert" class="notice">{status === 422 ? 'Invalid filter selection.' : 'Snapshot unavailable.'} <a href="/">Packages</a></div>}
 </Base>
