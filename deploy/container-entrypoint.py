@@ -21,6 +21,7 @@ API_PORT = os.environ.get("API_PORT", "18731")
 sys.path.insert(0, f"{APP}/backend")
 from tracker.monitors import runner as monitor
 from tracker.monitors.build import obs
+from tracker.monitors.github import model as github
 from tracker.monitors.source import git as spec_git
 from tracker.monitors.version import nvchecker as nv
 from tracker.runtime_checks import runtime_session
@@ -154,6 +155,8 @@ def main():
         try:
             config = stack.enter_context(runtime_session(CONFIG, DB))
             policies = {**obs.polling(config), "upstreams": nv.polling(config)}
+            if github.settings(config).repositories:
+                policies['github'] = github.polling(config, authenticated=bool(os.environ.get('LOOKOUT_GITHUB_TOKEN')))
             monitors = monitor.settings(config)
             if monitors["enabled"]:
                 policies["monitors"] = monitor.polling(config)

@@ -137,6 +137,11 @@ export interface components {
             /** Heading */
             heading: components["schemas"]["Text"][];
             /**
+             * Metadata
+             * @default []
+             */
+            metadata: components["schemas"]["Text"][];
+            /**
              * Fields
              * @default []
              */
@@ -341,6 +346,8 @@ export interface components {
              * @default false
              */
             collapsible: boolean;
+            /** More */
+            more: string | null;
             /**
              * Fields
              * @default []
@@ -404,6 +411,8 @@ export interface components {
             decoration: "dashed" | null;
             /** Datetime */
             datetime: string | null;
+            /** Icon */
+            icon: string | null;
         };
     };
     responses: never;

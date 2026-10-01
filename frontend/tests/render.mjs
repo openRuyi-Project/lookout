@@ -220,7 +220,7 @@ let health = 'ok';
 let ready = {status: 200, body: {status: 'degraded', generation: 1}};
 let appearancePalette = {custom: {background: '#123456', foreground: '#ffffff', icon: 'gopher'}};
 const publicPaths = [
-  '/api/v2/packages', '/api/v2/packages/security', '/api/v2/tracks/widget',
+  '/api/v2/packages', '/api/v2/packages/security', '/api/v2/packages/security/activity', '/api/v2/tracks/widget',
   '/api/v2/targets', '/api/v2/status', '/api/v2/export', '/api/v2/packages:batchGet',
 ];
 const forwardedRequests = [];
@@ -262,6 +262,18 @@ const mock = createServer((req, res) => {
   }
   if (url.pathname === '/api/ui/packages' && url.searchParams.get('monitor') === 'not-registered') {
     res.writeHead(422, {'Content-Type': 'application/json'}); res.end('{}'); return;
+  }
+  if (url.pathname === '/api/ui/packages/security/activity') {
+    const cursor = url.searchParams.get('cursor');
+    const document = project('activity', {name: 'security', kind: 'pr', page: {
+      total: 2, next_cursor: cursor ? null : 'second',
+      items: [{id: cursor ? '2' : '1', repository: 'owner/repo', number: cursor ? 2 : 1,
+        author: 'contributor', kind: 'pr', status: cursor ? 'merged' : 'draft', title: '<script>fixture title</script>',
+        url: 'https://github.com/owner/repo/pull/1', updated_at: '2026-01-01T00:00:00Z',
+        paths_complete: true, available: true, association: []}],
+    }});
+    res.writeHead(200, {'Content-Type': 'application/json'});
+    res.end(JSON.stringify(document)); return;
   }
   const selected = packages.find(pkg => url.pathname === `/api/ui/packages/${pkg.name}`);
   const focus = url.searchParams.get('monitor') || '';
@@ -382,6 +394,21 @@ try {
   assert.equal(new Set(names).size, names.length);
   assert.ok(names.every(Boolean));
   assert.deepEqual(examples[1].searchParams.getAll('include'), ['version', 'security']);
+  const activityPage = await read('/packages/security/activity?kind=pr');
+  assert.match(activityPage, /title="draft"/);
+  assert.match(activityPage, />contributor<\/span>/);
+  assert.doesNotMatch(activityPage, /<style(?:\s|>)/, 'activity styling must respect style-src self');
+  assert.match(activityPage, /&lt;script&gt;fixture title&lt;\/script&gt;/);
+  assert.doesNotMatch(activityPage, /<script>fixture title/);
+  assert.match(activityPage, /class="document-icon"/);
+  assert.match(activityPage, /data-entry-page/);
+  assert.match(activityPage, /hx-swap="outerHTML"/);
+  const more = activityPage.match(/class="entry-more" href="([^"]+)"/)[1].replaceAll('&amp;', '&');
+  const older = await read(more);
+  assert.match(older, /title="merged"/);
+  assert.doesNotMatch(older, /class="entry-more"/);
+  console.log('PASS activity: bounded history, state icons, escaped titles, progressive pagination');
+
   console.log('PASS API reference: OpenAPI, endpoint table and query links');
   const invalidSelection = await wire('/?monitor=not-registered');
   assert.equal(invalidSelection.status, 422);
@@ -805,7 +832,7 @@ try {
   const cssPath=identity.body.toString().match(/href="(\/_astro\/[^"]+\.css)"/)[1];
   const css=await wire(cssPath,{'Accept-Encoding':'gzip'});assert.equal(css.status,200);assert.equal(css.headers['content-encoding'],'gzip');assert.match(css.headers['cache-control'],/immutable/);assert.ok(gunzipSync(css.body).length>css.body.length);
   const appCSS = gunzipSync(css.body).toString();
-  assert.match(appCSS, /\.value-tag\{[^}]*var\(--appearance-background/);
+  assert.ok([...appCSS.matchAll(/([^{}]+)\{([^{}]*)\}/g)].some(([, selectors, body]) => selectors.split(',').includes('.value-tag') && body.includes('var(--appearance-background')), 'tag colors use the declared palette');
   assert.match(appCSS, /\.value-tag\[data-variant=solid\]\{[^}]*var\(--appearance-foreground/);
   assert.match(appCSS, /\[aria-current\]\[data-appearance\]\{[^}]*color-mix\([^}]*var\(--appearance-background/);
   assert.match(appCSS, /\[aria-current\]\[data-appearance\]\{[^}]*box-shadow:[^}]*var\(--appearance-background/);

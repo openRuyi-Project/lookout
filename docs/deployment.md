@@ -140,6 +140,10 @@ The active `/config` mount is the configuration entry point after migration.
 installation references `/app/config/` for version rules, monitor identities and
 distribution mappings. Explicit operator overrides remain in `/config`; see
 [Configuration](../config/README.md). A deliberately local catalog remains local.
+Existing installations keep `tracker.toml`. GitHub activity requires an explicit
+repository entry there; updating the image alone does not enable an absent
+module. See [GitHub activity configuration](../config/README.md#github-activity).
+
 SQLite stays in the same data directory; compatible updates reuse observations
 and indexes. Supported storage-format changes are backed up and migrated;
 unsupported changes refuse the upgrade.
@@ -148,6 +152,7 @@ unsupported changes refuse the upgrade.
 |---|---|
 | Port | `install.py --port`; later change `PublishPort=127.0.0.1:PORT:8080` in `$UNIT` |
 | Resource limits | `--memory 8g --cpus 4 --pids-limit 512`; later edit the Quadlet |
+| GitHub activity token (optional) | `LOOKOUT_GITHUB_TOKEN` in the container environment; read-only repository access |
 | Monitor proxy | `--env TRACKER_MONITOR_PROXY=URL` |
 | Host-local proxy | `--network pasta:-T,7890 --env TRACKER_MONITOR_PROXY=http://127.0.0.1:7890` |
 | OBS, Git and monitor schedules | `tracker.toml` in the active `/config` mount |

@@ -71,8 +71,8 @@ def identity_cell(pkg, links, *, labels=True):
                                 href=links.condition('maintenance', Issue.OUTDATED)))
         signals.extend(check_failed_label(pkg, links))
         for result in pkg['monitors'].values():
-            if result['data']['kind'] in ('evidence', 'requires'):
-                signals.extend(evidence_labels(result, links, counts=False))
+            if result['data']['kind'] in ('evidence', 'requires', 'activity'):
+                signals.extend(evidence_labels(result, links, counts=True))
     source = module(pkg, 'source')
     if source and source['data'].get('buildsystem'):
         identity.append(buildsystem(source['data']['buildsystem'], links))
@@ -191,13 +191,13 @@ def detail(pkg):
     signals = version_annotations(pkg) + check_failed_label(pkg)
     requirements = module(pkg, 'requires')
     if requirements:
-        signals.extend(evidence_labels(requirements, links, counts=False))
+        signals.extend(evidence_labels(requirements, links, counts=True))
     identity.extend(sorted(signals, key=lambda value: priority(value.appearance)))
     shortcuts = [text('/' + data['source_path'], href=data.get('source_url'))] if data.get('source_path') else []
     if meta.get('url'):
         shortcuts.append(text(meta['url'], href=meta['url']))
     # Composition order is a reader concern; collectors never encode it.
-    results = sorted(pkg['monitors'].values(), key=lambda m: (m['id'] == 'eol', {'build': 0, 'evidence': 1, 'requires': 1, 'version': 2, 'source': 3}[m['data']['kind']]))
+    results = sorted(pkg['monitors'].values(), key=lambda m: (m['id'] == 'eol', {'build': 0, 'evidence': 1, 'requires': 1, 'version': 2, 'source': 3, 'activity': 4}[m['data']['kind']]))
     sections, context = [], []
     for result in results:
         kind = result['data']['kind']
@@ -220,6 +220,8 @@ def detail(pkg):
             cell(*status_lines), cell(*timestamps)]))
     if source:
         sections.extend(changelog_section(source))
+    sections.extend(context)
+    context = []
     sections.append(Section(id='checks', title='Checks', collapsible=True, table=Table(label='Collection checks', columns=[
         Column(title='Monitor'), Column(title='Observation'), Column(title='Last checked')], rows=checks)))
     return DetailDocument(title=pkg['name'], subtitle=meta.get('summary'), identity=identity,

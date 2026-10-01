@@ -7,7 +7,7 @@ from tracker.presentation.values import CHECK_LABELS, cell, field, retained_mark
 
 
 def evidence_labels(result, links, *, counts=True):
-    return [text(caption(label['label']) + (f" {label['count']}" if counts and label['count'] > 1 else ''),
+    return [text(caption(label['label']) + (f" {label['count']}" if counts else ''),
                  kind='tag', href=links.condition('maintenance', label['label']),
                  appearance=appearance(label['label']),
                  tone='notice' if label['stale'] else 'normal',

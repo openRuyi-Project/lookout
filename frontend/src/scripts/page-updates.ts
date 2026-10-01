@@ -19,6 +19,7 @@ let validator: {url: string; etag: string} | undefined;
 const restore = new WeakMap<XMLHttpRequest, () => void>();
 const currentURL = () => location.pathname + location.search;
 const background = (request: HtmxRequestConfig) => request.elt === refresh;
+const historyPage = (request: HtmxRequestConfig) => request.elt.matches('a.entry-more');
 
 function status(message = '') {
   const element = document.getElementById('page-status');
@@ -37,7 +38,8 @@ function schedule(delay = Math.min(interval * 2 ** failures, 300000)) {
 }
 
 function interacting() {
-  return !!document.activeElement?.closest('form')
+  return !!document.querySelector('.section-entries[data-expanded]')
+    || !!document.activeElement?.closest('form')
     || !!document.querySelector('[popover]:popover-open')
     || window.getSelection()?.isCollapsed === false;
 }
@@ -101,6 +103,14 @@ document.addEventListener('htmx:beforeSwap', event => {
     location.assign(result.pathInfo.finalRequestPath);
     return;
   }
+  if (historyPage(result.requestConfig)) {
+    if (!page.querySelector('[data-entry-page]')) { result.shouldSwap = false; result.isError = true; }
+    else {
+      const region = result.target.closest<HTMLElement>('.section-entries');
+      if (region) region.dataset.expanded = 'true';
+    }
+    return;
+  }
   if (background(result.requestConfig) && interacting()) {
     result.shouldSwap = false;
     return; // Do not remember an ETag for a result that has not been applied.
@@ -121,6 +131,7 @@ document.addEventListener('htmx:beforeSwap', event => {
 
 document.addEventListener('htmx:afterSwap', event => {
   const result = (event as CustomEvent<HtmxResponseInfo>).detail;
+  if (historyPage(result.requestConfig)) return;
   if (background(result.requestConfig)) restore.get(result.xhr)?.();
   else {
     document.getElementById('main')?.focus({preventScroll: true});

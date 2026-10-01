@@ -494,7 +494,7 @@ def main():
     p.add_argument('--config', required=True)
     p.add_argument('--db', required=True)
     p.add_argument('--source-limit', type=int, help='0: full initial fill; default: configured bounded batch')
-    p.add_argument('--only', choices=('all', 'obs', 'obs-metadata', 'builds', 'upstreams', 'specs', 'monitors'), default='all',
+    p.add_argument('--only', choices=('all', 'obs', 'obs-metadata', 'builds', 'upstreams', 'specs', 'monitors', 'github'), default='all',
                    help='independent collection phases share one serialized snapshot writer; obs-metadata owns source/history, builds owns status; obs runs both')
     p.add_argument('--track', action='append', help='check only this configured upstream track; repeat with --only upstreams')
     p.add_argument('--due', action='store_true', help='select changed, expired or retryable upstream tracks')
@@ -527,6 +527,9 @@ def main():
         if args.only in ('all', 'monitors'):
             from tracker.monitors import runner as monitor
             snapshot = monitor.collect(config, args.config, args.db)
+        if args.only in ('all', 'github'):
+            from tracker.monitors.github.collector import collect as collect_github
+            snapshot = collect_github(config, args.db)
     except BlockingIOError:
         print(json.dumps({'error': 'collector already running'}))
         return 75

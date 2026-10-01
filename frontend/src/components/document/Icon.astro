@@ -1,0 +1,8 @@
+---
+interface Props {name: string}
+const {name} = Astro.props;
+// Only vendored source assets enter markup; API values select a known key.
+const icons = import.meta.glob<string>('../../assets/icons/*.svg', {query: '?raw', import: 'default', eager: true});
+const svg = icons[`../../assets/icons/${name}.svg`];
+---
+{svg && <span class="document-icon" aria-hidden="true" set:html={svg}/>}

@@ -392,7 +392,7 @@ a.value-tag {
 .tone-notice {
   color: var(--amber);
 }
-.value-tag {
+.value-tag, .value-text[data-appearance] {
   color: light-dark(var(--appearance-background, var(--fg)),
     color-mix(in srgb, var(--appearance-background, var(--fg)) 35%, var(--fg)));
 }
@@ -512,23 +512,6 @@ a.value-tag {
   grid-template-columns: minmax(0, 1fr);
   gap: 30px;
 }
-.detail-workspace:has(.document-context) {
-  grid-template-columns: minmax(0, 1fr) 250px;
-}
-.document-context {
-  min-width: 0;
-  border-left: 1px solid var(--line);
-  padding-left: 22px;
-}
-.document-context .fields.compact > div {
-  display: block;
-}
-.document-context .fields dd {
-  margin-top: 5px;
-}
-.document-context .section-note {
-  line-height: 1.65;
-}
 .section-nav {
   display: flex;
   flex-wrap: wrap;
@@ -585,6 +568,10 @@ a.value-tag {
 }
 .entry-heading {
   font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.entry-heading > .value + .value {
+  margin-inline-start: .5em;
 }
 .entry-heading > .value:first-child {
   font-weight: 550;
@@ -593,14 +580,9 @@ a.value-tag {
   .shell {
     padding: 0 18px;
   }
-  .detail-workspace, .detail-workspace:has(.document-context) {
+  .detail-workspace {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
-  }
-  .document-context {
-    border: 0;
-    border-top: 1px solid var(--line);
-    padding: 18px 0 0;
   }
   .control-bar {
     flex-wrap: wrap;
@@ -726,6 +708,17 @@ a[aria-disabled] { opacity: .55; cursor: not-allowed; }
 .query-group .group-clear { border-inline-start: 1px solid color-mix(in srgb, var(--group-color) 35%, transparent); padding-inline-start: 7px; margin-inline-start: 3px; }
 .term-remove { color: var(--muted); }
 
+.document-icon {
+  display: inline-flex;
+  vertical-align: -.15em;
+  margin-inline-end: .3em;
+}
+.document-icon svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
+
 .advanced-search {
   color: var(--muted);
   white-space: nowrap;
@@ -734,3 +727,7 @@ a[aria-disabled] { opacity: .55; cursor: not-allowed; }
   color: var(--fg);
   font-weight: 650;
 }
+
+.entry-header { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; }
+.entry-header .entry-heading { flex: 1 1 20rem; min-width: 0; }
+.entry-metadata { margin-left: auto; white-space: nowrap; font-size: .85em; color: var(--muted); }

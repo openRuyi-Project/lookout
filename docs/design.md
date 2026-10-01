@@ -242,3 +242,17 @@ Caller-injected clients remain caller-owned. The operator proxy applies only to
 monitor HTTP. Browser CSP permits same-origin styles and list-page scripts, not
 inline or external scripts; other pages disable scripts. BuildSystem CSS is
 same-origin and conditionally revalidated.
+
+## Repository activity
+
+GitHub collection owns `github_items` (repository/item ID), `github_links`
+(package/evidence references) and per-repository checkpoints. It does not use
+version-monitor invalidation. SQLite format 3 adds these row collections;
+format 2 migration changes the storage header, preserving existing observations.
+The deployment migrator backs up before conversion; older readers require the
+matching pre-migration backup on rollback.
+
+Readers derive counts and cursor pages from one prepared snapshot. Details load
+20 records per kind; requesting more pauses background page replacement while
+that expanded history is being read. Navigation resumes normal refreshing.
+Provider bodies and diffs are never rendered as HTML.

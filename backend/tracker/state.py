@@ -229,6 +229,7 @@ PHASE_FIELDS = {
     'monitors': frozenset(('monitors', 'monitor_catalog', 'monitor_stale_after_seconds', 'dependency_packages',
                            'dependency_environments')),
     'builds': frozenset(('builds',)),
+    'github': frozenset(('github_items', 'github_links', 'github_repositories')),
 }
 
 # Status and history share a displayed build, but have independent writers and
@@ -243,6 +244,8 @@ BUILD_FIELDS = {
 
 
 def owns_component(phase, key):
+    if phase == 'github':
+        return key.startswith('github:')
     if phase == 'obs':
         return key in ('targets', 'inventory', 'source_index') or key.startswith('build_history:')
     return key == {'upstreams': 'nvchecker', 'specs': 'spec_git', 'builds': 'builds'}.get(phase)

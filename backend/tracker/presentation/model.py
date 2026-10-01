@@ -25,6 +25,7 @@ class Text(DocumentModel):
     appearance: str | None = None
     decoration: Literal['dashed'] | None = None
     datetime: str | None = None
+    icon: str | None = None
 
 
 class Cell(DocumentModel):
@@ -88,6 +89,7 @@ class Field(DocumentModel):
 
 class Entry(DocumentModel):
     heading: list[Text]
+    metadata: list[Text] = []
     fields: list[Field] = []
 
 
@@ -95,6 +97,7 @@ class Section(DocumentModel):
     id: str
     title: str
     collapsible: bool = False
+    more: str | None = None
     fields: list[Field] = []
     table: Table | None = None
     entries: list[Entry] = []

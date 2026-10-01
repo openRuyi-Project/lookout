@@ -224,3 +224,49 @@ new review; contributor changes to the release catalog arrive through the image.
 `[spec.local_sources]` maps files needed for native `%include`, such as a patch
 series. Their hashes invalidate parse caches; missing inputs fail the parse.
 The parser does not download Source archives or replace RPM expansion with text guessing.
+
+## GitHub activity
+
+Configure packaging repositories in `tracker.toml`:
+
+```toml
+[github]
+interval_seconds = 600
+stale_after_seconds = 1800
+request_budget = 60
+reconcile_seconds = 604800
+
+[github.repositories."owner/packaging"]
+source_root = "SPECS"
+ambiguous_names = ["file", "patch"]
+aliases = { python-zmq = ["pyzmq"] }
+```
+
+PR changed paths (including renamed paths), exact title/body names and
+`package:NAME` labels associate records with known source directories. Short
+names and `ambiguous_names` require a code span, title prefix or package label.
+Aliases must identify an existing package; shared aliases are not guessed.
+
+Open and closed records are retained in SQLite, independently of package
+versions. Incremental polls use `updated_at`, a two-minute overlap and ETags;
+weekly reconciliation detects missing records. Unchanged records and PR paths
+are reused; weekly reconciliation rechecks open PR revisions. Each list page processes issues before PRs. PR file paths and then
+bounded package-name matching in text provide association evidence.
+
+Without `LOOKOUT_GITHUB_TOKEN`, each batch makes at most six requests, at least
+ten minutes apart. A completed poll with no changes adds one interval to the
+next delay; changes reset it. Errors and incomplete batches never count as an
+empty poll. Authenticated polls retain the configured fixed interval. The next due time, list page and PR file-page progress survive
+restarts. File lists are published only after confirming the same base/head
+revisions. A growing idle delay also extends the freshness deadline.
+
+A read-only token permits the configured request budget and interval. Requests
+are serialized; response quota headers reserve capacity before exhaustion,
+and GitHub cooldowns override the schedule. Anonymous access shares the host
+IP quota, so initial history may take days. GitHub returns at most 3,000 files
+per PR; incomplete paths remain explicit rather than becoming an empty match.
+
+Credentials are not written to observations. Empty `repositories` disables
+collection. Homepage counts are packages; package badges count linked records
+across all states. `/api/v2/packages/NAME/activity?kind=pr` (or `issue`) returns
+20 records, newest updated first, with `next_cursor`; `per_page` is at most 50.

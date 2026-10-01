@@ -62,6 +62,9 @@ elif operation == 'list':
         monitor=filters.monitor, findings_only=bool(focus and focus['kind'] in ('evidence', 'requires') and section == 'results'))
     result = presentation_pages.listing({**payload, **selection, 'section': section},
         filters.model_copy(update={'section': section, 'page': selection['page']}).model_dump(exclude_defaults=True)).model_dump()
+elif operation == 'activity':
+    from tracker.presentation.activity import section
+    result = section(request['payload']['name'], request['payload']['kind'], request['payload']['page']).model_dump()
 elif operation == 'theme':
     result = presentation_pages.theme(request['payload'])
 else:

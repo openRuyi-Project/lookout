@@ -72,7 +72,7 @@ def test_saved_categories_use_current_names_everywhere_without_mutation(snapshot
     assert result['title'] == new and result['data']['labels'][0]['label'] == new
     page = client.get('/api/ui/packages', params=dict(conjunction({'maintenance': new}).parameters())).json()
     badge, = [value for line in page['table']['rows'][0]['cells'][0]['lines']
-              for value in line if value['text'] == new]
+              for value in line if value['text'] == new + ' 1']
     assert terms_in(badge['href']) == []
     assert badge['appearance'] == 'label:' + new and badge['variant'] == 'outline'
     detail = client.get('/api/ui/packages/binutils').json()

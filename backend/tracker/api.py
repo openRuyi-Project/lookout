@@ -13,9 +13,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from tracker import state
 from tracker.monitors.model import RawFinding
 from tracker.monitors.requires.model import RequirementAssessment
+from tracker.presentation import activity as activity_presentation
 from tracker.presentation import navigation as presentation_navigation
 from tracker.presentation import pages as presentation_pages
-from tracker.presentation.model import DetailDocument, DocumentTheme, ListingDocument
+from tracker.presentation.model import DetailDocument, DocumentTheme, ListingDocument, Section
+from tracker.readmodel import activity
 from tracker.readmodel import monitors as monitor_views
 from tracker.readmodel import snapshot as view
 from tracker.readmodel.cache import ProjectionCache
@@ -266,24 +268,55 @@ class RequiresObservation(RequiresSummary):
     findings: list[Finding]
 
 
+class ActivityAssociation(BaseModel):
+    kind: str
+    value: str
+
+
+class ActivityItem(BaseModel):
+    author: str | None
+    id: str
+    repository: str
+    number: int
+    kind: Literal['pr', 'issue']
+    title: str
+    url: str
+    status: Literal['open', 'closed', 'draft', 'merged', 'completed', 'not_planned']
+    updated_at: str
+    available: bool
+    paths_complete: bool
+    association: list[ActivityAssociation]
+
+
+class ActivityPage(BaseModel):
+    items: list[ActivityItem]
+    total: int
+    next_cursor: str | None
+
+
+class ActivitySummary(BaseModel):
+    kind: Literal['activity']
+    labels: list[MaintenanceLabel]
+
+
 class MonitorDescription(BaseModel):
     id: str
     title: str
-    kind: Literal['source', 'version', 'build', 'evidence', 'requires']
+    kind: Literal['source', 'version', 'build', 'evidence', 'requires', 'activity']
 
 
 class MonitorSummary(BaseModel):
     id: str
     title: str
     check: ObservationCheck
-    data: Annotated[SourceSummary | VersionSummary | BuildSummary | EvidenceSummary | RequiresSummary, Field(discriminator='kind')]
+    data: Annotated[SourceSummary | VersionSummary | BuildSummary | EvidenceSummary | RequiresSummary | ActivitySummary, Field(discriminator='kind')]
 
 
 class MonitorObservation(BaseModel):
     id: str
     title: str
     check: ObservationCheck
-    data: Annotated[SourceObservation | VersionObservation | BuildObservation | EvidenceObservation | RequiresObservation, Field(discriminator='kind')]
+    data: Annotated[SourceObservation | VersionObservation | BuildObservation | EvidenceObservation | RequiresObservation | ActivitySummary, Field(discriminator='kind')]
 
 
 class PackageData[Observation: MonitorSummary | MonitorObservation](BaseModel):
@@ -544,9 +577,30 @@ def create_app(db=None):
     def package_document(name: str):
         snap, index, collection = data()
         document = presentation_pages.detail(find_package(name, index))
+        for kind in ('pr', 'issue'):
+            history = activity.page(snap, name, kind)
+            if history['total']:
+                document.sections.insert(len(document.sections) - 1, activity_presentation.section(name, kind, history))
         if notice := collection.get('projection_notice'):
             document.notices.append(notice)
         return document
+
+    def activity_history(name, kind, cursor, per_page):
+        snap, index, _ = data()
+        find_package(name, index)
+        try:
+            return activity.page(snap, name, kind, cursor, per_page)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+
+    @app.get('/api/v2/packages/{name}/activity', response_model=ActivityPage)
+    def package_activity(name: str, kind: Literal['pr', 'issue'], cursor: str | None = None,
+                         per_page: Annotated[int, Query(ge=1, le=50)] = 20):
+        return activity_history(name, kind, cursor, per_page)
+
+    @app.get('/api/ui/packages/{name}/activity', response_model=Section)
+    def activity_document(name: str, kind: Literal['pr', 'issue'], cursor: str | None = None):
+        return activity_presentation.section(name, kind, activity_history(name, kind, cursor, 20))
 
     @app.get('/api/ui/theme', response_model=DocumentTheme)
     def document_theme():

@@ -102,8 +102,8 @@ def test_source_v2_fields_and_detail_provenance_remain_available(client):
 
     document = client.get('/api/ui/packages/binutils').json()
     assert document['subtitle'] == 'Fixture summary'
-    assert not any(section['id'] == 'source' for section in document['sections'])
-    context = next(section for section in document['context'] if section['id'] == 'source')
+    assert sum(section['id'] == 'source' for section in document['sections']) == 1
+    context = next(section for section in document['sections'] if section['id'] == 'source')
     assert context['notes'] == ['Fixture long description']
     assert next(field for field in context['fields'] if field['label'] == 'License')['values'][0]['text'] == 'Fixture-License'
     assert any(link['href'] == raw['data']['source_url'] for link in document['links'])
@@ -129,8 +129,8 @@ def test_context_role_follows_kind_instead_of_hard_coded_source_id(prepared):
     assert [column.title for column in explicit.table.columns] == ['Package', 'Check', 'Last checked']
     package = next(row for row in payload['items'] if row['name'] == 'binutils')
     document = presentation_pages.detail(package)
-    assert any(section.id == 'package_context' for section in document.context)
-    assert not any(section.id == 'package_context' for section in document.sections)
+    assert any(section.id == 'package_context' for section in document.sections)
+    assert sum(section.id == 'package_context' for section in document.sections) == 1
     checks = next(section for section in document.sections if section.id == 'checks')
     assert any(row.key == 'package_context' for row in checks.table.rows)
 

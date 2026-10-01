@@ -11,10 +11,10 @@ from typing import Any
 type Snapshot = dict[str, Any]
 
 
-FORMAT = 2
+FORMAT = 3
 # Collection shape, not provider identity. Adding an adapter needs no SQL schema.
 DEPTH = dict(sources=1, tracks=1, specs=1, inventory=1, index=1, components=1,
-             builds=2, monitors=2)
+             builds=2, monitors=2, github_items=2, github_links=2)
 
 
 @dataclass(frozen=True)
@@ -161,7 +161,7 @@ def read(db, previous: tuple[Snapshot, Revision | None] | None = None) -> tuple[
     with closing(sqlite3.connect(Path(db).resolve().as_uri() + '?mode=ro', uri=True, timeout=10)) as conn:
         conn.execute('BEGIN')
         version = conn.execute('PRAGMA user_version').fetchone()[0]
-        if version not in (0, FORMAT):
+        if version not in (0, 2, FORMAT):
             raise ValueError('unsupported database storage version')
         clock = conn.execute('SELECT revision, build_checked_at FROM snapshot_clock WHERE id=1').fetchone()
         if clock is None:
@@ -175,7 +175,7 @@ def read(db, previous: tuple[Snapshot, Revision | None] | None = None) -> tuple[
         if row is None:
             raise ValueError('snapshot row is missing')
         revisions, payloads = {}, {}
-        if version == FORMAT:
+        if version in (2, FORMAT):
             if prior:
                 revisions = {tuple(r[:3]): r[3] for r in conn.execute(
                     'SELECT section, subject, slot, revision FROM snapshot_records')}
@@ -196,7 +196,7 @@ def read(db, previous: tuple[Snapshot, Revision | None] | None = None) -> tuple[
     if version == 0:
         validate(header)
         return header, Revision(token, build_stamp=stamp), stamp
-    if not isinstance(header, dict) or header.get('storage') != FORMAT:
+    if not isinstance(header, dict) or header.get('storage') != version:
         raise ValueError('snapshot payload is invalid')
     snapshot = validate(header.get('snapshot'))
     sections = header.get('sections')
@@ -238,6 +238,19 @@ def migrate(db):
             if version == FORMAT:
                 conn.rollback()
                 return False
+            if version == 2:
+                row = conn.execute('SELECT payload FROM snapshot WHERE id=1').fetchone()
+                if row is None:
+                    raise ValueError('snapshot row is missing')
+                header = json.loads(row[0])
+                if header.get('storage') != 2:
+                    raise ValueError('snapshot storage header is invalid')
+                header['storage'] = FORMAT
+                conn.execute('UPDATE snapshot SET payload=? WHERE id=1', (encode(header),))
+                conn.execute('UPDATE snapshot_clock SET revision=? WHERE id=1', (uuid.uuid4().hex,))
+                conn.execute(f'PRAGMA user_version={FORMAT}')
+                conn.commit()
+                return True
             if version != 0:
                 raise ValueError('unsupported database storage version')
             row = conn.execute('SELECT payload FROM snapshot WHERE id=1').fetchone()

@@ -18,6 +18,7 @@ from tracker.monitors.issues import VERSION_ISSUES, Issue, observation_label
 from tracker.monitors.requires import model as requirements
 from tracker.monitors.source import release as source_release
 from tracker.monitors.version import compare as version_status
+from tracker.readmodel import activity
 
 
 def observed_at(observations):
@@ -85,6 +86,8 @@ def component_ttl(snapshot, key):
     """
     upstream = snapshot.get('stale_after_seconds', 86400)
     obs = snapshot.get('obs_stale_after_seconds', upstream)
+    if key.startswith('github:'):
+        return snapshot.get('components', {}).get(key, {}).get('stale_after_seconds', 1800)
     if key == 'nvchecker':
         return upstream
     if key.startswith('build_history:'):
@@ -379,7 +382,7 @@ def registry(snapshot):
     saved = snapshot.get('monitor_catalog', {})
     ids = set(saved)
     ids.difference_update(monitor_model.CORE_IDS)
-    return (*CORE, *(Monitor(mid, observation_label(mid, saved[mid]['title']),
+    return (*CORE, *((Monitor('github', 'GitHub', 'activity', activity.project),) if snapshot.get('github_repositories') else ()), *(Monitor(mid, observation_label(mid, saved[mid]['title']),
                             'requires' if mid == 'requires' else 'evidence',
                             requires if mid == 'requires' else partial(evidence, monitor_id=mid))
                     for mid in sorted(ids)))
@@ -396,6 +399,8 @@ def summary(result, *, focused=False):
     elif data['kind'] == 'requires':
         data = {**{k: v for k, v in data.items() if k != 'findings'},
                 'requirements': data['requirements'] if focused else []}
+    elif data['kind'] == 'activity':
+        pass
     else:
         # Compact identifiers are complete within the paginated package list.
         # Provider facts and histories still belong to the detail endpoint.

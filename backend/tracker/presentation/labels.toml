@@ -79,3 +79,31 @@ style = "important"
 
 [labels."Broken"]
 style = "important"
+
+[labels.PR]
+facet = true
+style = "neutral"
+
+[labels.Issue]
+facet = true
+style = "neutral"
+
+[styles.github-open]
+background = "#1a7f37"
+foreground = "#ffffff"
+
+[styles.github-merged]
+background = "#8250df"
+foreground = "#ffffff"
+
+[labels.github-open]
+style = "github-open"
+
+[labels.github-merged]
+style = "github-merged"
+
+[labels.github-closed]
+style = "important"
+
+[labels.github-inactive]
+style = "neutral"

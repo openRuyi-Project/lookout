@@ -29,6 +29,7 @@ from tracker.monitors.version.rules import load
 from tracker import config as configuration
 # Side-effect-free monitor types and comparisons can be read without collecting.
 PURE_MONITORS = {
+    'tracker.monitors.github.model',
     'tracker.monitors.contract', 'tracker.monitors.model', 'tracker.monitors.schedule',
     'tracker.monitors.issues', 'tracker.monitors.observations',
     'tracker.monitors.build.status', 'tracker.monitors.version.compare',

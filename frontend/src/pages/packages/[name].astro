@@ -18,7 +18,7 @@ if (!data) Astro.response.status = status === 404 ? 404 : 503;
     <nav class="section-nav" aria-label="Page sections">{data.sections.map(section => <a href={`#${section.id}`}>{section.title}</a>)}</nav>
     <div class="detail-workspace">
       <div class="document-sections">{data.sections.map(section => <Section section={section}/>)}</div>
-      {data.context.length > 0 && <aside class="document-context" aria-label="Package information">{data.context.map(section => <Section section={section}/>)}</aside>}
+
     </div>
   </> : <div role="alert" class="notice">{status === 404 ? 'No such source package.' : 'Snapshot unavailable. Please try again later.'}</div>}
   </div>

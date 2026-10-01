@@ -1,0 +1,18 @@
+---
+import type {Section} from '../../lib/document';
+import {safeHref} from '../../lib/document';
+import Fields from './Fields.astro';
+import Values from './Values.astro';
+interface Props {section: Section}
+const {section} = Astro.props;
+const more = safeHref(section.more);
+---
+<div class="entry-page" data-entry-page>
+  {section.entries.length > 0 && <ul class="entries">{section.entries.map(entry => <li>
+    <div class="entry-header"><div class="entry-heading"><Values values={entry.heading}/></div>
+      {entry.metadata?.length > 0 && <div class="entry-metadata"><Values values={entry.metadata}/></div>}</div>
+    <Fields fields={entry.fields} compact/>
+  </li>)}</ul>}
+  {more && <a class="entry-more" href={more} hx-get={more} hx-target="this" hx-select="[data-entry-page]"
+    hx-swap="outerHTML" hx-push-url="false" hx-sync="this:drop">More</a>}
+</div>

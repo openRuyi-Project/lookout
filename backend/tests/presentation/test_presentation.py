@@ -304,7 +304,7 @@ def test_evidence_is_not_duplicated_as_summary_and_keeps_all_sources(snapshot):
     assert len(entry.fields) == 1
     assert entry.fields[0].values[0].text == '2.4, 3.1'
     assert [v.href for v in entry.fields[0].values[1:]] == ['https://example.org/one', 'https://example.org/two']
-    assert set(entry.model_dump()) == {'heading', 'fields'}
+    assert entry.metadata == []
 
 
 def test_shared_query_context_appears_once_and_distinct_inputs_are_not_hidden(snapshot):
@@ -331,10 +331,11 @@ def test_package_context_and_changelog_remain_visible_without_empty_sections(sna
     source['changelog'] = [{'subject': 'Fix build', 'commit': 'a' * 40, 'author': 'Packager',
                            'date': '2026-09-19T01:00:00Z', 'signed_off_by': ['Packager']}]
     document = presentation_pages.detail(pkg)
-    assert document.context[0].notes == ['Useful description']
-    assert document.context[0].fields[0].values[0].text == 'MIT'
-    assert document.sections[-2].title == 'Changelog'
-    assert document.sections[-2].entries[0].fields[-1].values[0].text == 'Packager'
+    context = next(s for s in document.sections if s.id == 'source')
+    assert context.notes == ['Useful description']
+    assert context.fields[0].values[0].text == 'MIT'
+    changelog = next(s for s in document.sections if s.title == 'Changelog')
+    assert changelog.entries[0].fields[-1].values[0].text == 'Packager'
     assert document.sections[-1].id == 'checks'
     assert [s.id for s in document.sections + document.context if s.collapsible] == ['checks']
 
@@ -396,7 +397,7 @@ def test_monitor_data_contract_is_discriminated_by_kind(snapshot):
             model.model_validate(broken)
         schema = model.model_json_schema()['properties']['data']
         assert schema['discriminator']['propertyName'] == 'kind'
-        assert set(schema['discriminator']['mapping']) == {'source', 'version', 'build', 'evidence', 'requires'}
+        assert set(schema['discriminator']['mapping']) == {'source', 'version', 'build', 'evidence', 'requires', 'activity'}
 
 
 def test_spec_link_uses_the_path_as_its_only_label(snapshot):
