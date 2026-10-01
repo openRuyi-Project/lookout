@@ -77,7 +77,7 @@ def global_navigation(payload, query, links):
     counts = payload['buildsystems']
     styles = payload.get('presentation', {}).get('buildsystems', {})
     return [Navigation(label=caption('Build system'), choices=[
-        Choice(label=caption('Not detected') if value == '_not_detected' else value,
+        Choice(label=caption('Custom') if value == '_not_detected' else value,
                  count=count, selected=query.get('buildsystem') == value,
                  appearance='buildsystem:' + value if value != '_not_detected' else None,
                  icon=styles.get(value, {}).get('icon') if value != '_not_detected' else None,
@@ -195,7 +195,7 @@ def active_filters(payload, query, links):
     titles = {monitor['id']: caption(signal_title(monitor)) for monitor in payload['monitors']}
     labels = {
         'q': 'Search: ' + query.get('q', ''),
-        'buildsystem': caption('Build system') + ': ' + (caption('Not detected') if query.get('buildsystem') == '_not_detected'
+        'buildsystem': caption('Build system') + ': ' + (caption('Custom') if query.get('buildsystem') == '_not_detected'
                                         else query.get('buildsystem', '')),
         'signal': titles.get(query.get('signal'), query.get('signal', '')),
         'view': caption(VERSION_ISSUES.get(query.get('view'), '')),

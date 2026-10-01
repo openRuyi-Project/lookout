@@ -56,8 +56,8 @@ text = "Stale"
 [labels."Build system"]
 text = "BuildSystem"
 
-[labels."Not detected"]
-text = "❔ Undetected"
+[labels.Custom]
+text = "❔ custom"
 
 [labels."Not mapped"]
 text = "Unmapped"

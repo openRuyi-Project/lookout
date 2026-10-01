@@ -91,19 +91,28 @@ def test_same_word_from_another_monitor_is_not_reinterpreted():
 
 
 @pytest.mark.parametrize('selected', [False, True])
-def test_undetected_buildsystem_keeps_its_identity_and_last_position(selected):
+def test_custom_fallback_keeps_its_identity_and_last_position(selected):
     from tracker.presentation.navigation import global_navigation, Links
     from tracker.presentation.values import buildsystem
-    payload = {'buildsystems': {'_not_detected': 4, 'cmake': 2, 'meson': 3}}
+    payload = {'buildsystems': {'_not_detected': 4, 'cmake': 2, 'custom': 1, 'meson': 3}}
     query = {'buildsystem': '_not_detected'} if selected else {}
     navigation, = global_navigation(payload, query, Links(query))
-    assert [choice.label for choice in navigation.choices] == ['cmake', 'meson', '❔ Undetected']
+    assert [choice.label for choice in navigation.choices] == ['cmake', 'custom', 'meson', '❔ custom']
     assert navigation.choices[-1].count == 4
     choice = navigation.choices[-1]
     assert choice.selected is selected
     assert choice.icon is None
     assert parse_qs(urlsplit(choice.href).query).get('buildsystem') == (None if selected else ['_not_detected'])
     assert buildsystem('cmake', Links()).variant == 'solid'
+
+
+@pytest.mark.parametrize('status', ['not_declared', 'unknown'])
+def test_custom_fallback_detail_retains_observation_status(status):
+    from tracker.presentation.source import source_sections
+    section, = source_sections({'id': 'source', 'data': {'buildsystem_status': status}}, None)
+    value, = section.fields[0].values
+    assert (section.fields[0].label, value.text) == ('BuildSystem', '❔ custom')
+    assert value.title == ('Not declared' if status == 'not_declared' else 'Not observed')
 
 
 def test_declared_icons_follow_identity_without_frontend_category_rules():

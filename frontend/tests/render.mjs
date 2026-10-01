@@ -357,7 +357,7 @@ try {
   assert.match(globalNavigation, /<h2>BuildSystem<\/h2>/);
   assert.match(globalNavigation, /aria-label="BuildSystem"/);
   assert.match(globalNavigation, /buildsystem=custom[^]*?>custom<\/span><\/span>\s*<b>1<\/b>/);
-  assert.match(globalNavigation, /buildsystem=_not_detected[^]*?>❔ Undetected<\/span><\/span>\s*<b>4<\/b>/);
+  assert.match(globalNavigation, /buildsystem=_not_detected[^]*?>❔ custom<\/span><\/span>\s*<b>4<\/b>/);
   assert.equal((globalNavigation.match(/class="brand-icon/g) || []).length, 1);
   const logoURL = globalNavigation.match(/<img src="([^"]+)"/)[1];
   assert.match(logoURL, /^\/_astro\/gopher[.\w-]*\.svg$/);

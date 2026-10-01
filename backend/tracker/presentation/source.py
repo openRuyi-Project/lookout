@@ -1,5 +1,6 @@
 """Source for reading documents; no collection or persistence."""
 from tracker.presentation.model import Entry, Section
+from tracker.presentation.labels import caption
 from tracker.presentation.values import field, stamp, text
 
 
@@ -8,8 +9,8 @@ def source_sections(result, links):
     meta = data.get('metadata') or {}
     fields = [field('License', text(meta['license']))] if meta.get('license') else []
     if not data.get('buildsystem'):
-        fields.append(field('Build system', text(
-            'Not declared' if data['buildsystem_status'] == 'not_declared' else 'Not observed')))
+        fields.append(field(caption('Build system'), text(caption('Custom'),
+            title='Not declared' if data['buildsystem_status'] == 'not_declared' else 'Not observed')))
     description = meta.get('description')
     notes = [description] if description and description != meta.get('summary') else []
     return [Section(id=result['id'], title='Package information', fields=fields, notes=notes)] if fields or notes else []
