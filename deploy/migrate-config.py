@@ -117,6 +117,8 @@ def migrate(baseline, source, destination, *, release=ROOT / 'config'):
                 path.rmdir()
             elif path.is_file():
                 path.chmod(0o600)
+            elif path.is_dir():
+                path.chmod(0o700)
         prepared.chmod(0o700)
         config.load(prepared / 'tracker.toml')
         for path, loaded in ((source, before), (baseline, original), (release, supplied)):
@@ -125,6 +127,14 @@ def migrate(baseline, source, destination, *, release=ROOT / 'config'):
         try:
             for path in prepared.iterdir():
                 shutil.move(str(path), destination / path.name)
+            # Selectors may be committed only after their private config is durable.
+            for path in [*destination.rglob('*'), destination, destination.parent]:
+                flags = os.O_RDONLY | (os.O_DIRECTORY if path.is_dir() else 0)
+                descriptor = os.open(path, flags)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
         except Exception:
             shutil.rmtree(destination)
             raise

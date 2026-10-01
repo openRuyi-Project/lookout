@@ -43,6 +43,12 @@ def image_reference(reference):
     return bool(registry)
 
 
+def validate_catalog_baseline(reference):
+    """Reject an ambiguous original-image identity before starting an upgrade."""
+    if image_reference(reference) and '@sha256:' not in reference:
+        raise ValueError('catalog baseline requires the immutable original installation image, not a moving tag')
+
+
 def resolve_image(engine, reference):
     """Pull a registry reference once; subsequent operations use its local immutable ID."""
     registry = image_reference(reference)
@@ -67,6 +73,23 @@ def resolve_image(engine, reference):
     return dict(version=version, revision=revision, image=image, storage=actual[1],
                 platform=info['Os'] + '/' + info['Architecture'],
                 reference=reference, digests=info.get('RepoDigests') or [])
+
+
+def export_image_tree(engine, image, source, destination):
+    """Copy a trusted pinned image tree without running it or mounting host state."""
+    if destination.exists() or destination.is_symlink():
+        raise ValueError('image export destination must be new')
+    helper = 'lookout-export-' + uuid.uuid4().hex[:12]
+    run([engine, 'create', '--name', helper, '--network', 'none', *PROTECTION,
+         '--entrypoint', '/bin/true', image])
+    try:
+        run([engine, 'cp', f'{helper}:{source}', str(destination)])
+        if (destination.is_symlink() or not destination.is_dir()
+                or any(path.is_symlink() or not (path.is_file() or path.is_dir())
+                       for path in destination.rglob('*'))):
+            raise ValueError('release tools/catalogs must contain only regular files and directories')
+    finally:
+        run([engine, 'rm', helper])
 
 
 def instance_lock(service):
@@ -202,6 +225,7 @@ class Docker:
         if any(e.split('=', 1)[0] in {'TRACKER_DB', 'TRACKER_CONFIG', 'PORT', 'API_PORT', 'HOST'}
                and e not in {'HOST=0.0.0.0', 'PORT=8080', 'API_PORT=18731'} for e in self.settings['environment']):
             raise ValueError('custom database or listener requires operator review')
+        self.settings['catalog_image'] = config['Labels'].get('org.openruyi.catalog-image')
         self.previous = None
         if not host.get('Memory') or not host.get('NanoCpus') or not host.get('PidsLimit'):
             raise ValueError('installed container is missing resource limits')
@@ -230,6 +254,8 @@ class Docker:
                     raise ValueError('application ports must stay on host loopback')
                 command += ['-p', f'127.0.0.1:{port or binding["HostPort"]}:8080']
         for key, value in self.info['Config']['Labels'].items():
+            if key == 'org.openruyi.catalog-image' and not self.settings.get('catalog_image'):
+                continue
             if key.startswith('org.openruyi.'):
                 command += ['--label', f'{key}={value}']
         for role in ('config', 'data'):
@@ -333,8 +359,13 @@ def quadlet(text):
         match = re.fullmatch(r'127\.0\.0\.1:(\d+):8080', value)
         if not match or not 1 <= int(match[1]) <= 65535:
             raise ValueError('publish a valid port on host loopback only')
+    catalog_images = [value.split('=', 1)[1] for value in fields.get('Label', [])
+                      if value.startswith('org.openruyi.catalog-image=')]
+    if len(catalog_images) > 1:
+        raise ValueError('catalog initialization identity must be unique')
+    catalog_image = catalog_images[0] if catalog_images else None
     return dict(image=one('Image'), name=name, config=volumes['/config'], data=volumes['/data'],
-                environment=fields.get('Environment', []))
+                environment=fields.get('Environment', []), catalog_image=catalog_image)
 
 
 def replace_image(text, image):
@@ -426,6 +457,19 @@ class Quadlet:
 
     def stage(self, image):
         replacement = replace_image(self.original, image)
+        new_config = self.settings['config']
+        section, lines = None, []
+        for line in replacement.splitlines(keepends=True):
+            if line.strip().startswith('['):
+                section = line.strip()
+            if section == '[Container]' and line.strip().startswith('Volume='):
+                value = line.strip().removeprefix('Volume=')
+                if value.split(':')[1] == '/config':
+                    line = line.replace(value, f'{new_config}:/config:ro,Z', 1)
+            lines.append(line)
+        replacement = ''.join(lines)
+        if quadlet(replacement)['config'] != new_config:
+            raise ValueError('prepared config mount was not selected')
         write_unit(self.unit, self.original, replacement)
         self.replacement = replacement
         manager('Reload')

@@ -4,6 +4,7 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
+import shlex
 import shutil
 import socket
 import subprocess
@@ -30,23 +31,48 @@ def free_port():
         return sock.getsockname()[1]
 
 
-def catalog_upgrade(smoke, base, root, extra_images, volumes):
+def catalog_upgrade(smoke, base, root, extra_images, volumes, *, copied=False):
     images = []
     for phase in ('before', 'next'):
-        tag = smoke.prefix + ':catalog-' + phase
+        tag = smoke.prefix + ':catalog-' + ('copied-' if copied else '') + phase
         extra_images.append(tag)
         definition = (f'FROM {base}\nUSER 0\nRUN TRACKER_SPEC_REPO= /opt/venv/bin/python -c '
                       f'"from tests.container_smoke_fixture import release_catalog; release_catalog(\'{phase}\')"\n'
                       'USER 10001:10001\n')
+        if copied and phase == 'before':
+            legacy = ('import shutil\ndef initialize(source,destination):\n'
+                      '    return shutil.copytree(source,destination)\n')
+            code = ('from pathlib import Path; '
+                    f'Path("/app/deploy/init-config.py").write_text({legacy!r}); '
+                    'Path("/app/deploy/release-upgrade.py").write_text("raise SystemExit(41)\\n")')
+            definition = definition.replace('USER 10001:10001\n', 'RUN ' + PYTHON + ' -c ' + shlex.quote(code) + '\nUSER 10001:10001\n')
         subprocess.run(['docker', 'build', '--network', 'none', '--pull=false', '-t', tag, '-'],
                        input=definition, text=True, check=True)
         images.append(resolve_image('docker', json.loads(run(['docker', 'image', 'inspect', tag]))[0]['Id'])['image'])
-    name = smoke.prefix + '-catalog'
+    name = smoke.prefix + ('-copied-catalog' if copied else '-catalog')
     smoke.containers.append(name)
     volumes.update(name + '-' + role for role in ('config', 'data', 'backups'))
     install(images[0], name, network='none', memory='4g', cpus=2, environment=['TRACKER_SPEC_REPO='])
     before = Docker(name)
     before.stop()
+    if copied:
+        edited = '''from pathlib import Path
+import tomlkit
+p=Path('/config'); n=p/'nvchecker.toml'; v=tomlkit.parse(n.read_text())
+v['catalog-local']={'source':'cmd','cmd':"printf '1.2.3\\n'"}
+v['__config__']={'keyfile':'keys.toml'}; n.write_text(tomlkit.dumps(v))
+k=p/'keys.toml'; k.write_text('# private fixture keyfile\\n'); k.chmod(0o600)
+f=p/'packages.toml'; v=tomlkit.parse(f.read_text())
+v['catalog-stable']['monitors']['eol']={'product':'operator-cycle','cycle_parts':1}
+f.write_text(tomlkit.dumps(v))
+f=p/'tracker.toml'; v=tomlkit.parse(f.read_text()); v['obs']['project']='operator-project'
+f.write_text(tomlkit.dumps(v))
+'''
+        command = image_command(before, images[0], '-c', edited)
+        # Only this test's new config volume is writable to the fixture editor.
+        command = [value.removesuffix(',readonly') if 'dst=/config,' in value else value
+                   for value in command]
+        run(command)
     # Seed dated, synthetic observations through the real writer. Subsequent
     # entrypoint heartbeats must reuse the unchanged query and refresh the edit.
     seed = '''from pathlib import Path
@@ -71,11 +97,28 @@ print(json.dumps({'stable':s['monitors']['catalog-stable']['security'],
     saved = json.loads(run(image_command(before, images[0], '-c', seed)))
     before.start()
     healthy('docker', name, images[0])
+    if copied:
+        failed = smoke.prefix + ':catalog-failed'
+        extra_images.append(failed)
+        run(['docker', 'tag', images[1], failed])
+        subprocess.run(['docker','build','--network','none','--pull=false','-t',failed,'-'],
+                       input=f'FROM {failed}\nENTRYPOINT ["/bin/sh","-c","exit 2"]\n',text=True,check=True)
+        try:
+            upgrade(json.loads(run(['docker','image','inspect',failed]))[0]['Id'], None, root, container=name, apply=True)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError('failed catalog/image pair was accepted')
+        restored = Docker(name)
+        assert restored.settings['config'] == before.settings['config']
+        assert restored.settings['data'] == before.settings['data']
+        healthy('docker', name, images[0])
+        print('PASS copied catalog rollback: exact old image/config pair, same database',flush=True)
     result = upgrade(images[1], None, root, container=name, apply=True)
     assert result['status'] == 'ready'
     after = Docker(name)
     assert after.settings['data'] == before.settings['data']
-    assert after.settings['config'] == before.settings['config']
+    assert (after.settings['config'] != before.settings['config']) == copied
     check = '''import json
 from pathlib import Path
 from tracker import config,state
@@ -88,9 +131,28 @@ print(json.dumps({'stable':s['monitors']['catalog-stable']['security'],
  'files':{str(f):f.read_text() for f in Path('/config').rglob('*') if f.is_file()}}))
 '''
     observed = json.loads(run(['docker', 'exec', name, PYTHON, '-c', check]))
-    assert observed['files'] == saved['files']
+    if copied:
+        verify = '''from pathlib import Path
+from tracker import config
+c=config.load('/config/tracker.toml')
+assert c['obs']['project']=='operator-project'
+assert c['native']['catalog-local']['source']=='cmd'
+assert c['native_options']['keyfile']=='keys.toml'
+assert c['packages']['catalog-stable']['monitors']['eol']['product']=='operator-cycle'
+assert Path('/config/keys.toml').read_text()=='# private fixture keyfile\\n'
+assert Path('/config/keys.toml').stat().st_mode & 0o777 == 0o600
+'''
+        run(['docker','exec',name,PYTHON,'-c',verify])
+        assert result['catalogs']['baseline_image']==images[0]
+        original = json.loads(run(image_command(before,images[0],'-c',
+            "import json; from pathlib import Path; print(json.dumps({str(p):p.read_text() for p in Path('/config').rglob('*') if p.is_file()}))")))
+        assert original == saved['files']
+        assert upgrade(images[1],None,root,container=name,apply=True)['status']=='unchanged'
+    else:
+        assert observed['files'] == saved['files']
     assert observed['stable'] == saved['stable']
-    print('PASS catalog upgrade: added/corrected identities and rules; unchanged config/data volumes and stable observation', flush=True)
+    print('PASS '+('copied catalog migration: original image provenance; preserved overrides/credentials, same database and stable observation' if copied
+                  else 'catalog upgrade: added/corrected identities and rules; unchanged config/data volumes and stable observation'), flush=True)
 
 
 def exercise(image, root):
@@ -209,6 +271,7 @@ state.commit(p,s)
              '--entrypoint', PYTHON, image, '-c', restore_code])
         print('PASS restore: independent volume, SQLite integrity and source observation retained', flush=True)
         catalog_upgrade(smoke, base, root, extra_images, volumes)
+        catalog_upgrade(smoke, base, root, extra_images, volumes, copied=True)
     finally:
         for container in smoke.containers:
             log = subprocess.run(['docker', 'logs', container], capture_output=True, text=True)

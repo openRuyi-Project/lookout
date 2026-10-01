@@ -67,6 +67,7 @@ def configure(service, config, port):
     if port is not None and not 1 <= port <= 65535:
         raise ValueError('invalid loopback port')
     image = service.settings['image']
+    previous_settings = dict(service.settings)
     if config:
         archive = config_archive(config)
         volume = service.name + '-config-' + uuid.uuid4().hex[:12]
@@ -76,6 +77,7 @@ def configure(service, config, port):
              f'type=volume,src={volume},dst=/config,volume-nocopy', '--entrypoint', PYTHON,
              image, '-c', PREPARE, 'archive', '/config'], input=archive)
         service.settings['config'] = volume
+        service.settings['catalog_image'] = None
     try:
         service.stop()
         no_data_users(service)
@@ -86,6 +88,7 @@ def configure(service, config, port):
         healthy(service.engine, service.name, image)
     except BaseException:
         service.stop()
+        service.settings = previous_settings
         service.rollback()
         raise
     service.finish()

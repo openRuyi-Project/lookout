@@ -54,6 +54,7 @@ NAME=openruyi-lookout
 PORT=18730
 IMAGE=ghcr.io/openruyi-project/lookout:main
 ROOT="$HOME/.local/share/lookout"
+TOOLS="$ROOT/tools"
 UNIT="$HOME/.config/containers/systemd/$NAME.container"
 mkdir -p "$ROOT"
 test ! -e "$ROOT/tools"
@@ -73,7 +74,7 @@ engine registry credentials, not a GitHub API key for version checks.
 ### 3. Install
 
 ```sh
-python3 "$ROOT/tools/install.py" \
+python3 "$TOOLS/install.py" \
   --engine podman --image "$IMAGE_ID" --name "$NAME" \
   --directory "$ROOT" --port "$PORT" --network pasta \
   --auto-update "$IMAGE" | tee "$ROOT/installation.json"
@@ -110,8 +111,8 @@ systemctl --user status "$NAME.service" "$NAME-update.timer" "$NAME-backup.timer
 curl --fail "http://127.0.0.1:$PORT/livez"
 curl --fail "http://127.0.0.1:$PORT/readyz"
 curl --fail "http://127.0.0.1:$PORT/api/v2/status"
-python3 "$ROOT/tools/maintain.py" --unit "$UNIT" --backup-dir "$ROOT/backups"
-python3 "$ROOT/tools/maintain.py" --unit "$UNIT" --status "$ROOT/backups"
+python3 "$TOOLS/maintain.py" --unit "$UNIT" --backup-dir "$ROOT/backups"
+python3 "$TOOLS/maintain.py" --unit "$UNIT" --status "$ROOT/backups"
 ```
 
 The service and both timers must be active; the backup status must report
@@ -129,9 +130,13 @@ after logout and reboot recovery need acceptance on the target host.
 
 ## Operations
 
+Use the instance variables from installation. If host tools were replaced, set
+`TOOLS` to the active script directory in the update/backup units, not the old copy.
+The active `/config` mount is the configuration entry point after migration.
+
 ### Configuration and ports
 
-**Image updates replace release catalogs, not operator configuration.** The default
+**Image updates replace release catalogs, not operator settings.** The default
 installation references `/app/config/` for version rules, monitor identities and
 distribution mappings. Explicit operator overrides remain in `/config`; see
 [Configuration](../config/README.md). A deliberately local catalog remains local.
@@ -145,14 +150,15 @@ unsupported changes refuse the upgrade.
 | Resource limits | `--memory 8g --cpus 4 --pids-limit 512`; later edit the Quadlet |
 | Monitor proxy | `--env TRACKER_MONITOR_PROXY=URL` |
 | Host-local proxy | `--network pasta:-T,7890 --env TRACKER_MONITOR_PROXY=http://127.0.0.1:7890` |
-| OBS, Git and monitor schedules | `$ROOT/config/tracker.toml` |
+| OBS, Git and monitor schedules | `tracker.toml` in the active `/config` mount |
 | Default upstream rules and monitor identities | Image `/app/config/` catalogs |
-| Administrator identity/rule exceptions | Explicit override files in `$ROOT/config/` |
+| Administrator identity/rule exceptions | Explicit override files in the active `/config` mount |
 | Provider credentials | Private keyfiles, not frontend `PUBLIC_*` values |
 
 Before changing the Quadlet or application configuration,
-[pause scheduled jobs](#pause-scheduled-jobs). For a prepared configuration directory,
-change the `/config:ro,Z` volume path in `$UNIT`; keep `/data` unchanged. After editing,
+[pause scheduled jobs](#pause-scheduled-jobs). Edit the active config path recorded in the `/config:ro,Z` mount, not an old copy.
+For a deliberately local replacement, remove `Label=org.openruyi.catalog-image=…`
+from the Quadlet and change its `/config:ro,Z` volume path; keep `/data` unchanged. After editing,
 set `PORT` to the selected host port and run:
 
 ```sh
@@ -199,57 +205,26 @@ in `[monitors.refresh.security]` without changing query identities.
 
 ### Copied catalog migration
 
-Older installations copied default rules into `/config`. Their image updates cannot
-identify which copied entries an administrator changed. Migrate once using the
-**original configuration from the image used to initialize that installation**.
-Do not substitute the current running image or guess that all differences are
-defaults. If that baseline is unavailable, retain the local catalog until its
-ownership can be reviewed.
+The upgrader migrates copied defaults only with a recorded original installation
+image. New default installations record that identity. Explicit `--config`
+installations remain operator-owned. It never treats the last running image as
+the original baseline, nor replaces a local catalog without provenance.
 
-With `SELECTED_IMAGE` set to the tested new image, first extract the original catalog:
+Older installations need the [one-time host-tool procedure](#refresh-host-tools)
+below. New default installations do not: their launcher delegates to each selected
+release, and their catalogs already follow the image. If the original image is
+unavailable, keep the local catalog until its ownership can be reviewed.
 
-```sh
-read -r -p 'Original installation image reference: ' ORIGINAL_IMAGE
-podman pull "$ORIGINAL_IMAGE"
-BASELINE="$ROOT/catalog-baseline"
-test ! -e "$BASELINE"
-HELPER="lookout-baseline-$$"
-podman create --name "$HELPER" --network none --entrypoint /bin/true "$ORIGINAL_IMAGE"
-trap 'podman rm "$HELPER" >/dev/null' EXIT
-podman cp "$HELPER:/app/config" "$BASELINE"
-podman rm "$HELPER"
-trap - EXIT
-```
+The stopped-state transaction backs up SQLite, prepares a new private config,
+validates it, then selects the new image **and** config together. Local rule/identity
+edits become explicit overrides; deleted tracks remain excluded. Credentials,
+schedules and data are preserved. Ambiguous deletions reject migration. Failure
+reselects the old config/image pair after checking database compatibility.
 
-[Pause scheduled jobs](#pause-scheduled-jobs), take a backup, then stop the application
-before mounting its private SELinux directories in the migration helper.
-`PREPARED/config` must not exist:
-
-```sh
-python3 "$ROOT/tools/maintain.py" --unit "$UNIT" --backup-dir "$ROOT/backups"
-systemctl --user stop "$NAME.service"
-PREPARED=$(mktemp -d "$ROOT/catalog-migration.XXXXXXXX")
-podman run --rm --network none --read-only --cap-drop=all \
-  --security-opt=no-new-privileges --userns=keep-id:uid=10001,gid=10001 \
-  --tmpfs /tmp:rw,nosuid,nodev,size=128m,mode=1777 \
-  -v "$BASELINE:/baseline:ro,Z" -v "$ROOT/config:/previous:ro,Z" \
-  -v "$PREPARED:/prepared:Z" --entrypoint /opt/venv/bin/python "$SELECTED_IMAGE" \
-  /app/deploy/migrate-config.py --baseline /baseline --source /previous \
-  --destination /prepared/config
-```
-
-The helper writes only the new directory. Review its override names and TOML;
-credentials and the original configuration remain private and unchanged. Default
-rules are no longer copied; local differences become explicit overrides. Removed
-tracks stay excluded, removed monitor identities become `false`. Ambiguous deletions
-of checker/distribution settings reject migration instead of guessing.
-
-Select both the tested image and `PREPARED/config` in the Quadlet, keep `/data`
-unchanged, then use the configuration restart/acceptance commands above. On a
-migration error, reselect the old image/config and restart it. Docker can import the
-prepared directory with `maintain.py --config` after selecting the tested image.
-Resume the previously active timers after acceptance. Subsequent catalog updates
-require no further copying or ownership migration.
+The prior config stays untouched. `catalogs.json` in the upgrade record identifies
+both paths; the Quadlet or Docker mount identifies the active one. Keep active
+config and rollback copies when retaining/cleaning backups. Resume the paused
+timers after acceptance. Subsequent image upgrades need no catalog-copy step.
 
 ### Image upgrades
 
@@ -263,13 +238,13 @@ For a fixed image, enter its published release, commit tag or digest reference:
 ```sh
 read -r -p 'Published image reference: ' SELECTED_IMAGE
 systemctl --user stop "$NAME-update.timer"
-python3 "$ROOT/tools/upgrade.py" --image "$SELECTED_IMAGE" \
+python3 "$TOOLS/upgrade.py" --image "$SELECTED_IMAGE" \
   --unit "$UNIT" --backups "$ROOT/backups" --apply
 ```
 
 An active backup/update lock rejects the command; retry after that job finishes.
-The upgrade preserves the data/config mounts, port, environment and resource
-limits. It records the prior image, unit and backup under `$ROOT/backups/upgrade-*`.
+The upgrade preserves the data mount, port, environment and resource limits.
+A copied-catalog migration selects a new config mount; other updates keep it. It records the prior image, unit and backup under `$ROOT/backups/upgrade-*`.
 If the new image fails, the old image resumes only when it can read the resulting
 data. Otherwise the instance stays stopped. Arbitrary downgrade compatibility is
 not guaranteed; restoring an older database is a separate data-loss decision.
@@ -295,12 +270,21 @@ journalctl --user -u "$NAME.service" -u "$NAME-update.service" \
 systemctl --user status "$NAME-update.timer" "$NAME-backup.timer" --no-pager
 ```
 
+| Observed failure | Administrator action |
+|---|---|
+| Image changes, but copied catalogs still stay under `/config` | Check whether the installed launcher delegates to the release. Use the one-time procedure below only for reviewed copied defaults. |
+| Pull, lock or provider/network failure | Read the job journal. Fix the named boundary; retry after any active job finishes. Do not reinitialize data. |
+| Upgrade record says `failed`, rollback `ready` | The old image/config pair resumed. Resolve the configuration conflict or missing original image before retrying. |
+| Upgrade record says `stopped`, rollback `failed` | Keep the instance stopped. Check storage compatibility or restore into a separate instance; do not force an old reader onto new data. |
+
 ### Pause scheduled jobs
 
 Before replacing host tools or cutting over a recovery instance, stop new jobs
 and require existing ones to have finished:
 
 ```sh
+UPDATE_WAS_ACTIVE=$(systemctl --user is-active "$NAME-update.timer" || true)
+BACKUP_WAS_ACTIVE=$(systemctl --user is-active "$NAME-backup.timer" || true)
 systemctl --user stop "$NAME-update.timer" "$NAME-backup.timer"
 for JOB in "$NAME-update.service" "$NAME-backup.service"; do
   case "$(systemctl --user show "$JOB" --property=ActiveState --value)" in
@@ -312,8 +296,11 @@ done
 
 ### Refresh host tools
 
-Image upgrades do not replace `$ROOT/tools` or host service files. When a release
-requires new deployment tools, [pause scheduled jobs](#pause-scheduled-jobs), then
+The host launcher extracts and executes upgrade tools from each selected immutable
+image. Trusting the update channel therefore also authorizes that release's host-side
+upgrade code. No container receives the engine socket. Backup jobs still use their
+installed host tool. An older launcher without this protocol needs a one-time
+replacement; to replace that launcher or the backup tool, [pause scheduled jobs](#pause-scheduled-jobs), then
 extract that trusted image's tools into a new directory:
 
 ```sh
@@ -335,17 +322,42 @@ systemctl --user edit --full "$NAME-update.service" "$NAME-backup.service"
 ```
 
 In both services, change only the script directory in `ExecStart` to the printed
-absolute path. Preserve their arguments and proxy settings. Then reload, inspect
-the resolved services and resume their timers:
+absolute path. Preserve their arguments and proxy settings. Reload and inspect
+the resolved services; keep the timers paused until any catalog migration finishes:
 
 ```sh
 systemctl --user daemon-reload
 systemctl --user cat "$NAME-update.service" "$NAME-backup.service"
-systemctl --user start "$NAME-update.timer" "$NAME-backup.timer"
+TOOLS="$NEW_TOOLS"
 ```
 
-Keep the old tools until scheduled jobs succeed. This does not replace the
-application's data or restart its service.
+For **copied image defaults**, use the original immutable image from
+`installation.json` or the retained `$ROOT/units/$NAME.container`, not the current
+running image or `main`. Run this before resuming timers:
+
+```sh
+read -r -p 'Original installation image ID or registry digest: ' ORIGINAL_IMAGE
+python3 "$NEW_TOOLS/upgrade.py" --image "$TOOLS_ID" \
+  --unit "$UNIT" --backups "$ROOT/backups" \
+  --catalog-baseline "$ORIGINAL_IMAGE" --apply
+```
+
+For an intentionally local catalog, or one whose origin is unknown, skip migration.
+Do not supply a guessed baseline. The old config and database remain intact.
+
+Verify readiness and the active `/config` mount, then resume only previously active
+timers. Keep the old tools and previous config until acceptance:
+
+```sh
+curl --fail "http://127.0.0.1:$PORT/readyz"
+podman inspect --format '{{range .Mounts}}{{.Source}} → {{.Destination}}{{println}}{{end}}' "$NAME"
+if [ "$UPDATE_WAS_ACTIVE" = active ]; then systemctl --user start "$NAME-update.timer"; fi
+if [ "$BACKUP_WAS_ACTIVE" = active ]; then systemctl --user start "$NAME-backup.timer"; fi
+```
+
+Replacing host tools alone does not restart the application. Catalog migration is
+a backed-up stop/start transaction. Later image updates use the scheduled launcher;
+no manual tool replacement or catalog-copy step is needed.
 
 ### Restore into a separate instance
 
@@ -424,19 +436,19 @@ Docker uses explicit config/data/backup volumes rather than the Podman instance
 paths. Access to the Docker daemon is administrative.
 
 ```sh
-python3 "$ROOT/tools/install.py" --engine docker --image "$IMAGE_ID" \
+python3 "$TOOLS/install.py" --engine docker --image "$IMAGE_ID" \
   --name "$NAME" --port "$PORT"
 mkdir -p "$ROOT/backups"
 docker inspect --format '{{.State.Status}} {{.Config.User}}' "$NAME"
 curl --fail "http://127.0.0.1:$PORT/readyz"
-python3 "$ROOT/tools/maintain.py" --container "$NAME" --backup-dir "$ROOT/backups"
-python3 "$ROOT/tools/maintain.py" --container "$NAME" --status "$ROOT/backups"
+python3 "$TOOLS/maintain.py" --container "$NAME" --backup-dir "$ROOT/backups"
+python3 "$TOOLS/maintain.py" --container "$NAME" --status "$ROOT/backups"
 ```
 
 For an image update:
 
 ```sh
-python3 "$ROOT/tools/upgrade.py" --image "$IMAGE" \
+python3 "$TOOLS/upgrade.py" --image "$IMAGE" \
   --container "$NAME" --backups "$ROOT/backups" --apply
 ```
 

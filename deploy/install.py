@@ -97,6 +97,8 @@ def install(reference, name, *, config=None, port=18730, network='bridge', envir
                '--label', 'org.openruyi.backups=' + volumes['backups'],
                '--mount', f'type=volume,src={volumes["config"]},dst=/config,readonly,volume-nocopy',
                '--mount', f'type=volume,src={volumes["data"]},dst=/data,volume-nocopy']
+    if config is None:
+        command += ['--label', 'org.openruyi.catalog-image=' + manifest['image']]
     if network != 'none':
         command += ['-p', f'127.0.0.1:{port}:8080']
     for value in environment:
@@ -169,6 +171,8 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
             .replace('Memory=8g', 'Memory=' + memory).replace('PidsLimit=512', 'PidsLimit=' + str(pids))
             .replace('CPUQuota=400%', 'CPUQuota=' + str(cpus * 100) + '%'))
     text = text.replace('StopTimeout=20', '\n'.join(['Network=' + network, *['Environment=' + v for v in environment], 'StopTimeout=20']))
+    if config is None:
+        text = text.replace('[Container]', '[Container]\nLabel=org.openruyi.catalog-image=' + manifest['image'])
     temporary_unit = root / 'units' / unit.name
     write_exclusive(temporary_unit, text.encode())
     service = Quadlet(temporary_unit)

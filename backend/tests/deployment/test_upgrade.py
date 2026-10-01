@@ -16,7 +16,7 @@ def module(name):
     return loaded
 
 
-upgrade = module('upgrade')
+upgrade = module('release-upgrade')
 import deployment as operations
 NEW, OLD = 'sha256:' + '2' * 64, 'sha256:' + '1' * 64
 
@@ -57,7 +57,9 @@ def simulate(monkeypatch, manifest, *, fail=None, incompatible=False):
             return json.dumps([{'Id': argv[-1], 'Os': 'linux', 'Architecture': 'arm64', 'Config': {'User': '10001:10001',
                 'Labels': {'org.opencontainers.image.revision': manifest['revision'],
                            'org.opencontainers.image.version': manifest['version']}}}])
-        if argv[:2] == ['podman', 'run']:
+        if argv[:2] == ['podman', 'run'] or argv[:2] == ['podman', 'exec']:
+            if 'paths=[c[k]' in argv[-1]:
+                return json.dumps({'local': True, 'inputs': {'fixture': 'unchanged'}})
             if 'storage.FORMAT' in argv[-1]:
                 return json.dumps([manifest['version'], manifest['storage']])
             if fail and fail in argv:
@@ -74,6 +76,7 @@ def simulate(monkeypatch, manifest, *, fail=None, incompatible=False):
             raise RuntimeError('new service unavailable')
     monkeypatch.setattr(upgrade, 'run', run)
     monkeypatch.setattr(operations, 'run', run)
+    monkeypatch.setattr(__import__('catalog_upgrade'), 'run', run)
     monkeypatch.setattr(upgrade, 'healthy', healthy)
     return calls, ready
 
