@@ -15,7 +15,12 @@ const filtered = (conditions, parameters = {}, logic = 'and', root = 'and') => {
   return '/?' + new URLSearchParams({...parameters, filters: JSON.stringify({groups})});
 };
 const filterFrom = href => {
-  const wire = new URL(href.replaceAll('&amp;', '&'), 'http://fixture').searchParams.get('filters') || '{"groups":[]}';
+  const parameters = new URL(href.replaceAll('&amp;', '&'), 'http://fixture').searchParams;
+  const conditions = [...parameters].filter(([key]) => /^(AND|OR)-/.test(key)).map(([key, value]) => ({
+    dimension: key.slice(key.indexOf('-') + 1), value, logic: key.slice(0, key.indexOf('-')).toLowerCase(),
+  }));
+  if (conditions.length) return {groups: [{logic: conditions[0].logic, conditions}]};
+  const wire = parameters.get('filters') || '{"groups":[]}';
   const split = wire.indexOf('=');
   const parsed = wire.startsWith('{') ? JSON.parse(wire) :
     {groups: [{conditions: [{dimension: wire.slice(0, split), value: wire.slice(split + 1)}]}]};
@@ -250,8 +255,7 @@ const mock = createServer((req, res) => {
       targets,
       collection: {build_service_url: 'https://build.example.org', source_repository: {url: 'https://github.com/fixture/repo.git', branch: 'stable/3', revision: 'abcdef0123456789abcdef0123456789abcdef01'}, obs_updated_at: '2026-09-19T11:10:00Z', upstream_updated_at: '2026-09-19T10:50:00Z', last_attempt: null, mode: 'live', errors: ['intentional fixture error'], generation: 1,
         packages: packages.length, tracked_packages: packages.length - 1}};
-  const query = Object.fromEntries(url.searchParams);
-  query.section = section;
+  const query = [...url.searchParams];
   const document = project(url.pathname === '/api/ui/theme' ? 'theme' : selected ? 'detail' : 'list', payload, query);
   const response = JSON.stringify(url.pathname.startsWith('/api/ui/') ? document : payload);
   const send = () => { res.writeHead(200, {'Content-Type': 'application/json'}); res.end(response); };
@@ -400,12 +404,25 @@ try {
   }
   assert.match(packageMenu, />DepMismatch<\/span>[^]*?>DepChanges<\/span>/);
   const simpleLink = [...packageMenu.matchAll(/href="([^"]+)"/g)]
-    .map(([, href]) => href).find(href => href.includes('filters=maintenance=DepMismatch'));
-  assert.equal(simpleLink, '/?filters=maintenance=DepMismatch');
+    .map(([, href]) => href).find(href => href.includes('AND-maintenance=DepMismatch'));
+  assert.equal(simpleLink, '/?AND-maintenance=DepMismatch');
   const simplePage = await read(simpleLink);
   const jsonPage = await read(filtered([[['maintenance', 'DepMismatch']]]));
   assert.deepEqual(simplePage.match(/<tr data-key="[^"]+"/g), jsonPage.match(/<tr data-key="[^"]+"/g));
   assert.deepEqual(simplePage.match(/\b\d+ packages\b/g), jsonPage.match(/\b\d+ packages\b/g));
+  const inlineURL = '/?per_page=2&AND-maintenance=Outdated&OR-maintenance=Advisory&AND-maintenance=DepMismatch';
+  const inlineQuery = filterFrom(inlineURL);
+  const inlinePage = await read(inlineURL);
+  const mixedJSONPage = await read('/?' + new URLSearchParams({per_page: '2', filters: JSON.stringify(inlineQuery)}));
+  assert.deepEqual(inlinePage.match(/<tr data-key="[^"]+"/g), mixedJSONPage.match(/<tr data-key="[^"]+"/g));
+  assert.deepEqual(inlinePage.match(/\b\d+ packages\b/g), mixedJSONPage.match(/\b\d+ packages\b/g));
+  assert.deepEqual([...inlinePage.matchAll(/<input type="hidden" name="((?:AND|OR)-[^"]+)" value="([^"]+)"/g)]
+    .map(([, key, value]) => [key, value]), [...new URL(inlineURL, 'http://fixture').searchParams]
+    .filter(([key]) => /^(AND|OR)-/.test(key)));
+  for (const [, href] of inlinePage.matchAll(/href="([^"]+)"/g)) {
+    const url = new URL(href.replaceAll('&amp;', '&'), 'http://fixture');
+    if (url.searchParams.get('page') === '2') assert.deepEqual(filterFrom(href), inlineQuery);
+  }
   const alertCount = (html, label) => {
     const alerts = html.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
     return Number(alerts.match(new RegExp(`>${label}</span></span>\\s*<b>(\\d+)</b>`))[1]);
@@ -434,10 +451,10 @@ try {
   });
   assert.ok(pageLinks[0].length > 0);
   assert.deepEqual(pageLinks[0], pageLinks[1]);
-  console.log('PASS palette counts: AND <= OR <= own scope; one expression total; simple URL/JSON equivalence');
+  console.log('PASS palette counts: AND <= OR <= own scope; ordered inline/JSON queries, search inputs and pagination');
   const changedPage = await read(filtered([[['version_signal', 'requires']]]));
   assert.match(changedPage, /aria-label="Remove DepChanges from group 1"/);
-  assert.match(changedPage, /name="filters"/);
+  assert.match(changedPage, /name="AND-version_signal" value="requires"/);
   const untrackedRow = listing.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
   assert.match(untrackedRow, /data-decoration="dashed"/);
   assert.match(untrackedRow, /label%3AUntracked[^>]*>Untracked/);
@@ -462,7 +479,9 @@ try {
   const clearBuild = scoped.match(/<a href="([^"]+)" aria-label="Remove rva23: Failed from group 1"/)[1];
   assert.deepEqual(filterFrom(clearBuild).groups[0].conditions, terms.slice(0, 2).map(([dimension, value]) => ({dimension, value, logic: 'and'})));
   assert.match(scoped, /0 packages/);
-  assert.match(scoped, /name="filters"/);
+  for (const [dimension, value] of terms) {
+    assert.ok(scoped.includes(`name="AND-${dimension}" value="${value}"`));
+  }
   assert.match(scoped, /aria-label="Next operator"/);
   const grouped = await read(filtered([[['build:rva23', 'failed'], ['build:rva23', 'unresolvable']], [['maintenance', 'Advisory']]], {active_group: '1', next_logic: 'or'}, 'or'));
   assert.equal((grouped.match(/class="logic-switch"/g) || []).length, 1);
@@ -624,7 +643,7 @@ try {
   for (const label of ['DepMismatch', 'DepChanges', 'Uncovered', 'CheckFailed']) assert.ok(requirementNav.includes(label));
   const requiresFiltered = await read(filtered([[['requires', 'unmet']]], {monitor: 'requires', per_page: '1'}));
   assert.match(requiresFiltered, /Remove DepMismatch from group 1/);
-  assert.match(requiresFiltered, /name="filters"/);
+  assert.match(requiresFiltered, /name="AND-requires"/);
   const requiresCoverage = await read(filtered([[['check:requires', 'uncovered'], ['requires', 'unmet']]], {monitor: 'requires', section: 'coverage'}));
   assert.match(requiresCoverage, />Version<\/th>/);
   assert.match(requiresCoverage, /0 packages/);

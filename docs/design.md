@@ -127,9 +127,15 @@ connector. Removing the first condition keeps the row connector. Clearing a row
 preserves the others; removing the final condition clears all empty rows and
 resets the active row until the next condition.
 
-`filters=dimension=value` represents one AND condition. Combinations use the same
-`FilterQuery` as JSON, omitting default fields. Both encodings pass the same
-validation and produce the same normalized response. Links omit default request
+One row uses ordered `AND-dimension=value` / `OR-dimension=value` parameters.
+Repeated keys retain their positions, e.g. `AND-maintenance=A&OR-maintenance=B&AND-maintenance=C`
+means `A OR (B AND C)`. Multiple rows use `filters` JSON, omitting default fields;
+an empty editor row also needs JSON to retain its position. Mixing inline terms
+with `filters` is rejected, as are repeated `filters` parameters. The HTTP adapter
+reads ordered query pairs before Pydantic validation, which still owns all field
+constraints. OpenAPI parameters are derived from those same model fields.
+`filters=dimension=value` remains a valid single-condition input. All encodings
+produce the same `FilterQuery` and normalized response. Links omit default request
 parameters; editor state is included only when needed to continue an edit.
 Adding a row inserts it immediately after the chosen row and selects it.
 `presentation/navigation.py` projects edits as GET links and

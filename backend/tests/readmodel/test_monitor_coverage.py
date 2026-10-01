@@ -1,4 +1,4 @@
-from tests.helpers.query import conjunction, query_url
+from tests.helpers.query import conjunction, filter_in, query_url
 from itertools import product
 from urllib.parse import parse_qs, urlsplit
 
@@ -134,9 +134,10 @@ def test_navigation_counts_distinguish_results_from_candidates(snapshot, tmp_pat
         assert destination.status_code == 200, destination.text
         expected = destination.json()['total']
         params = parse_qs(urlsplit(choice['href']).query)
-        candidate_query = FilterQuery.decode(params['filters'][0])
+        candidate_query = filter_in(choice['href'])
         if candidate_query != query:
             candidate = candidate_query.groups[0].conditions[-1]
+            params = {key: value for key, value in params.items() if not key.startswith(('AND-', 'OR-')) and key != 'filters'}
             params['filters'] = FilterQuery(groups=(Group(conditions=(candidate,)),)).encode()
             standalone = client.get('/api/ui/packages', params=params)
             assert standalone.status_code == 200, standalone.text

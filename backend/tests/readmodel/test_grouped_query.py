@@ -10,6 +10,7 @@ from tracker.readmodel.packages import PackageList
 from tracker.readmodel.query import Condition, Evaluation, FilterQuery, Group, MAX_QUERY_NODES
 from tracker.presentation.query_editor import QueryEditor
 from tracker.presentation.navigation import Links
+from tests.helpers.query import filter_in
 
 
 def condition(dimension, value):
@@ -191,7 +192,7 @@ def test_api_and_document_share_query_limit_results_and_candidate_links(scoped_c
     for choice in choices:
         dest = scoped_client.get('/api/ui/packages?' + urlsplit(choice['href']).query)
         assert dest.status_code == 200, dest.text
-        edited = FilterQuery.decode(parse_qs(urlsplit(choice['href']).query).get('filters', ['{}'])[0])
+        edited = filter_in(choice['href'])
         changed = set(c.identity for c in query.groups[0].conditions) ^ set(
             c.identity for g in edited.groups for c in g.conditions)
         dimension, value = changed.pop()
@@ -394,7 +395,8 @@ def test_mode_links_only_change_edit_state_and_counts(scoped_client):
                 destination = scoped_client.get('/api/ui/packages?' + urlsplit(choice['href']).query)
                 assert destination.status_code == 200, destination.text
                 params = parse_qs(urlsplit(choice['href']).query)
-                candidate = FilterQuery.decode(params['filters'][0]).groups[0].conditions[-1]
+                candidate = filter_in(choice['href']).groups[0].conditions[-1]
+                params = {key: value for key, value in params.items() if not key.startswith(('AND-', 'OR-')) and key != 'filters'}
                 params['filters'] = expression('and', ('and', (candidate,))).encode()
                 standalone = scoped_client.get('/api/ui/packages', params=params)
                 assert standalone.status_code == 200, standalone.text
@@ -442,11 +444,9 @@ def test_single_condition_codec_and_url_roundtrip(dimension, value):
     assert FilterQuery.decode(encoded) == query
     href = Links({'filters': query.model_dump()}).to()
     params = parse_qs(urlsplit(href).query)
-    assert set(params) == {'filters'}
-    assert FilterQuery.decode(params['filters'][0]) == query
+    assert set(params) == {'AND-' + dimension}
+    assert filter_in(href) == query
     assert not urlsplit(href).fragment
-    if dimension in ('maintenance', 'build:rva23', 'check:security'):
-        assert not encoded.startswith('{')
 
 
 def test_simple_query_links_omit_defaults_and_preserve_nondefault_scope(scoped_client):
@@ -454,7 +454,7 @@ def test_simple_query_links_omit_defaults_and_preserve_nondefault_scope(scoped_c
         'page': 1, 'per_page': 100, 'next_logic': 'and', 'active_group': 0, 'section': 'results',
     }).json()
     mismatch = next(c for n in page['controls']['choice_rows'] for c in n['choices'] if c['label'] == 'DepMismatch')
-    assert mismatch['href'] == '/?filters=maintenance=DepMismatch'
+    assert mismatch['href'] == '/?AND-maintenance=DepMismatch'
     scoped = scoped_client.get('/api/ui/packages', params={'monitor': 'build', 'section': 'coverage', 'per_page': 2, 'q': 'foo'}).json()
     choice = next(c for n in scoped['controls']['navigation'] for c in n['choices'] if c['label'] == 'CheckFailed')
     params = parse_qs(urlsplit(choice['href']).query)

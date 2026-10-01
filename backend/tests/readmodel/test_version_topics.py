@@ -158,7 +158,9 @@ def test_home_exposes_dependency_changes_as_an_independent_filter(scoped_client)
     choice = next(c for c in page['controls']['choice_rows'][0]['choices'] if c['label'] == 'DepChanges')
     selected = facet_destination(scoped_client, page, choice)
     assert any(c['label'] == 'DepChanges' for c in selected['controls']['editor']['groups'][0]['conditions'])
-    assert any(p['name'] == 'filters' for p in selected['controls']['hidden'])
+    from tracker.api import ListingQuery
+    hidden = [(p['name'], p['value']) for p in selected['controls']['hidden']]
+    assert ListingQuery.from_parameters(hidden).filters.model_dump(mode='json') == selected['controls']['editor']['query']
 
 
 def test_v2_filter_and_schema_expose_the_join_without_repeating_evidence(snapshot, tmp_path, monkeypatch):

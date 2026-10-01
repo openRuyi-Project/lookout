@@ -4,10 +4,11 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import threading
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_origin
 
-from fastapi import FastAPI, HTTPException, Query, Response
-from pydantic import BaseModel, ConfigDict, Field, Json, WithJsonSchema, field_validator
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ConfigDict, Field, Json, ValidationError, WithJsonSchema, field_validator
 
 from tracker import state
 from tracker.monitors.model import RawFinding
@@ -338,7 +339,7 @@ class ListingQuery(BaseModel):
     page: int = Field(1, ge=1, le=1000000)
     per_page: int = Field(100, ge=1, le=200)
     filters: Annotated[Json[FilterQuery], WithJsonSchema({'type': 'string'}, mode='validation')] = Field(default='{}', validate_default=True,
-        description=f'Single condition: dimension=value (e.g. maintenance=DepMismatch). Combinations: JSON groups with explicit AND/OR links on groups and conditions; AND binds before OR. Max {MAX_QUERY_NODES} groups + conditions in total. Empty groups are ignored.')
+        description=f'One row: ordered AND-<dimension>=value / OR-<dimension>=value parameters, including repeated keys. Multiple rows: filters JSON groups. AND binds before OR. Max {MAX_QUERY_NODES} groups + conditions, including raw repeats. Empty groups are ignored. Do not mix inline parameters with filters. filters also accepts dimension=value.')
     active_group: int = Field(0, ge=0,
         description='Editor position, not a filter. Candidate counts add a condition to this group; selected conditions are counted idempotently.')
     next_logic: Literal['and', 'or'] = Field('and',
@@ -352,6 +353,18 @@ class ListingQuery(BaseModel):
         if isinstance(value, str) and not value.lstrip().startswith('{'):
             return FilterQuery.decode(value).model_dump_json()
         return value
+
+    @classmethod
+    def from_parameters(cls, parameters):
+        query, remaining = FilterQuery.extract(parameters)
+        values = {'filters': query.model_dump_json()}
+        arrays = {name for name, field in cls.model_fields.items() if get_origin(field.annotation) is list}
+        for name, value in remaining:
+            if name in arrays:
+                values.setdefault(name, []).append(value)
+            else:
+                values[name] = value
+        return cls.model_validate(values)
 
 
 FULL_PAGE_LIMIT = 20
@@ -375,6 +388,35 @@ class PackageQuery(ListingQuery, MonitorSelection):
 class BatchQuery(MonitorSelection):
     names: list[PackageName] = Field(min_length=1, max_length=FULL_PAGE_LIMIT,
         description=f'Repeated exact package names, in response order; 1–{FULL_PAGE_LIMIT} unique names. Any missing name fails the whole request.')
+
+
+def read_query(model, request):
+    # A Query model receives a dict; that loses interleaved repeated operators.
+    try:
+        return model.from_parameters(request.query_params.multi_items())
+    except ValidationError as error:
+        errors = [{**item, 'loc': ('query', *item['loc'])} for item in error.errors()]
+        raise RequestValidationError(errors) from None
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+
+
+def listing_parameters(request: Request):
+    return read_query(ListingQuery, request)
+
+
+def package_parameters(request: Request):
+    return read_query(PackageQuery, request)
+
+
+def query_schema(model):
+    """Keep HTTP documentation derived from the same validated field definitions."""
+    schema = model.model_json_schema()
+    parameters = [{'name': name, 'in': 'query', 'schema': field,
+        'required': name in schema.get('required', ()),
+        **({'description': field['description']} if 'description' in field else {})}
+        for name, field in schema['properties'].items()]
+    return {'parameters': parameters, 'responses': {422: {'description': 'Invalid query'}}}
 
 
 def selected_monitors(requested, catalog):
@@ -453,8 +495,8 @@ def create_app(db=None):
                 'monitors': catalog, 'targets': snap['targets'], 'collection': collection,
                 'presentation': snap.get('presentation', {})}
 
-    @app.get('/api/v2/packages', response_model=MonitoredList)
-    def monitor_packages(filters: Annotated[PackageQuery, Query()]):
+    @app.get('/api/v2/packages', response_model=MonitoredList, openapi_extra=query_schema(PackageQuery))
+    def monitor_packages(filters: Annotated[PackageQuery, Depends(package_parameters)]):
         if filters.detail == 'full' and filters.per_page > FULL_PAGE_LIMIT:
             raise HTTPException(422, f'Full observations require per_page <= {FULL_PAGE_LIMIT}')
         result = select_monitored(filters, search=filters.search)
@@ -462,8 +504,8 @@ def create_app(db=None):
         return {**result, 'items': [package_response(row, included,
             full=filters.detail == 'full', focus=filters.monitor) for row in result['items']]}
 
-    @app.get('/api/ui/packages', response_model=ListingDocument)
-    def listing_document(filters: Annotated[ListingQuery, Query()]):
+    @app.get('/api/ui/packages', response_model=ListingDocument, openapi_extra=query_schema(ListingQuery))
+    def listing_document(filters: Annotated[ListingQuery, Depends(listing_parameters)]):
         result = select_monitored(filters, document=True)
         return presentation_pages.listing(result, result['query'])
 

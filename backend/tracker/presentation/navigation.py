@@ -25,10 +25,9 @@ class Links:
         query = {**self.query, 'page': None, **changes}
         if query.get('page') == 1:
             del query['page']
-        if raw := query.get('filters'):
-            filters = FilterQuery.decode(raw)
-            query['filters'] = filters.encode() if filters.groups else ''
-        return '/?' + urlencode({key: value for key, value in query.items() if value}, safe=':=')
+        filters = FilterQuery.decode(query.pop('filters', {}))
+        parameters = [(key, value) for key, value in query.items() if value]
+        return '/?' + urlencode(parameters + filters.parameters(), safe=':')
 
     def edited(self, editor, **changes):
         return self.to(filters=editor.query.model_dump(), active_group=editor.active,
@@ -158,8 +157,7 @@ def listing_controls(payload, query, focus, links):
         navigation.append(Navigation(label=caption(focus['title']), choices=choices))
     hidden = [Parameter(name=key, value=str(query[key]))
               for key in ('monitor', 'section', 'active_group', 'next_logic', 'per_page') if query.get(key)]
-    if links.editor.query.groups:
-        hidden.append(Parameter(name='filters', value=links.editor.query.encode()))
+    hidden.extend(Parameter(name=key, value=value) for key, value in links.editor.query.parameters())
     return Controls(query=query.get('q', ''), hidden=hidden, choice_rows=rows, navigation=navigation,
         active=[Choice(label='Search: ' + query['q'], href=links.to(q=''))] if query.get('q') else [],
         editor=filter_editor(payload, links))

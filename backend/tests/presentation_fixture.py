@@ -54,7 +54,7 @@ elif operation == 'list':
                     monitor['check']['status'] = 'not_configured'
                     dimensions['check:' + mid] = ['not_configured']
         retained_dimensions(package['monitors'])
-    filters = ListingQuery.model_validate(request['query'])
+    filters = ListingQuery.from_parameters(request['query'])
     focus = next((m for m in payload['monitors'] if m['id'] == filters.monitor), None)
     section = 'coverage' if focus and focus['kind'] == 'source' else filters.section
     selection = PackageList(packages, payload['targets']).select(query=filters.q,

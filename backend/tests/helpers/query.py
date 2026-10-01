@@ -1,5 +1,5 @@
 """Concise fixture queries, serialized through the same public JSON contract."""
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from tracker.readmodel.query import Condition, FilterQuery, Group
 
@@ -19,7 +19,10 @@ def query_url(path, dimensions=None, **parameters):
 
 def terms_in(href):
     """Flatten only for assertions about membership, never to evaluate logic."""
-    from urllib.parse import parse_qs, urlsplit
-    wire = parse_qs(urlsplit(href).query).get('filters', ['{}'])[0]
-    query = FilterQuery.decode(wire)
+    query = filter_in(href)
     return [(term.dimension, term.value) for group in query.groups for term in group.conditions]
+
+
+def filter_in(href):
+    query, _ = FilterQuery.extract(parse_qsl(urlsplit(href).query, keep_blank_values=True))
+    return query

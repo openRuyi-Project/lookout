@@ -93,13 +93,37 @@ class FilterQuery(QueryModel):
         return cls(groups=(Group(conditions=(Condition(dimension=dimension, value=term),)),))
 
     def encode(self):
-        if len(self.groups) == 1:
-            group = self.groups[0]
-            if group.logic == 'and' and len(group.conditions) == 1:
-                condition = group.conditions[0]
-                if '=' not in condition.dimension and not condition.dimension.lstrip().startswith('{'):
-                    return condition.dimension + '=' + condition.value
         return self.model_dump_json(exclude_defaults=True)
+
+    def parameters(self):
+        """A single row is an ordered list of links; multiple rows need brackets."""
+        if not self.groups:
+            return []
+        if len(self.groups) == 1 and self.groups[0].conditions:
+            return [(term.logic.upper() + '-' + term.dimension, term.value)
+                    for term in self.groups[0].conditions]
+        return [('filters', self.encode())]
+
+    @classmethod
+    def extract(cls, parameters):
+        """Return the filter and non-filter parameters without collapsing repeats."""
+        terms, remaining, serialized = [], [], []
+        for key, value in parameters:
+            if key.startswith(('AND-', 'OR-')):
+                logic, _, dimension = key.partition('-')
+                terms.append({'dimension': dimension, 'value': value, 'logic': logic.lower()})
+            elif key == 'filters':
+                serialized.append(value)
+            else:
+                remaining.append((key, value))
+        if len(serialized) > 1 or (terms and serialized):
+            raise ValueError('Use ordered AND-/OR- parameters or one filters parameter, not both')
+        if terms:
+            # Validate raw terms before Group deduplication, including its node cost.
+            query = cls.model_validate({'groups': [{'logic': terms[0]['logic'], 'conditions': terms}]})
+        else:
+            query = cls.decode(serialized[0]) if serialized else cls()
+        return query, remaining
 
 
 def segments(operands):
