@@ -116,7 +116,8 @@ idempotently to the active group using `next_logic`. In every mode, the displaye
 count is `min(combined count, candidate's own count in the same scope)`, including
 selected choices. This cap avoids repeating the union total on every option; it
 is neither a new-package count nor an intersection, and never limits results.
-For a fixed expression and scope, AND candidate counts cannot exceed OR counts.
+Within a non-negated active row, AND candidate counts cannot exceed OR counts.
+In a NOT row, OR expands the excluded set and can reduce the final result.
 Check choices count coverage; other choices keep the current results/coverage
 view. Search bounds both counts. Pagination follows selection, never precedes it.
 

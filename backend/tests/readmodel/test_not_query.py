@@ -66,3 +66,17 @@ def test_not_http_roundtrip_and_operator_link(scoped_client):
     assert next(choice for choice in editor['operators'] if choice['label'] == 'NOT')['selected']
     serialized = scoped_client.get('/api/ui/packages', params={'filters': FilterQuery.extract(params)[0].encode(), 'next_logic': 'not'})
     assert serialized.json() == data
+
+
+def test_or_expands_positive_row_but_not_group_reverses_inclusion():
+    left, right = TERMS[:2]
+    for connector in ('and', 'or', 'not'):
+        before = FilterQuery(groups=(Group(logic=connector, conditions=(left,)),))
+        after = FilterQuery(groups=(before.groups[0].append(right, 'or'),))
+        first = Evaluation(INDEX, range(16), before).matches
+        second = Evaluation(INDEX, range(16), after).matches
+        union = INDEX['maintenance']['A'] | INDEX['maintenance']['B']
+        assert second == (set(range(16)) - union if connector == 'not' else union)
+        assert second <= first if connector == 'not' else first <= second
+        for mode in MODES:
+            assert Evaluation(INDEX, range(16), after, next_logic=mode).matches == second
