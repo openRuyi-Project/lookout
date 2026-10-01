@@ -71,6 +71,8 @@ jobs:
             if [ "$HEAD" = "$GITHUB_SHA" ]; then
               docker tag openruyi-lookout:test "$IMAGE:main"
               docker push "$IMAGE:main"
+              docker tag openruyi-lookout:test "$IMAGE:latest"
+              docker push "$IMAGE:latest"
             fi
           else
             VERSION=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' openruyi-lookout:test)

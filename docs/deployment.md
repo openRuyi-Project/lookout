@@ -233,7 +233,9 @@ timers after acceptance. Subsequent image upgrades need no catalog-copy step.
 
 ### Image upgrades
 
-`main` follows successful CI builds. A release tag `vX.Y.Z`, a
+`main` and `latest` name the same successful CI build. Registry transport failures
+(EOF/reset/timeout) receive at most three attempts within the original request
+budget; authorization failures are not retried. A release tag `vX.Y.Z`, a
 `sha-<full-commit>` tag, or `@sha256:<registry-digest>` selects a published build.
 Unchanged images do not restart the application. A changed image has a short
 stop/start interval; this is **not zero-downtime deployment**.

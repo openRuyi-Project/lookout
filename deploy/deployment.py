@@ -22,14 +22,24 @@ PROTECTION = ['--read-only', '--cap-drop=all', '--security-opt=no-new-privileges
               '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m,mode=1777']
 
 
-def run(argv, *, timeout=120, input=None, env=None):
-    result = subprocess.run(argv, input=input, text=not isinstance(input, bytes),
-                            capture_output=True, timeout=timeout, env=env)
-    if result.returncode:
-        # A provider proxy or a configuration error may contain credentials.
-        raise RuntimeError(f'{argv[0]} {argv[1]} failed (exit {result.returncode})')
-    output = result.stdout
-    return (output.decode() if isinstance(output, bytes) else output).strip()
+def run(argv, *, timeout=120, input=None, env=None, retry_transport=False):
+    deadline = time.monotonic() + timeout
+    for attempt in range(3 if retry_transport else 1):
+        budget = max(0.001, deadline - time.monotonic()) if retry_transport else timeout
+        result = subprocess.run(argv, input=input, text=not isinstance(input, bytes),
+                                capture_output=True, timeout=budget, env=env)
+        if not result.returncode:
+            output = result.stdout
+            return (output.decode() if isinstance(output, bytes) else output).strip()
+        stderr = result.stderr.decode(errors='replace') if isinstance(result.stderr, bytes) else result.stderr
+        transient = re.search(r'\beof\b|connection reset|connection timed out|TLS handshake timeout|i/o timeout',
+                              stderr or '', re.IGNORECASE)
+        delay = 2 ** attempt
+        if not retry_transport or not transient or attempt == 2 or time.monotonic() + delay >= deadline:
+            # A provider proxy or a configuration error may contain credentials.
+            raise RuntimeError(f'{argv[0]} {argv[1]} failed (exit {result.returncode})')
+        time.sleep(delay)
+    raise AssertionError('registry retry budget exhausted')
 
 
 def image_reference(reference):
@@ -55,7 +65,7 @@ def unchanged_image(engine, reference, current):
     if not image_reference(reference):
         return 'sha256:' + reference.removeprefix('sha256:') == current
     info = json.loads(run([engine, 'image', 'inspect', current]))[0]
-    manifest = json.loads(run([engine, 'manifest', 'inspect', reference], timeout=60))
+    manifest = json.loads(run([engine, 'manifest', 'inspect', reference], timeout=60, retry_transport=True))
     if 'manifests' in manifest:
         candidates = [entry for entry in manifest['manifests']
                       if entry.get('platform', {}).get('os') == info['Os']
@@ -68,7 +78,7 @@ def unchanged_image(engine, reference, current):
             raise ValueError('registry platform manifest digest is invalid')
         host, name = reference.split('/', 1)
         repository = host + '/' + name.split('@', 1)[0].rsplit(':', 1)[0]
-        manifest = json.loads(run([engine, 'manifest', 'inspect', repository + '@' + digest], timeout=60))
+        manifest = json.loads(run([engine, 'manifest', 'inspect', repository + '@' + digest], timeout=60, retry_transport=True))
     digest = manifest.get('config', {}).get('digest')
     if manifest.get('schemaVersion') != 2 or not isinstance(digest, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
         raise ValueError('registry image configuration digest is invalid')
@@ -79,7 +89,7 @@ def resolve_image(engine, reference):
     """Pull a registry reference once; subsequent operations use its local immutable ID."""
     registry = image_reference(reference)
     if registry:
-        run([engine, 'pull', reference], timeout=600)
+        run([engine, 'pull', reference], timeout=600, retry_transport=True)
     info = json.loads(run([engine, 'image', 'inspect', reference]))[0]
     labels = info['Config'].get('Labels') or {}
     version = labels.get('org.opencontainers.image.version', '')

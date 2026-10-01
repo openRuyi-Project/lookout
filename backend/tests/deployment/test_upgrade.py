@@ -578,3 +578,31 @@ def test_unchanged_registry_channel_never_pulls_or_stops(deployment, monkeypatch
     assert result['status'] == 'unchanged' and ready == [OLD]
     assert not any('pull' in call or 'StopUnit' in call or 'StartUnit' in call for call in calls)
     assert not list(backups.iterdir())
+
+
+@pytest.mark.parametrize('message', ['unexpected EOF', 'connection reset by peer', 'TLS handshake timeout'])
+def test_registry_transport_retry_is_bounded_and_does_not_expose_stderr(monkeypatch, message):
+    calls, delays = [], []
+    def execute(argv, **kwargs):
+        calls.append(kwargs['timeout'])
+        return subprocess.CompletedProcess(argv, 125 if len(calls) < 3 else 0, 'image-id', message)
+    monkeypatch.setattr(operations.subprocess, 'run', execute)
+    monkeypatch.setattr(operations.time, 'sleep', delays.append)
+    assert operations.run(['podman', 'pull', 'ghcr.io/fixture/image:main'], retry_transport=True) == 'image-id'
+    assert len(calls) == 3 and delays == [1, 2]
+    assert all(0 < budget <= 120 for budget in calls)
+
+
+@pytest.mark.parametrize('message,retry,expected', [('unexpected EOF', True, 3),
+    ('unauthorized: fixture-secret', True, 1), ('unexpected EOF', False, 1)])
+def test_registry_failures_preserve_failure_and_limit_attempts(monkeypatch, message, retry, expected):
+    calls = []
+    def execute(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 125, '', message)
+    monkeypatch.setattr(operations.subprocess, 'run', execute)
+    monkeypatch.setattr(operations.time, 'sleep', lambda _: None)
+    with pytest.raises(RuntimeError, match='exit 125') as failure:
+        operations.run(['podman', 'pull', 'ghcr.io/fixture/image:main'], retry_transport=retry)
+    assert 'fixture-secret' not in str(failure.value)
+    assert len(calls) == expected
