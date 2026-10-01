@@ -8,7 +8,7 @@ import sys
 import tempfile
 
 from deployment import (Docker, Quadlet, export_image_tree, healthy, resolve_image,
-                        run, validate_catalog_baseline)
+                        run, unchanged_image, validate_catalog_baseline)
 
 
 def upgrade(reference, unit, backups, *, container=None, apply=False, catalog_baseline=None):
@@ -20,9 +20,11 @@ def upgrade(reference, unit, backups, *, container=None, apply=False, catalog_ba
         return {**result, 'status': 'plan'}
     if not backups.is_dir():
         raise ValueError('backup directory must already exist')
-    manifest = resolve_image(service.engine, reference)
     running = json.loads(run([service.engine, 'inspect', service.name]))[0]
     old_image = 'sha256:' + running['Image'].removeprefix('sha256:')
+    selected = old_image if unchanged_image(service.engine, reference, old_image) else reference
+    manifest = resolve_image(service.engine, selected)
+    manifest['reference'] = reference
     if manifest['image'] == old_image and not catalog_baseline:
         healthy(service.engine, service.name, old_image)
         return {**result, **manifest, 'status': 'unchanged'}

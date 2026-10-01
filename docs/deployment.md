@@ -249,6 +249,12 @@ python3 "$TOOLS/upgrade.py" --image "$SELECTED_IMAGE" \
 
 An active backup/update lock rejects the command; retry after that job finishes.
 The upgrade preserves the data mount, port, environment and resource limits.
+Before pulling image layers, the updater compares the registry configuration digest
+for the running platform. An unchanged image is not pulled or restarted; only
+small manifest requests are made. Failed metadata checks abort that tick without
+changing the service. This applies to channel tags and commit tags alike.
+The host `upgrade.py` and `deployment.py` must also be updated; replacing the
+application image alone does not replace copied host tools.
 A copied-catalog migration selects a new config mount; other updates keep it. It records the prior image, unit and backup under `$ROOT/backups/upgrade-*`.
 If the new image fails, the old image resumes only when it can read the resulting
 data. Otherwise the instance stays stopped. Arbitrary downgrade compatibility is

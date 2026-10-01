@@ -57,6 +57,8 @@ def simulate(monkeypatch, manifest, *, fail=None, incompatible=False):
             return json.dumps([{'Id': argv[-1], 'Os': 'linux', 'Architecture': 'arm64', 'Config': {'User': '10001:10001',
                 'Labels': {'org.opencontainers.image.revision': manifest['revision'],
                            'org.opencontainers.image.version': manifest['version']}}}])
+        if argv[:3] == ['podman', 'manifest', 'inspect']:
+            return json.dumps({'schemaVersion': 2, 'config': {'digest': manifest['image']}})
         if argv[:2] == ['podman', 'run'] or argv[:2] == ['podman', 'exec']:
             if 'paths=[c[k]' in argv[-1]:
                 return json.dumps({'local': True, 'inputs': {'fixture': 'unchanged'}})
@@ -509,3 +511,70 @@ def test_publication_sync_failures_are_reported_and_staging_is_cleaned(tmp_path,
         operations.write_exclusive(destination, b'complete')
     assert destination.exists() is published
     assert list(tmp_path.iterdir()) == ([destination] if published else [])
+
+
+@pytest.mark.parametrize('engine', ['docker', 'podman'])
+@pytest.mark.parametrize('tag', ['main', 'sha-' + 'a' * 40])
+def test_registry_comparison_uses_metadata_without_pulling(monkeypatch, engine, tag):
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[1:3] == ['image', 'inspect']:
+            return json.dumps([{'Os': 'linux', 'Architecture': 'amd64'}])
+        assert argv[1:3] == ['manifest', 'inspect']
+        return json.dumps({'schemaVersion': 2, 'config': {'digest': OLD}})
+    monkeypatch.setattr(operations, 'run', run)
+    assert operations.unchanged_image(engine, 'ghcr.io/owner/lookout:' + tag, OLD)
+    assert len(calls) == 2 and not any('pull' in call for call in calls)
+
+
+def test_registry_index_selects_running_platform(monkeypatch):
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[1:3] == ['image', 'inspect']:
+            return json.dumps([{'Os': 'linux', 'Architecture': 'arm64', 'Variant': 'v8'}])
+        if '@' in argv[-1]:
+            assert argv[-1] == 'ghcr.io/owner/lookout@' + NEW
+            return json.dumps({'schemaVersion': 2, 'config': {'digest': OLD}})
+        return json.dumps({'manifests': [
+            {'digest': 'sha256:' + '3' * 64, 'platform': {'os': 'linux', 'architecture': 'amd64'}},
+            {'digest': NEW, 'platform': {'os': 'linux', 'architecture': 'arm64', 'variant': 'v8'}},
+        ]})
+    monkeypatch.setattr(operations, 'run', run)
+    assert operations.unchanged_image('podman', 'ghcr.io/owner/lookout:main', OLD)
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize('digest,expected', [(OLD, True), (NEW, False)])
+def test_registry_digest_controls_update_not_tag_name(monkeypatch, digest, expected):
+    monkeypatch.setattr(operations, 'run', lambda argv, **kwargs: json.dumps(
+        [{'Os': 'linux', 'Architecture': 'amd64'}] if argv[1] == 'image'
+        else {'schemaVersion': 2, 'config': {'digest': digest}}))
+    assert operations.unchanged_image('docker', 'ghcr.io/owner/lookout:main', OLD) is expected
+
+
+def test_manifest_failure_does_not_fall_back_to_pull(monkeypatch):
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[1] == 'image':
+            return json.dumps([{'Os': 'linux', 'Architecture': 'amd64'}])
+        raise RuntimeError('registry unavailable')
+    monkeypatch.setattr(operations, 'run', run)
+    with pytest.raises(RuntimeError, match='registry unavailable'):
+        operations.unchanged_image('docker', 'ghcr.io/owner/lookout:main', OLD)
+    assert not any('pull' in call for call in calls)
+
+
+@pytest.mark.parametrize('loader', ['release-upgrade', 'upgrade'])
+def test_unchanged_registry_channel_never_pulls_or_stops(deployment, monkeypatch, loader):
+    _, unit, backups, manifest = deployment
+    worker = upgrade if loader == 'release-upgrade' else module('upgrade')
+    calls, ready = simulate(monkeypatch, {**manifest, 'image': OLD})
+    monkeypatch.setattr(worker, 'run', operations.run)
+    monkeypatch.setattr(worker, 'healthy', upgrade.healthy)
+    result = worker.upgrade('ghcr.io/owner/lookout:main', unit, backups, apply=True)
+    assert result['status'] == 'unchanged' and ready == [OLD]
+    assert not any('pull' in call or 'StopUnit' in call or 'StartUnit' in call for call in calls)
+    assert not list(backups.iterdir())

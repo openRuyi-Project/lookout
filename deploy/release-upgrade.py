@@ -11,7 +11,7 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from catalog_upgrade import CATALOG_STATUS, prepare
 from deployment import (Docker, Quadlet, healthy, image_command, instance_lock,
-                        no_data_users, resolve_image, run, upgrade_lock,
+                        no_data_users, resolve_image, run, unchanged_image, upgrade_lock,
                         validate_catalog_baseline, write_exclusive)
 
 
@@ -35,7 +35,9 @@ def upgrade(reference, unit, backups, *, container=None, apply=False, catalog_ba
         if not old_image.startswith('sha256:'):
             old_image = 'sha256:' + old_image
         service.settings['image'] = old_image
-        manifest = resolve_image(service.engine, reference)
+        selected = old_image if unchanged_image(service.engine, reference, old_image) else reference
+        manifest = resolve_image(service.engine, selected)
+        manifest['reference'] = reference
         result.update(version=manifest['version'], image=manifest['image'], revision=manifest['revision'])
         pending_catalog = False
         if catalog_baseline and manifest['image'] == old_image:

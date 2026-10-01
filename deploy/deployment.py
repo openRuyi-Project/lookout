@@ -49,6 +49,32 @@ def validate_catalog_baseline(reference):
         raise ValueError('catalog baseline requires the immutable original installation image, not a moving tag')
 
 
+
+def unchanged_image(engine, reference, current):
+    """Compare registry metadata before pulling layers; failures leave the service alone."""
+    if not image_reference(reference):
+        return 'sha256:' + reference.removeprefix('sha256:') == current
+    info = json.loads(run([engine, 'image', 'inspect', current]))[0]
+    manifest = json.loads(run([engine, 'manifest', 'inspect', reference], timeout=60))
+    if 'manifests' in manifest:
+        candidates = [entry for entry in manifest['manifests']
+                      if entry.get('platform', {}).get('os') == info['Os']
+                      and entry.get('platform', {}).get('architecture') == info['Architecture']
+                      and (not info.get('Variant') or entry['platform'].get('variant') == info['Variant'])]
+        if len(candidates) != 1:
+            raise ValueError('registry manifest must identify exactly one matching runtime platform')
+        digest = candidates[0]['digest']
+        if not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
+            raise ValueError('registry platform manifest digest is invalid')
+        host, name = reference.split('/', 1)
+        repository = host + '/' + name.split('@', 1)[0].rsplit(':', 1)[0]
+        manifest = json.loads(run([engine, 'manifest', 'inspect', repository + '@' + digest], timeout=60))
+    digest = manifest.get('config', {}).get('digest')
+    if manifest.get('schemaVersion') != 2 or not isinstance(digest, str) or not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
+        raise ValueError('registry image configuration digest is invalid')
+    return digest == current
+
+
 def resolve_image(engine, reference):
     """Pull a registry reference once; subsequent operations use its local immutable ID."""
     registry = image_reference(reference)
