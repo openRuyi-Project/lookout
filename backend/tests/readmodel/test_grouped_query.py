@@ -42,7 +42,7 @@ def test_or_counts_use_search_and_evidence_scope_without_changing_totals():
             assert union[key] == intersection[key]
         assert union['total'] == union['counts']['all'] == union['requires_counts']['all'] == 1
     empty = packages.select(filters=FilterQuery(), next_logic='or', query='pkg-')
-    assert empty['total'] == 3 and empty['maintenance_labels']['B'] == 2
+    assert empty['total'] == 3 and empty['maintenance_labels']['B'] == 0
 
 
 
@@ -64,10 +64,10 @@ def test_group_seals_only_pending_terms_and_keeps_operators_independent():
 
 
 def test_same_architecture_has_no_implicit_exclusivity():
-    pairs = [('AND-build:cpu', 'failed'), ('OR-build:cpu', 'unresolvable')]
+    pairs = [('cpu_failed', 'AND'), ('cpu_unresolvable', 'OR')]
     index = {'build:cpu': {'failed': {0}, 'unresolvable': {1}}}
     union, _ = FilterQuery.extract(pairs)
-    intersection, _ = FilterQuery.extract([pairs[0], ('AND-build:cpu', 'unresolvable')])
+    intersection, _ = FilterQuery.extract([pairs[0], ('cpu_unresolvable', 'AND')])
     assert Evaluation(index, range(3), union).matches == {0, 1}
     assert Evaluation(index, range(3), intersection).matches == set()
 
@@ -87,24 +87,22 @@ def test_group_navigation_mode_pagination_and_clear(scoped_client):
         response = scoped_client.get('/api/ui/packages?' + urlsplit(href).query)
         assert response.status_code == 200, response.text
         return response.json()
-    page = follow('/?AND-build:rva20=failed&OR-build:rva20=excluded&per_page=1&next_logic=or')
+    page = follow('/?rva20_failed=AND&rva20_excluded=OR&per_page=1&next_logic=or')
     editor = page['controls']['editor']
     switched = follow(editor['operators'][0]['href'])
     assert switched['total'] == page['total'] == 2
     assert switched['controls']['editor']['query'] == editor['query']
-    for before, after in zip(page['controls']['choice_rows'], switched['controls']['choice_rows']):
-        assert all(b['count'] <= a['count'] for a, b in zip(before['choices'], after['choices']))
     sealed = follow(switched['controls']['editor']['group'])
     group = sealed['controls']['editor']['groups'][0]
     assert group['closed'] and group['palette'] == 0 and group['logic'] == 'and'
     assert sealed['total'] == 2
     assert sealed['controls']['editor']['group'] is None
-    assert follow(group['clear'])['controls']['editor']['query'] == {'groups': [], 'tail': []}
+    assert follow(group['clear'])['controls']['editor']['query'] == {'mode': 'advanced', 'groups': [], 'tail': []}
     assert follow(sealed['controls']['editor']['clear'])['controls']['editor']['groups'] == []
 
 
 def test_palette_cycles_without_limiting_group_count(scoped_client):
-    pairs = [('AND-maintenance', 'Advisory'), ('group', 'OR')] * 6
+    pairs = [('Advisory', 'AND'), ('Group', 'OR')] * 6
     response = scoped_client.get('/api/ui/packages?' + urlencode(pairs))
     assert response.status_code == 200
     groups = response.json()['controls']['editor']['groups']
@@ -113,7 +111,7 @@ def test_palette_cycles_without_limiting_group_count(scoped_client):
 
 
 def test_budget_disables_addition_not_removal(scoped_client):
-    pairs = [('AND-maintenance', str(i)) for i in range(MAX_QUERY_NODES)]
+    pairs = [(str(i), 'AND') for i in range(MAX_QUERY_NODES)]
     response = scoped_client.get('/api/ui/packages?' + urlencode(pairs))
     assert response.status_code == 200
     page = response.json()
@@ -122,3 +120,30 @@ def test_budget_disables_addition_not_removal(scoped_client):
     href = page['controls']['editor']['groups'][0]['conditions'][0]['href']
     restored = scoped_client.get('/api/ui/packages?' + urlsplit(href).query)
     assert restored.status_code == 200 and restored.json()['controls']['editor']['group']
+
+
+@pytest.mark.parametrize('pairs', [[('advanced', '1')], [('A', 'AND')],
+    [('A', 'AND'), ('Group', 'AND')]])
+def test_not_mode_counts_candidates_without_excluding_them(pairs):
+    query, _ = FilterQuery.extract(pairs)
+    index = {'maintenance': {'A': {0, 1, 2}, 'B': {1}, 'C': {3}}}
+    before = Evaluation(index, range(4), query, 'and')
+    after = Evaluation(index, range(4), query, 'not')
+    assert before.matches == after.matches
+    assert after.count(C) == len(after.matches & index['maintenance']['C'])
+    edited = QueryEditor(query, 'not').toggle(B).query
+    assert Evaluation(index, range(4), edited).matches == before.matches - index['maintenance']['B']
+
+
+@pytest.mark.parametrize('mode', ['and', 'or', 'not'])
+def test_switching_mode_preserves_current_page(scoped_client, mode):
+    page = scoped_client.get('/api/ui/packages?advanced=1&page=2&per_page=1').json()
+    choice = next(c for c in page['controls']['editor']['operators'] if c['label'] == mode.upper())
+    switched = scoped_client.get('/api/ui/packages?' + urlsplit(choice['href']).query).json()
+    assert switched['page'] == page['page'] == 2
+    assert switched['total'] == page['total']
+    assert [row['key'] for row in switched['table']['rows']] == [row['key'] for row in page['table']['rows']]
+    before = scoped_client.get('/api/v2/packages?advanced=1&page=2&per_page=1').json()
+    after = scoped_client.get('/api/v2/packages?' + urlsplit(choice['href']).query).json()
+    assert after['items'] == before['items']
+    assert switched['controls']['editor']['query'] == page['controls']['editor']['query']

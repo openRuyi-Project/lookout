@@ -348,9 +348,9 @@ class ListingQuery(BaseModel):
     q: str = Field('', max_length=100)
     page: int = Field(1, ge=1, le=1000000)
     per_page: int = Field(100, ge=1, le=200)
-    filters: FilterQuery = Field(default_factory=FilterQuery)
+    filters: FilterQuery = Field(default_factory=lambda: FilterQuery(mode='basic'))
     next_logic: Literal['and', 'or', 'not'] = Field('and',
-        description='Operator for the next addition. Candidate counts are min(combined result, candidate alone in the same scope), in every mode. Does not change the current query or total.')
+        description='Advanced Search operator for the next addition. Candidate counts show AND matches, OR additions or NOT removals. Switching the operator preserves current results and page.')
     monitor: str = Field('', max_length=64)
     section: Literal['results', 'coverage'] = 'results'
 
@@ -361,12 +361,15 @@ class ListingQuery(BaseModel):
         arrays = {name for name, field in cls.model_fields.items() if get_origin(field.annotation) is list}
         for name, value in remaining:
             if name == 'filters':
-                raise ValueError('Use ordered AND-/OR-/NOT- conditions and group parameters')
+                raise ValueError('Use bare filter flags or TOKEN=AND/OR/NOT and Group parameters')
             if name in arrays:
                 values.setdefault(name, []).append(value)
             else:
                 values[name] = value
-        return cls.model_validate(values)
+        parsed = cls.model_validate(values)
+        if parsed.filters.mode == 'basic' and parsed.next_logic != 'and':
+            raise ValueError('next_logic requires Advanced Search')
+        return parsed
 
 
 FULL_PAGE_LIMIT = 20
@@ -418,9 +421,14 @@ def query_schema(model):
         'required': name in schema.get('required', ()),
         **({'description': field['description']} if 'description' in field else {})}
         for name, field in schema['properties'].items() if name != 'filters']
-    parameters.append({'name': 'group', 'in': 'query', 'required': False,
-        'schema': {'type': 'string', 'enum': ['AND', 'OR', 'NOT']},
-        'description': f'Seals preceding ungrouped AND-<dimension>, OR-<dimension>, NOT-<dimension> parameters, preserving order and repeated keys. Operations are evaluated left to right. At most {MAX_QUERY_NODES} conditions + group markers, before deduplication. Each expression starts from the scoped ALL, including inside groups: leading OR preserves ALL, leading NOT subtracts. Groups cannot nest.'})
+    parameters.extend([
+        {'name': 'advanced', 'in': 'query', 'required': False,
+         'schema': {'type': 'string', 'enum': ['1']},
+         'description': 'Enable Advanced Search with no conditions. TOKEN=AND/OR/NOT also selects this mode. Bare TOKEN flags select ordinary search: OR within each build target or BuildSystem, AND between other conditions. Use + between alternatives, e.g. rva23_failed+rva23_succeeded&Yanked. Do not mix modes.'},
+        {'name': 'Group', 'in': 'query', 'required': False,
+         'schema': {'type': 'string', 'enum': ['AND', 'OR', 'NOT']},
+         'description': f'Seals preceding ungrouped TOKEN=AND/OR/NOT conditions. Evaluate sequentially from scoped ALL, including inside groups. No nesting. At most {MAX_QUERY_NODES} conditions + group markers, counting repeats before deduplication. Advanced counts show AND matches, OR additions or NOT removals.'},
+    ])
     return {'parameters': parameters, 'responses': {422: {'description': 'Invalid query'}}}
 
 
@@ -495,6 +503,7 @@ def create_app(db=None):
             raise HTTPException(422, str(error)) from None
         if document:
             result['query'] = filters.model_copy(update={'section': section, 'page': result['page']}).model_dump(exclude_defaults=True)
+            result['query']['filters'] = filters.filters.model_dump()
         return {**result,
                 'section': section,
                 'monitors': catalog, 'targets': snap['targets'], 'collection': collection,

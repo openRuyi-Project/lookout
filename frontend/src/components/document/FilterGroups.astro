@@ -2,7 +2,6 @@
 import {safeHref, type FilterEditor} from '../../lib/document';
 interface Props {editor: FilterEditor}
 const {editor} = Astro.props;
-const nodes = editor.query.tail.length + editor.query.groups.reduce((sum, group) => sum + 1 + group.conditions.length, 0);
 ---
 {editor.groups.length > 0 && <div class="query-expression" aria-label="Filter expression">
   {editor.groups.map(group => <span class="query-operand">
@@ -11,11 +10,11 @@ const nodes = editor.query.tail.length + editor.query.groups.reduce((sum, group)
       data-group-id={group.id} data-palette={group.palette ?? undefined}>
 
     {group.conditions.map(condition => <>
-      <span class="condition-operator">{condition.logic.toUpperCase()}</span>
+      {editor.advanced.selected && <span class="condition-operator">{condition.logic.toUpperCase()}</span>}
       <a href={safeHref(condition.href)} aria-label={`Remove ${condition.label}`}>{condition.label} <span class="term-remove" aria-hidden="true">×</span></a>
     </>)}
     {group.closed && <><a class="group-clear" href={safeHref(group.clear)} aria-label={`Remove group ${group.id + 1}`}>×</a></>}
     </span>
   </span>)}
 </div>}
-{nodes >= editor.node_limit && <p role="status" class="notice">Query limit: {editor.node_limit} groups + conditions.</p>}
+{editor.node_count >= editor.node_limit && <p role="status" class="notice">Query limit: {editor.node_limit} groups + conditions.</p>}

@@ -1,5 +1,4 @@
 """Server-owned filter edits and links; the browser only renders/navigates."""
-from urllib.parse import urlencode
 
 from tracker.monitors.build import status as build_status
 from tracker.monitors.issues import VERSION_ISSUES, Issue
@@ -18,13 +17,13 @@ from tracker.presentation.query_editor import QueryEditor
 from tracker.presentation.registry import presenter
 from tracker.presentation.values import CHECK_LABELS
 from tracker.presentation.version import signal_title
-from tracker.readmodel.query import MAX_QUERY_NODES, Condition, FilterQuery
+from tracker.readmodel.query import MAX_QUERY_NODES, Condition, FilterQuery, encode_parameters
 
 
 class Links:
     def __init__(self, query=None):
-        self.query = {key: value for key, value in (query or {}).items() if value}
-        raw = self.query.get('filters', {})
+        self.query = {key: value for key, value in (query or {}).items() if value or key == 'filters'}
+        raw = self.query.get('filters', {'mode': 'basic'})
         filters = FilterQuery.model_validate(raw)
         self.query['filters'] = filters.model_dump()
         self.editor = QueryEditor(filters, self.query.get('next_logic', 'and'))
@@ -35,11 +34,11 @@ class Links:
             del query['page']
         filters = FilterQuery.model_validate(query.pop('filters', {}))
         parameters = [(key, value) for key, value in query.items() if value]
-        return '/?' + urlencode(parameters + filters.parameters(), safe=':')
+        return '/?' + encode_parameters(parameters + filters.parameters())
 
     def edited(self, editor, **changes):
         return self.to(filters=editor.query.model_dump(),
-                       next_logic=editor.next_logic if editor.next_logic != 'and' else '', **changes)
+                       next_logic=editor.next_logic if editor.query.mode == 'advanced' and editor.next_logic != 'and' else '', **changes)
 
     def selected(self, dimension, value):
         return self.editor.current.contains(Condition(dimension=dimension, value=value))
@@ -48,7 +47,11 @@ class Links:
         condition = Condition(dimension=dimension, value=value)
         if not self.editor.current.contains(condition) and self.editor.query.nodes >= MAX_QUERY_NODES:
             return None
-        return self.edited(self.editor.toggle(condition), **changes)
+        try:
+            edited = self.editor.toggle(condition)
+        except ValueError:
+            return None  # Adding an ordinary alternative can also allocate a union group.
+        return self.edited(edited, **changes)
 
 
 def listing_query(query, catalog):
@@ -90,11 +93,13 @@ def filter_editor(payload, links):
         groups.append(FilterGroup(id=len(groups), closed=False, palette=None, logic='and',
             conditions=[FilterCondition(label=condition_label(term, payload) or term.value, logic=term.logic,
                 href=links.edited(editor.toggle(term))) for term in editor.query.tail], clear=None))
-    return FilterEditor(query=editor.query, groups=groups,
-        group=links.edited(editor.group()) if editor.query.tail and editor.query.nodes < MAX_QUERY_NODES else None,
+    advanced = editor.query.mode == 'advanced'
+    return FilterEditor(query=editor.query, node_count=editor.query.nodes, groups=groups,
+        advanced=Choice(label='Advanced Search', selected=advanced, href=links.edited(editor.switch_mode())),
+        group=links.edited(editor.group()) if advanced and editor.query.tail and editor.query.nodes < MAX_QUERY_NODES else None,
         operators=[Choice(label=logic.upper(), selected=editor.next_logic == logic,
-            href=links.edited(editor.mode(logic))) for logic in ('and', 'or', 'not')],
-        clear=links.edited(QueryEditor(FilterQuery(), next_logic=editor.next_logic)))
+            href=links.edited(editor.mode(logic), page=links.query.get('page'))) for logic in ('and', 'or', 'not')] if advanced else [],
+        clear=links.edited(QueryEditor(FilterQuery(mode=editor.query.mode), next_logic=editor.next_logic)))
 
 
 def global_navigation(payload, links):

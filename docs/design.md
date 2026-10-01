@@ -92,9 +92,14 @@ request/response models; the site's `/api` page owns usage examples.
 
 ## Selection and presentation
 
-`readmodel/query.py` owns sealed groups plus a pending condition sequence. The only
-HTTP input is ordered `AND-dimension=value`, `OR-dimension=value`,
-`NOT-dimension=value` and `group=AND|OR|NOT` pairs. Preserve repeated keys in order.
+`readmodel/query.py` owns sealed groups plus a pending condition sequence. Ordinary search uses bare flags such as
+`?Outdated&Yanked`: AND between predicates, OR within a build target or BuildSystem.
+Alternatives serialize with `+`, e.g. `?rva23_failed+rva23_succeeded&Yanked`.
+Advanced Search uses ordered `TOKEN=AND|OR|NOT` and `Group=AND|OR|NOT` pairs.
+`advanced=1` selects an empty advanced editor. The two modes cannot mix.
+Entering advanced mode preserves ordinary selection; leaving clears its expression
+rather than silently approximating it as ordinary facets. Search text remains.
+Preserve repeated keys in advanced queries.
 A group marker seals conditions since the preceding marker; it cannot nest or
 capture an already sealed group. Its operator connects the entire group, independently
 of the first condition's operator. Each sequence is evaluated left to right, starting from the scoped ALL.
@@ -110,15 +115,20 @@ adjacent groups, not severity or truth. `FilterGroups.astro` renders server-owne
 links; there is no browser evaluator. Navigation replaces controls, counts,
 packages and pagination together and remains usable without JavaScript.
 
-The list total evaluates the current expression. Candidate counts are
-`min(result after idempotent addition, candidate alone in the same scope)`.
-A choice already in the pending sequence retains the current result for counting;
-clicking it removes it. Other choices append with `next_logic`. Indexed package
+The list total evaluates the current expression. Ordinary counts show intersections; adding an alternative within a selected build
+target or BuildSystem shows new matches under all other conditions. Prefix/suffix
+intersections compute those alternative scopes once per request, not once per candidate.
+Advanced counts describe the next operation: AND shows intersection size,
+OR shows additions (candidate minus current), NOT shows removals (current
+intersection candidate). These counts naturally cannot exceed the candidate size.
+Changing the next operator never changes the expression or current page.
+Clicking an already selected pending condition removes it, independently of the
+next-addition operator. Indexed package
 sets implement union, intersection and subtraction, counting each package once.
 Search bounds the scope; Check counts target coverage, other counts use the
 selected results/coverage view. Pagination follows selection.
 
-`MAX_QUERY_NODES` is the single budget: 128 conditions + group markers, including
+`MAX_QUERY_NODES` is the single budget: 128 conditions + explicit or implicit union groups, including
 raw repetitions before deduplication. No per-group cap exists. Invalid operators,
 unknown dimensions, empty group operations and over-budget inputs return 422.
 Responses publish the same limit; additions are disabled at the boundary while

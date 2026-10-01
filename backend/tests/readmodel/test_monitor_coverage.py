@@ -133,15 +133,10 @@ def test_navigation_counts_distinguish_results_from_candidates(snapshot, tmp_pat
         destination = client.get('/api/ui/packages?' + urlsplit(choice['href']).query)
         assert destination.status_code == 200, destination.text
         expected = destination.json()['total']
-        params = parse_qs(urlsplit(choice['href']).query)
         candidate_query = filter_in(choice['href'])
         if candidate_query != query:
-            candidate = candidate_query.tail[-1]
-            params = {key: value for key, value in params.items() if not key.startswith(('AND-', 'OR-', 'NOT-')) and key != 'group'}
-            params.update(FilterQuery(tail=(candidate.model_copy(update={'logic': 'and'}),)).parameters())
-            standalone = client.get('/api/ui/packages', params=params)
-            assert standalone.status_code == 200, standalone.text
-            expected = min(expected, standalone.json()['total'])
+            expected = (expected - page['total'] if logic == 'or' else
+                        page['total'] - expected if logic == 'not' else expected)
         assert choice['count'] == expected, choice
 
 

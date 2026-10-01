@@ -1,10 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
 const evidence = '/api/v2/packages?monitor=security&search=observations&q=CVE-&include=security&detail=full&per_page=20';
-const groupedURL = '/api/v2/packages?' + new URLSearchParams([
-  ['AND-build:rva23', 'failed'], ['OR-build:rva23', 'unresolvable'], ['group', 'AND'],
-  ['AND-maintenance', 'Advisory'], ['AND-maintenance', 'DepMismatch'], ['group', 'AND'],
-]);
+const groupedURL = '/api/v2/packages?rva23_failed=AND&rva23_unresolvable=OR&Group=AND&Advisory=AND&DepMismatch=AND';
 const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=version&include=security';
 ---
 <Base title="API">
@@ -36,29 +33,25 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         (default: all). IDs come from the list response's <code>monitors</code>.</li>
       <li><code>q</code> searches names; <code>search=observations</code> adds fact values,
         restricted by <code>monitor</code> when set. Matching is case-insensitive substring.</li>
-      <li>Use ordered <code>AND-dimension=value</code>, <code>OR-dimension=value</code> and
-        <code>NOT-dimension=value</code> parameters. Keep repeated keys in order.
-        <code>group=AND</code>, <code>group=OR</code> or <code>group=NOT</code> seals preceding
-        ungrouped conditions, using that operator to connect the whole group.
-        Operations run left to right. Each expression starts from the scoped ALL,
-        including inside groups: leading OR preserves ALL; leading NOT subtracts its operand;
-        groups cannot nest. The response includes the normalized query and
-        <code>query_node_limit</code> (conditions + group markers, before deduplication).</li>
-      <li>Counts evaluate the complete expression after appending a candidate using
-        <code>next_logic</code> (default <code>and</code>).
-        Counts take the smaller of that result and the candidate's own scoped count, including selected choices, in every mode.
-        <code>total</code> always counts the current expression; editing context does not change its results.
-        OR deduplicates packages.
-        Search stays in scope. Evidence views default to findings; <code>section=coverage</code>
-        includes packages without findings. Check counts target coverage.</li>
+      <li>Ordinary search: <code>?Outdated&amp;Yanked</code>. Conditions intersect;
+        states of the same build target and BuildSystems form unions:
+        <code>?rva23_failed+rva23_succeeded&amp;Yanked</code>,
+        <code>?buildsystem_cmake+buildsystem_pyproject</code>.</li>
+      <li>Advanced Search: <code>?Outdated=AND&amp;Advisory=OR&amp;EOL=NOT</code>.
+        Operations run left to right from ALL. <code>Group=AND|OR|NOT</code>
+        seals the preceding ungrouped conditions; each group starts from ALL and cannot nest.
+        <code>advanced=1</code> opens the editor without conditions. Do not mix bare flags and operators.</li>
+      <li>Ordinary counts show intersections; alternatives within a selected build target or BuildSystem count additions under the other conditions.
+        Advanced Search uses <code>next_logic=and|or|not</code> (default: and): AND counts matches, OR counts additions, NOT counts removals.
+        Switching that operator does not change current results. Packages count once. Search and the focused view remain in scope.
+        Check counts target coverage.</li>
     </ul>
-    <p>Build alternatives intersected with two alerts:</p>
+    <p><a href={groupedURL}>Build alternatives intersected with two alerts</a>:</p>
     <pre><code>{groupedURL}</code></pre>
-    <p><a href={groupedURL}>Run grouped query</a>. Dimensions use the monitor projection's IDs:
-      <code>maintenance</code>, <code>buildsystem</code>, <code>build:TARGET</code>,
-      <code>view</code>, <code>version_signal</code>, <code>requires</code>,
-      <code>check:MONITOR</code>, <code>retained:MONITOR</code>.
-      Malformed/over-budget queries return 422; no truncation or implicit exclusivity.</p>
+    <p>Other predicates use <code>dimension/value</code>, for example
+      <code>check:security/error</code>. The response includes the normalized query and
+      <code>query_node_limit</code>: conditions plus explicit or implicit union groups.
+      Raw repeated conditions count before deduplication. Invalid or oversized queries return 422.</p>
     <p>Find advisory evidence:</p>
     <pre><code><a href={evidence}>{evidence}</a></code></pre>
     <p>Fetch known packages:</p>

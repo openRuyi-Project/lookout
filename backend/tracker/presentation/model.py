@@ -121,6 +121,8 @@ class FilterGroup(DocumentModel):
 
 class FilterEditor(DocumentModel):
     query: FilterQuery
+    advanced: Choice
+    node_count: int
     node_limit: int = MAX_QUERY_NODES
     groups: list[FilterGroup]
     operators: list[Choice]

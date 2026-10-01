@@ -174,6 +174,9 @@ export interface components {
         /** FilterEditor */
         FilterEditor: {
             query: components["schemas"]["FilterQuery"];
+            advanced: components["schemas"]["Choice"];
+            /** Node Count */
+            node_count: number;
             /**
              * Node Limit
              * @default 128
@@ -205,6 +208,12 @@ export interface components {
         };
         /** FilterQuery */
         FilterQuery: {
+            /**
+             * Mode
+             * @default advanced
+             * @enum {string}
+             */
+            mode: "basic" | "advanced";
             /**
              * Groups
              * @default []

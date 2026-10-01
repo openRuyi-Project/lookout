@@ -10,11 +10,15 @@ const serving = process.argv.includes('--serve');
 let delays = {};
 let revision = 0;
 
+const token = (dimension, value) => dimension === 'maintenance' ? value
+  : dimension === 'version_signal' && value === 'requires' ? 'DepChanges'
+  : dimension === 'buildsystem' ? 'buildsystem_' + (value === '_not_detected' ? 'custom' : value)
+  : dimension.startsWith('build:') ? dimension.slice(6) + '_' + value : dimension + '/' + value;
 const filtered = (conditions, parameters = {}, logic = 'and', root = 'and') => {
   const pairs = Object.entries(parameters);
   conditions.forEach((terms, group) => {
-    terms.forEach(([dimension, value], index) => pairs.push([(index ? logic : root).toUpperCase() + '-' + dimension, value]));
-    if (group < conditions.length - 1) pairs.push(['group', root.toUpperCase()]);
+    terms.forEach(([dimension, value], index) => pairs.push([token(dimension, value), (index ? logic : root).toUpperCase()]));
+    if (group < conditions.length - 1) pairs.push(['Group', root.toUpperCase()]);
   });
   return '/?' + new URLSearchParams(pairs);
 };
@@ -23,11 +27,18 @@ const filterFrom = href => {
   const groups = [];
   let tail = [];
   for (const [key, value] of parameters) {
-    if (key === 'group') {
+    if (key === 'Group') {
       groups.push({logic: value.toLowerCase(), conditions: tail});
       tail = [];
-    } else if (/^(AND|OR|NOT)-/.test(key)) {
-      tail.push({dimension: key.slice(key.indexOf('-') + 1), value, logic: key.slice(0, key.indexOf('-')).toLowerCase()});
+    } else if (['AND', 'OR', 'NOT', ''].includes(value) && key !== 'q') {
+      for (const part of key.replaceAll(' ', '+').split('+')) {
+        const [dimension, item] = part.includes('/') ? part.split('/')
+          : part === 'DepChanges' ? ['version_signal', 'requires']
+          : part.startsWith('buildsystem_') ? ['buildsystem', part.slice(12) === 'custom' ? '_not_detected' : part.slice(12)]
+          : /^(rva23|rva20|x86_64)_/.test(part) ? ['build:' + part.slice(0, part.lastIndexOf('_')), part.slice(part.lastIndexOf('_') + 1)]
+          : ['maintenance', part];
+        tail.push({dimension, value: item, logic: value.toLowerCase() || 'and'});
+      }
     }
   }
   return {groups, tail};
@@ -412,36 +423,36 @@ try {
   }
   assert.match(packageMenu, />DepMismatch<\/span>[^]*?>DepChanges<\/span>/);
   const simpleLink = [...packageMenu.matchAll(/href="([^"]+)"/g)]
-    .map(([, href]) => href).find(href => href.includes('AND-maintenance=DepMismatch'));
-  assert.equal(simpleLink, '/?AND-maintenance=DepMismatch');
+    .map(([, href]) => href).find(href => href === '/?DepMismatch');
+  assert.equal(simpleLink, '/?DepMismatch');
   const simplePage = await read(simpleLink);
   const equivalentPage = await read(filtered([[['maintenance', 'DepMismatch']]]));
   assert.deepEqual(simplePage.match(/<tr data-key="[^"]+"/g), equivalentPage.match(/<tr data-key="[^"]+"/g));
   assert.deepEqual(simplePage.match(/\b\d+ packages\b/g), equivalentPage.match(/\b\d+ packages\b/g));
-  const inlineURL = '/?per_page=2&AND-maintenance=Outdated&OR-maintenance=Advisory&AND-maintenance=DepMismatch';
+  const inlineURL = '/?per_page=2&Outdated=AND&Advisory=OR&DepMismatch=AND';
   const inlineQuery = filterFrom(inlineURL);
   const inlinePage = await read(inlineURL);
-  assert.deepEqual([...inlinePage.matchAll(/<input type="hidden" name="((?:AND|OR|NOT)-[^"]+)" value="([^"]+)"/g)]
+  assert.deepEqual([...inlinePage.matchAll(/<input type="hidden" name="([^"]+)" value="(AND|OR|NOT)"/g)]
     .map(([, key, value]) => [key, value]), [...new URL(inlineURL, 'http://fixture').searchParams]
-    .filter(([key]) => /^(AND|OR|NOT)-/.test(key)));
+    .filter(([, value]) => ['AND', 'OR', 'NOT'].includes(value)));
   for (const [, href] of inlinePage.matchAll(/href="([^"]+)"/g)) {
     const url = new URL(href.replaceAll('&amp;', '&'), 'http://fixture');
     if (url.searchParams.get('page') === '2') assert.deepEqual(filterFrom(href), inlineQuery);
   }
-  const excludedURL = '/?AND-maintenance=Outdated&NOT-maintenance=Advisory&next_logic=not';
+  const excludedURL = '/?Outdated=AND&Advisory=NOT&next_logic=not';
   const excludedPage = await read(excludedURL);
   const rowKeys = html => new Set([...html.matchAll(/<tr data-key="([^"]+)"/g)].map(([, key]) => key));
-  const outdatedKeys = rowKeys(await read('/?AND-maintenance=Outdated'));
-  const advisoryKeys = rowKeys(await read('/?AND-maintenance=Advisory'));
-  const combinedKeys = rowKeys(await read('/?AND-maintenance=Outdated&OR-maintenance=Advisory'));
+  const outdatedKeys = rowKeys(await read('/?Outdated=AND'));
+  const advisoryKeys = rowKeys(await read('/?Advisory=AND'));
+  const combinedKeys = rowKeys(await read('/?Outdated=AND&Advisory=OR'));
   assert.ok(advisoryKeys.has('advisory-current'));
   assert.ok(!outdatedKeys.has('advisory-current'));
   assert.deepEqual([...combinedKeys].sort(), [...new Set([...outdatedKeys, ...advisoryKeys])].sort());
   assert.deepEqual(rowKeys(excludedPage), outdatedKeys.difference(advisoryKeys));
-  assert.match(excludedPage, /name="NOT-maintenance" value="Advisory"/);
+  assert.match(excludedPage, /name="Advisory" value="NOT"/);
   assert.match(excludedPage, /class="condition-operator">NOT/);
   assert.match(excludedPage, /aria-current="true"[^>]*>NOT|>NOT<\/a>/);
-  const leadingNot = await read('/?NOT-maintenance=Outdated&AND-maintenance=Advisory');
+  const leadingNot = await read('/?Outdated=NOT&Advisory=AND');
   assert.deepEqual(rowKeys(leadingNot), advisoryKeys.difference(outdatedKeys));
   console.log('PASS NOT: set subtraction and retained ordered search inputs');
   const alertCount = (html, label) => {
@@ -456,13 +467,26 @@ try {
     assert.deepEqual(unionPage.match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
     assert.equal((unionPage.match(/<tr data-key=/g) || []).length, unionCount);
     for (const label of ['Outdated', 'Untracked']) {
-      assert.equal(alertCount(unionPage, label), alertCount(listing, label));
+      assert.equal(alertCount(unionPage, label), mode === 'or' ? 0 : alertCount(listing, label));
     }
     palettes[mode] = Object.fromEntries(['Outdated', 'Untracked', 'Advisory', 'EOL', 'DepMismatch']
       .map(label => [label, alertCount(unionPage, label)]));
   }
-  for (const label of Object.keys(palettes.and)) assert.ok(palettes.and[label] <= palettes.or[label]);
+  assert.equal(palettes.or.Outdated, 0);
+  assert.equal(palettes.or.Untracked, 0);
   assert.equal(palettes.and.EOL, 0);
+  const notModePage = await read('/?advanced=1&next_logic=not');
+  assert.deepEqual(rowKeys(notModePage), rowKeys(listing));
+  for (const label of ['Outdated', 'Advisory', 'DepMismatch']) {
+    assert.equal(alertCount(notModePage, label), alertCount(listing, label));
+  }
+  const secondPage = await read('/?advanced=1&page=2&per_page=2');
+  const modeMenu = secondPage.match(/<nav[^>]*aria-label="Next operator"[^]*?<\/nav>/)[0];
+  for (const [, href] of modeMenu.matchAll(/href="([^"]+)"/g)) {
+    const target = href.replaceAll('&amp;', '&');
+    assert.equal(new URL(target, 'http://fixture').searchParams.get('page'), '2');
+    assert.deepEqual(rowKeys(await read(target)), rowKeys(secondPage));
+  }
   const paginatedUnion = await read(filtered(unionTerms, {next_logic: 'or', per_page: '2'}, 'or'));
   assert.deepEqual(paginatedUnion.match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
   assert.equal((paginatedUnion.match(/<tr data-key=/g) || []).length, 2);
@@ -472,10 +496,10 @@ try {
   });
   assert.ok(pageLinks[0].length > 0);
   assert.deepEqual(pageLinks[0], pageLinks[1]);
-  console.log('PASS palette counts: AND <= OR <= own scope; ordered condition/group parameters, search inputs and pagination');
+  console.log('PASS palette counts: intersection, additions and removals; ordered condition/group parameters, search inputs and pagination');
   const changedPage = await read(filtered([[['version_signal', 'requires']]]));
   assert.match(changedPage, /aria-label="Remove DepChanges"/);
-  assert.match(changedPage, /name="AND-version_signal" value="requires"/);
+  assert.match(changedPage, /name="DepChanges" value="AND"/);
   const untrackedRow = listing.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
   assert.match(untrackedRow, /data-decoration="dashed"/);
   assert.match(untrackedRow, /label%3AUntracked[^>]*>Untracked/);
@@ -492,16 +516,16 @@ try {
   assert.equal((packageMenu.match(/>LicenseDiff<\/span>/g) || []).length, 1);
   assert.match(packageMenu, />LicenseDiff<\/span><\/span>\s*<b>1<\/b>/);
   assert.equal((listing.match(/<button[^>]*type="submit"/g) || []).length, 1);
-  const terms = [['buildsystem', 'custom'], ['maintenance', 'LicenseDiff'], ['build:rva23', 'failed']];
+  const terms = [['buildsystem', '_not_detected'], ['maintenance', 'LicenseDiff'], ['build:rva23', 'failed']];
   const scoped = await read(filtered([terms]));
-  for (const label of ['BuildSystem: custom', 'LicenseDiff', 'rva23: Failed']) {
+  for (const label of ['BuildSystem: ❔ custom', 'LicenseDiff', 'rva23: Failed']) {
     assert.ok(scoped.includes(`aria-label="Remove ${label}"`));
   }
   const clearBuild = scoped.match(/<a href="([^"]+)" aria-label="Remove rva23: Failed"/)[1];
   assert.deepEqual(filterFrom(clearBuild).tail, terms.slice(0, 2).map(([dimension, value]) => ({dimension, value, logic: 'and'})));
   assert.match(scoped, /0 packages/);
   for (const [dimension, value] of terms) {
-    assert.ok(scoped.includes(`name="AND-${dimension}" value="${value}"`));
+    assert.ok(scoped.includes(`name="${token(dimension, value)}" value="AND"`));
   }
   assert.match(scoped, /aria-label="Next operator"/);
   const grouped = await read(filtered([[['build:rva23', 'failed'], ['build:rva23', 'unresolvable']], [['maintenance', 'Advisory']]], {next_logic: 'or'}, 'or'));
@@ -518,7 +542,7 @@ try {
   assert.ok(groupsIndex < grouped.indexOf('<table'));
   assert.match(grouped, /data-group-id="0" data-palette="0"/);
   assert.match(grouped, /data-group-id="0" data-palette="0"[^]*?<span class="condition-operator">AND<\/span>/);
-  const leadingOrPage = await read('/?OR-maintenance=Advisory');
+  const leadingOrPage = await read('/?Advisory=OR');
   assert.deepEqual(leadingOrPage.match(/\b\d+ packages\b/g), listing.match(/\b\d+ packages\b/g));
   const sealLink = grouped.match(/class="group-add" href="([^"]+)"/)[1];
   const sealedQuery = filterFrom(sealLink);
@@ -674,7 +698,7 @@ try {
   for (const label of ['DepMismatch', 'DepChanges', 'Uncovered', 'CheckFailed']) assert.ok(requirementNav.includes(label));
   const requiresFiltered = await read(filtered([[['requires', 'unmet']]], {monitor: 'requires', per_page: '1'}));
   assert.match(requiresFiltered, /Remove DepMismatch/);
-  assert.match(requiresFiltered, /name="AND-requires"/);
+  assert.match(requiresFiltered, /name="requires\/unmet"/);
   const requiresCoverage = await read(filtered([[['check:requires', 'uncovered'], ['requires', 'unmet']]], {monitor: 'requires', section: 'coverage'}));
   assert.match(requiresCoverage, />Version<\/th>/);
   assert.match(requiresCoverage, /0 packages/);

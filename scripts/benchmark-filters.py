@@ -5,11 +5,10 @@ from pathlib import Path
 import statistics
 import sys
 import time
-from urllib.parse import urlencode
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from tracker.readmodel.packages import PackageList
-from tracker.readmodel.query import FilterQuery, MAX_QUERY_NODES
+from tracker.readmodel.query import Condition, FilterQuery, MAX_QUERY_NODES, encode_parameters
 
 
 def main():
@@ -44,8 +43,21 @@ def main():
                 'candidate_counts': sum(len(result[key]) for key in (
                     'counts', 'buildsystems', 'maintenance_labels', 'version_signals', 'requires_counts'))
                     + sum(map(len, result['build_statuses'].values())),
-                'url_bytes': len(urlencode(query.parameters())), 'p50_ms': round(statistics.median(durations), 3),
+                'url_bytes': len(encode_parameters(query.parameters())), 'p50_ms': round(statistics.median(durations), 3),
                 'p95_ms': round(sorted(durations)[29], 3)})
+    terms = tuple(Condition(dimension=dimension, value=value)
+        for dimension, values in index.index.items() if dimension != 'view'
+        for value in values)
+    ordinary = FilterQuery(mode='basic', tail=terms[:124])
+    durations = []
+    for _ in range(31):
+        start = time.perf_counter()
+        parsed = FilterQuery.extract(ordinary.parameters())[0]
+        index.select(filters=parsed)
+        durations.append((time.perf_counter() - start) * 1000)
+    samples.append({'mode': 'basic', 'nodes': ordinary.nodes, 'packages': len(rows),
+        'url_bytes': len(encode_parameters(ordinary.parameters())),
+        'p50_ms': round(statistics.median(durations), 3), 'p95_ms': round(sorted(durations)[29], 3)})
     print(json.dumps({'python': sys.version, 'node_limit': MAX_QUERY_NODES, 'samples': samples}, indent=2))
 
 

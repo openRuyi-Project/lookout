@@ -8,9 +8,12 @@ const {controls} = Astro.props;
   <label class="sr-only" for="search">Search packages</label>
   <input id="search" type="search" name="q" value={controls.query} placeholder="Search packages" maxlength="100"/>
   <button type="submit">Search</button>
-  <nav class="logic-switch" aria-label="Next operator">
-    {controls.editor.operators.map(choice => <a href={safeHref(choice.href)} aria-current={choice.selected ? 'true' : undefined}>{choice.label}</a>)}
-  </nav>
-  <a class="group-add" href={safeHref(controls.editor.group)} aria-disabled={!controls.editor.group || undefined}>Group</a>
+  <a class="advanced-search" href={safeHref(controls.editor.advanced.href)} aria-current={controls.editor.advanced.selected ? 'true' : undefined}>Advanced Search</a>
+  {controls.editor.advanced.selected && <>
+    <nav class="logic-switch" aria-label="Next operator">
+      {controls.editor.operators.map(choice => <a href={safeHref(choice.href)} aria-current={choice.selected ? 'true' : undefined}>{choice.label}</a>)}
+    </nav>
+    <a class="group-add" href={safeHref(controls.editor.group)} aria-label="Group pending conditions" aria-disabled={!controls.editor.group || undefined}>()</a>
+  </>}
   <a class="filter-clear" href={safeHref(controls.editor.clear)}>Clear</a>
 </form>
