@@ -16,7 +16,7 @@ def read_inline(parameters):
     return query
 
 
-@pytest.mark.parametrize('operators', tuple(product(('AND', 'OR'), repeat=3)))
+@pytest.mark.parametrize('operators', tuple(product(('AND', 'OR', 'NOT'), repeat=3)))
 def test_single_row_roundtrip_preserves_each_link_and_first_connector(operators):
     parameters = [(logic + '-maintenance', value) for logic, value in zip(operators, 'ABC')]
     query = read_inline(parameters)

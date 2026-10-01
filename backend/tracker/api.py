@@ -313,7 +313,7 @@ class MonitoredList(BaseModel):
     pages: int
     filters: FilterQuery
     active_group: int
-    next_logic: Literal['and', 'or']
+    next_logic: Literal['and', 'or', 'not']
     query_node_limit: int = MAX_QUERY_NODES
     counts: dict[str, int]
     targets: list[Target]
@@ -350,11 +350,11 @@ class ListingQuery(BaseModel):
     page: int = Field(1, ge=1, le=1000000)
     per_page: int = Field(100, ge=1, le=200)
     filters: Annotated[Json[FilterQuery], WithJsonSchema({'type': 'string'}, mode='validation')] = Field(default='{}', validate_default=True,
-        description=f'One row: ordered AND-<dimension>=value / OR-<dimension>=value parameters, including repeated keys. Multiple rows: filters JSON groups. AND binds before OR. Max {MAX_QUERY_NODES} groups + conditions, including raw repeats. Empty groups are ignored. Do not mix inline parameters with filters. filters also accepts dimension=value.')
+        description=f'One row: ordered AND-<dimension>=value / OR-<dimension>=value / NOT-<dimension>=value parameters, including repeated keys. Multiple rows: filters JSON groups. AND and NOT bind before OR; NOT subtracts its condition/group from the current set. Max {MAX_QUERY_NODES} groups + conditions, including raw repeats. Empty groups are ignored. Do not mix inline parameters with filters. filters also accepts dimension=value.')
     active_group: int = Field(0, ge=0,
         description='Editor position, not a filter. Candidate counts add a condition to this group; selected conditions are counted idempotently.')
-    next_logic: Literal['and', 'or'] = Field('and',
-        description='Operator for the next addition. Candidate counts are min(combined result, candidate alone in the same scope), in either mode. Does not change the current query or total.')
+    next_logic: Literal['and', 'or', 'not'] = Field('and',
+        description='Operator for the next addition. Candidate counts are min(combined result, candidate alone in the same scope), in every mode. Does not change the current query or total.')
     monitor: str = Field('', max_length=64)
     section: Literal['results', 'coverage'] = 'results'
 

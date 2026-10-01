@@ -384,7 +384,7 @@ def test_mode_links_only_change_edit_state_and_counts(scoped_client):
     query = expression('and', ('and', (condition('build:rva20', 'failed'),)))
     page = scoped_client.get('/api/ui/packages', params={'filters': query.encode()}).json()
     editor = page['controls']['editor']
-    assert len(editor['operators']) == 2
+    assert [option['label'] for option in editor['operators']] == ['AND', 'OR', 'NOT']
     switched = scoped_client.get('/api/ui/packages?' + urlsplit(editor['operators'][1]['href']).query).json()
     assert switched['controls']['editor']['query'] == editor['query']
     assert switched['total'] == page['total']

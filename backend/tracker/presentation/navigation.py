@@ -95,7 +95,7 @@ def filter_editor(payload, links):
             add=links.edited(selected.add()) if can_add else None))
     return FilterEditor(query=editor.query, active_group=editor.active, groups=groups,
         operators=[Choice(label=logic.upper(), selected=editor.next_logic == logic,
-            href=links.edited(editor.mode(logic))) for logic in ('and', 'or')],
+            href=links.edited(editor.mode(logic))) for logic in ('and', 'or', 'not')],
         clear=links.edited(QueryEditor(FilterQuery(), next_logic=editor.next_logic)))
 
 

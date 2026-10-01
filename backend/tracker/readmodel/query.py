@@ -1,4 +1,4 @@
-"""Two-level package predicates, with explicit AND/OR links and AND precedence."""
+"""Two-level package predicates, with explicit AND/OR/NOT links and conjunction precedence."""
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # Groups and conditions share one budget; the root is fixed, not user-recursive.
 # See docs/design.md for the parse + selection + candidate-count benchmark.
 MAX_QUERY_NODES = 128
-Logic = Literal['and', 'or']
+Logic = Literal['and', 'or', 'not']
 
 
 class QueryModel(BaseModel):
@@ -109,7 +109,7 @@ class FilterQuery(QueryModel):
         """Return the filter and non-filter parameters without collapsing repeats."""
         terms, remaining, serialized = [], [], []
         for key, value in parameters:
-            if key.startswith(('AND-', 'OR-')):
+            if key.startswith(('AND-', 'OR-', 'NOT-')):
                 logic, _, dimension = key.partition('-')
                 terms.append({'dimension': dimension, 'value': value, 'logic': logic.lower()})
             elif key == 'filters':
@@ -117,7 +117,7 @@ class FilterQuery(QueryModel):
             else:
                 remaining.append((key, value))
         if len(serialized) > 1 or (terms and serialized):
-            raise ValueError('Use ordered AND-/OR- parameters or one filters parameter, not both')
+            raise ValueError('Use ordered AND-/OR-/NOT- parameters or one filters parameter, not both')
         if terms:
             # Validate raw terms before Group deduplication, including its node cost.
             query = cls.model_validate({'groups': [{'logic': terms[0]['logic'], 'conditions': terms}]})
@@ -126,15 +126,17 @@ class FilterQuery(QueryModel):
         return query, remaining
 
 
-def segments(operands):
-    """Split an OR of AND runs into completed alternatives and its final run."""
+def segments(operands, universe):
+    """Split a union of intersection/difference runs; leading NOT complements the scope."""
     alternatives = set()
     tail = None
     for logic, operand in operands:
         if tail is None:
-            tail = set(operand)
+            tail = set(universe).difference(operand) if logic == 'not' else set(operand)
         elif logic == 'and':
             tail.intersection_update(operand)
+        elif logic == 'not':
+            tail.difference_update(operand)
         else:
             alternatives.update(tail)
             tail = set(operand)
@@ -142,7 +144,7 @@ def segments(operands):
 
 
 def combine(operands, universe):
-    alternatives, tail = segments(operands)
+    alternatives, tail = segments(operands, universe)
     return universe if tail is None else alternatives | tail
 
 
@@ -169,8 +171,8 @@ class Evaluation:
         self.matches = combine(((g.logic, result) for g, result in zip(query.groups, self.groups)
                                 if result is not None), self.scope)
         self.current = query.groups[active] if query.groups else Group()
-        self.alternatives, self.tail = segments((c.logic, self.predicate(c)) for c in self.current.conditions)
-        # With a single variable X, an AND/OR expression is F(empty) | (X & F(all)).
+        self.alternatives, self.tail = segments(self.operands(self.current), self.scope)
+        # The active row occurs once: F(X) = (X & F(all)) | (~X & F(empty)).
         # Evaluate fixed rows twice, not once per candidate in the whole palette.
         self.fixed_matches = self.substitute(frozenset())
         self.possible_matches = self.substitute(self.scope)
@@ -178,8 +180,13 @@ class Evaluation:
     def predicate(self, condition):
         return self.scope.intersection(self.index.get(condition.dimension, {}).get(condition.value, ()))
 
+    def operands(self, group):
+        # The row connector is applied outside its parentheses, exactly once.
+        return ((c.logic if i else 'and', self.predicate(c))
+                for i, c in enumerate(group.conditions))
+
     def group(self, group):
-        return combine(((c.logic, self.predicate(c)) for c in group.conditions), self.scope)
+        return combine(self.operands(group), self.scope)
 
     def count(self, condition):
         members = self.predicate(condition)
@@ -189,8 +196,8 @@ class Evaluation:
             candidate = members
             if self.tail is not None:
                 candidate = self.alternatives | (self.tail & members if self.next_logic == 'and'
-                                                 else self.tail | members)
-            count = len(self.fixed_matches | (candidate & self.possible_matches))
+                    else self.tail - members if self.next_logic == 'not' else self.tail | members)
+            count = len((candidate & self.possible_matches) | ((self.scope - candidate) & self.fixed_matches))
         return min(count, len(members))
 
     def substitute(self, candidate):

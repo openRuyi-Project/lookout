@@ -102,16 +102,17 @@ request/response models; the site's `/api` page owns usage examples.
 ```
 
 The URL/API `filters` parameter serializes this structure. No category replaces a
-previous condition. Each link belongs to the following term. AND takes precedence
-over OR at each level; rows are parentheses. There is no implicit ALL operand,
-so the first nonempty row/condition starts the expression under either operator.
+previous condition. Each link belongs to the following term. AND and NOT take precedence
+over OR at each level; rows are parentheses. NOT subtracts its condition or group.
+A leading NOT group complements that row within the scoped package universe;
+leading AND/OR starts from the first nonempty row.
 Empty groups are omitted from evaluation. Repeated conditions collapse within a group; groups can share conditions.
-Indexed package sets implement the predicates and AND/OR; unions count each
+Indexed package sets implement the predicates and intersection/union/difference; unions count each
 package once. Search and the chosen results/coverage view bound the dataset.
 
 The list total and pagination use the current expression, independent of editing
 mode. Candidate counts evaluate the whole expression after adding the candidate
-idempotently to the active group using `next_logic`. In either mode, the displayed
+idempotently to the active group using `next_logic`. In every mode, the displayed
 count is `min(combined count, candidate's own count in the same scope)`, including
 selected choices. This cap avoids repeating the union total on every option; it
 is neither a new-package count nor an intersection, and never limits results.
@@ -127,7 +128,7 @@ connector. Removing the first condition keeps the row connector. Clearing a row
 preserves the others; removing the final condition clears all empty rows and
 resets the active row until the next condition.
 
-One row uses ordered `AND-dimension=value` / `OR-dimension=value` parameters.
+One row uses ordered `AND-dimension=value` / `OR-dimension=value` / `NOT-dimension=value` parameters.
 Repeated keys retain their positions, e.g. `AND-maintenance=A&OR-maintenance=B&AND-maintenance=C`
 means `A OR (B AND C)`. Multiple rows use `filters` JSON, omitting default fields;
 an empty editor row also needs JSON to retain its position. Mixing inline terms

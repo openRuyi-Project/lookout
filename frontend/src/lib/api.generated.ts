@@ -51,7 +51,7 @@ export interface components {
              * @default and
              * @enum {string}
              */
-            logic: "and" | "or";
+            logic: "and" | "or" | "not";
         };
         /** Controls */
         Controls: {
@@ -220,7 +220,7 @@ export interface components {
              * @default and
              * @enum {string}
              */
-            logic: "and" | "or";
+            logic: "and" | "or" | "not";
             /**
              * Conditions
              * @default []

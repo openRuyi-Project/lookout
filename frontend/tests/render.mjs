@@ -16,7 +16,7 @@ const filtered = (conditions, parameters = {}, logic = 'and', root = 'and') => {
 };
 const filterFrom = href => {
   const parameters = new URL(href.replaceAll('&amp;', '&'), 'http://fixture').searchParams;
-  const conditions = [...parameters].filter(([key]) => /^(AND|OR)-/.test(key)).map(([key, value]) => ({
+  const conditions = [...parameters].filter(([key]) => /^(AND|OR|NOT)-/.test(key)).map(([key, value]) => ({
     dimension: key.slice(key.indexOf('-') + 1), value, logic: key.slice(0, key.indexOf('-')).toLowerCase(),
   }));
   if (conditions.length) return {groups: [{logic: conditions[0].logic, conditions}]};
@@ -416,13 +416,25 @@ try {
   const mixedJSONPage = await read('/?' + new URLSearchParams({per_page: '2', filters: JSON.stringify(inlineQuery)}));
   assert.deepEqual(inlinePage.match(/<tr data-key="[^"]+"/g), mixedJSONPage.match(/<tr data-key="[^"]+"/g));
   assert.deepEqual(inlinePage.match(/\b\d+ packages\b/g), mixedJSONPage.match(/\b\d+ packages\b/g));
-  assert.deepEqual([...inlinePage.matchAll(/<input type="hidden" name="((?:AND|OR)-[^"]+)" value="([^"]+)"/g)]
+  assert.deepEqual([...inlinePage.matchAll(/<input type="hidden" name="((?:AND|OR|NOT)-[^"]+)" value="([^"]+)"/g)]
     .map(([, key, value]) => [key, value]), [...new URL(inlineURL, 'http://fixture').searchParams]
-    .filter(([key]) => /^(AND|OR)-/.test(key)));
+    .filter(([key]) => /^(AND|OR|NOT)-/.test(key)));
   for (const [, href] of inlinePage.matchAll(/href="([^"]+)"/g)) {
     const url = new URL(href.replaceAll('&amp;', '&'), 'http://fixture');
     if (url.searchParams.get('page') === '2') assert.deepEqual(filterFrom(href), inlineQuery);
   }
+  const excludedURL = '/?AND-maintenance=Outdated&NOT-maintenance=Advisory&next_logic=not';
+  const excludedPage = await read(excludedURL);
+  const excludedJSON = await read('/?' + new URLSearchParams({filters: JSON.stringify(filterFrom(excludedURL)), next_logic: 'not'}));
+  const rowKeys = html => new Set([...html.matchAll(/<tr data-key="([^"]+)"/g)].map(([, key]) => key));
+  assert.deepEqual(rowKeys(excludedPage), rowKeys(excludedJSON));
+  const outdatedKeys = rowKeys(await read('/?AND-maintenance=Outdated'));
+  const advisoryKeys = rowKeys(await read('/?AND-maintenance=Advisory'));
+  assert.deepEqual(rowKeys(excludedPage), outdatedKeys.difference(advisoryKeys));
+  assert.match(excludedPage, /name="NOT-maintenance" value="Advisory"/);
+  assert.match(excludedPage, /class="condition-operator">NOT/);
+  assert.match(excludedPage, /aria-current="true"[^>]*>NOT|>NOT<\/a>/);
+  console.log('PASS NOT: set subtraction, ordered URL/JSON equivalence and retained search inputs');
   const alertCount = (html, label) => {
     const alerts = html.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
     return Number(alerts.match(new RegExp(`>${label}</span></span>\\s*<b>(\\d+)</b>`))[1]);
