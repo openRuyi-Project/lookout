@@ -392,6 +392,30 @@ try {
     assert.ok(alertLinks.some(q => q.groups[0].conditions.some(c => c.dimension === 'maintenance' && c.value === value)));
   }
   assert.match(packageMenu, />DepMismatch<\/span>[^]*?>DepChanges<\/span>/);
+  const alertCount = (html, label) => {
+    const alerts = html.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
+    return Number(alerts.match(new RegExp(`>${label}</span></span>\\s*<b>(\\d+)</b>`))[1]);
+  };
+  const unionTerms = [[['maintenance', 'Outdated'], ['maintenance', 'Untracked']]];
+  const unionCount = alertCount(listing, 'Outdated') + alertCount(listing, 'Untracked');
+  for (const mode of ['and', 'or']) {
+    const unionPage = await read(filtered(unionTerms, {next_logic: mode}, 'or'));
+    assert.deepEqual(unionPage.match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
+    assert.equal((unionPage.match(/<tr data-key=/g) || []).length, unionCount);
+    for (const label of ['Outdated', 'Untracked']) {
+      assert.equal(alertCount(unionPage, label), mode === 'or' ? alertCount(listing, label) : unionCount);
+    }
+  }
+  const paginatedUnion = await read(filtered(unionTerms, {next_logic: 'or', per_page: '2'}, 'or'));
+  assert.deepEqual(paginatedUnion.match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
+  assert.equal((paginatedUnion.match(/<tr data-key=/g) || []).length, 2);
+  const pageLinks = ['above', 'below'].map(position => {
+    const navigation = paginatedUnion.match(new RegExp(`<nav[^>]*aria-label="Pages ${position} results"[^]*?</nav>`))[0];
+    return [...navigation.matchAll(/href="([^"]+)"/g)].map(([, href]) => href);
+  });
+  assert.ok(pageLinks[0].length > 0);
+  assert.deepEqual(pageLinks[0], pageLinks[1]);
+  console.log('PASS OR palette counts: capped options; one unchanged expression total and matching rows');
   const changedPage = await read(filtered([[['version_signal', 'requires']]]));
   assert.match(changedPage, /aria-label="Remove DepChanges from group 1"/);
   assert.match(changedPage, /name="filters"/);

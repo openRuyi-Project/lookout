@@ -45,7 +45,9 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         The response returns the normalized query and <code>query_node_limit</code>.</li>
       <li>Counts evaluate the complete expression after adding a candidate to <code>active_group</code>
         (zero-based, default 0), using <code>next_logic</code> (default <code>and</code>).
-        Editing context never changes existing predicates; selected conditions count once. OR deduplicates packages.
+        OR counts take the smaller of that result and the candidate's own scoped count, including selected choices.
+        <code>total</code> always counts the current expression; editing context does not change its results.
+        OR deduplicates packages.
         Search stays in scope. Evidence views default to findings; <code>section=coverage</code>
         includes packages without findings. Check counts target coverage.</li>
     </ul>

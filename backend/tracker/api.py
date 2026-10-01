@@ -342,7 +342,7 @@ class ListingQuery(BaseModel):
     active_group: int = Field(0, ge=0,
         description='Editor position, not a filter. Candidate counts add a condition to this group; selected conditions are counted idempotently.')
     next_logic: Literal['and', 'or'] = Field('and',
-        description='Operator for candidate counts and the next addition; does not rewrite the query.')
+        description='Operator for the next addition. OR candidate counts are min(combined result, candidate alone in the same scope). Does not change the current query or total.')
     monitor: str = Field('', max_length=64)
     section: Literal['results', 'coverage'] = 'results'
 

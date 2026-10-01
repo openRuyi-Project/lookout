@@ -108,8 +108,9 @@ def combine(operands, universe):
 class Evaluation:
     """Results depend only on predicates; counts also use the next edit's context.
 
-    Candidate counts add one condition to the active row using next_logic.
-    Selected conditions are idempotent. Empty rows never become ALL operands.
+    Candidate counts add one condition idempotently to the active row.
+    OR counts are capped by that condition's own scoped population; matches
+    always contains the full expression result. Empty rows are not ALL operands.
     """
     def __init__(self, index, scope, query, active=0, next_logic: Logic = 'and'):
         if active < 0 or active >= max(1, len(query.groups)):
@@ -140,13 +141,16 @@ class Evaluation:
         return combine(((c.logic, self.predicate(c)) for c in group.conditions), self.scope)
 
     def count(self, condition):
+        members = self.predicate(condition)
         if self.current.contains(condition):
-            return len(self.matches)
-        candidate = self.predicate(condition)
-        if self.tail is not None:
-            candidate = self.alternatives | (self.tail & candidate if self.next_logic == 'and'
-                                             else self.tail | candidate)
-        return len(self.fixed_matches | (candidate & self.possible_matches))
+            count = len(self.matches)
+        else:
+            candidate = members
+            if self.tail is not None:
+                candidate = self.alternatives | (self.tail & members if self.next_logic == 'and'
+                                                 else self.tail | members)
+            count = len(self.fixed_matches | (candidate & self.possible_matches))
+        return min(count, len(members)) if self.next_logic == 'or' else count
 
     def substitute(self, candidate):
         groups = list(zip((g.logic for g in self.query.groups), self.groups))

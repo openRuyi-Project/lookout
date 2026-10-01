@@ -19,12 +19,14 @@ if (!data) Astro.response.status = status === 422 ? 422 : 503;
       </header>}
       <Controls controls={data.controls}/>
       {data.notices.map(notice => <p class="notice">{notice}</p>)}
-      <Pagination page={data} label="Pages above results">
+      <div class="results-toolbar">
+        <span class="result-count">{data.total} {data.total === 1 ? 'package' : 'packages'} · page {data.page} / {data.pages}</span>
+        <Pagination page={data} label="Pages above results"/>
         <Search controls={data.controls}/>
         <FilterGroups editor={data.controls.editor}/>
-      </Pagination>
+      </div>
       <Table table={data.table} identityMenus={data.global_navigation}/>
-      <Pagination page={data} label="Pages below results"/>
+      {data.pagination.length > 0 && <div class="results-toolbar"><Pagination page={data} label="Pages below results"/></div>}
       <div class="collection-meta"><Fields fields={data.meta} compact/></div>
     </section> : <div role="alert" class="notice">{status === 422 ? 'Invalid filter selection.' : 'Snapshot unavailable.'} <a href="/">Packages</a></div>}
 </Base>

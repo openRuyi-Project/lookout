@@ -109,11 +109,14 @@ Empty groups are omitted from evaluation. Repeated conditions collapse within a 
 Indexed package sets implement the predicates and AND/OR; unions count each
 package once. Search and the chosen results/coverage view bound the dataset.
 
-Candidate counts evaluate **the whole expression after adding the candidate to
-the active group using `next_logic`**, idempotently. Selected choices therefore show the current
-count, not the count after removal. Check choices explicitly open coverage;
-other choices keep the current view. No facet removes other conditions to count
-its alternatives. Pagination follows selection, never precedes it.
+The list total and pagination use the current expression, independent of editing
+mode. Candidate counts evaluate the whole expression after adding the candidate
+idempotently to the active group using `next_logic`. In OR mode, the displayed
+count is `min(combined count, candidate's own count in the same scope)`, including
+selected choices. This cap avoids repeating the union total on every option; it
+is neither a new-package count nor an intersection, and never limits results.
+Check choices count coverage; other choices keep the current results/coverage
+view. Search bounds both counts. Pagination follows selection, never precedes it.
 
 `presentation/query_editor.py` performs immutable edits. The active group is a
 positional editor ID outside `FilterQuery`; `next_logic` is also editor state.

@@ -56,7 +56,7 @@ def test_both_mixed_examples_and_same_architecture_zero():
     assert select(expression('or', ('or', (failed, unresolved)))) == ['a', 'b', 'c']
 
 
-def test_index_and_candidate_counts_equal_full_row_expression():
+def test_result_totals_and_candidate_counts_against_row_oracle():
     rows = [{'name': str(n), 'monitors': {'m': {'dimensions': {'maintenance': [
         c.value for c, present in zip((A, B, C, D), bits) if present]}}}}
         for n, bits in enumerate(product((False, True), repeat=4))]
@@ -74,6 +74,8 @@ def test_index_and_candidate_counts_equal_full_row_expression():
             groups[active] = groups[active].append(term, mode)
             candidate = FilterQuery(groups=tuple(groups))
             count = sum(oracle(candidate, row['monitors']['m']['dimensions']) for row in rows)
+            if mode == 'or':
+                count = min(count, sum(term.value in row['monitors']['m']['dimensions']['maintenance'] for row in rows))
             assert evaluation.count(term) == count == result['maintenance_labels'][term.value]
 
 
@@ -328,7 +330,51 @@ def test_mixed_connectors_at_both_levels_and_count_all_append_contexts():
             groups = list(query.groups)
             groups[active] = groups[active].append(term, mode)
             candidate = FilterQuery(groups=tuple(groups))
-            assert evaluation.count(term) == sum(oracle(candidate, row['monitors']['m']['dimensions']) for row in rows)
+            count = sum(oracle(candidate, row['monitors']['m']['dimensions']) for row in rows)
+            if mode == 'or':
+                count = min(count, sum(term.value in row['monitors']['m']['dimensions']['maintenance'] for row in rows))
+            assert evaluation.count(term) == count
+
+
+def test_or_counts_cap_candidates_not_results_or_boolean_membership():
+    index = {'maintenance': {'A': {0, 1, 2}, 'B': {2, 3}, 'C': {0, 2, 4}, 'D': {4, 5}}}
+    query = expression('and', ('and', (A,)), ('and', (C,)))
+    selected = Evaluation(index, range(6), query, next_logic='or')
+    assert selected.matches == {0, 2}
+    assert selected.count(D) == 2  # min(3 combined, 2 own), not their intersection of 1.
+    assert selected.count(A) == 2  # min(2 combined, 3 own).
+    assert selected.count(condition('maintenance', 'absent')) == 0
+    assert Evaluation(index, range(6), query, next_logic='and').count(B) == 1
+    assert Evaluation(index, range(6), query, active=1, next_logic='or').count(D) == 2
+    union = expression('and', ('or', (A, B)))
+    for mode in ('and', 'or'):
+        evaluated = Evaluation(index, range(6), union, next_logic=mode)
+        assert evaluated.matches == {0, 1, 2, 3}
+        assert evaluated.count(B) == (2 if mode == 'or' else 4)
+
+
+def test_or_counts_use_search_and_evidence_scope_without_changing_totals():
+    rows = [{'name': name, 'monitors': {'m': {'dimensions': {
+        'maintenance': labels, 'findings:m': ['yes'] if finding else [],
+        'check:m': ['ok' if finding else 'unsupported'],
+    }}}} for name, labels, finding in (
+        ('pkg-a', ['A'], True), ('pkg-b', ['B'], True), ('pkg-c', ['B'], False),
+        ('elsewhere', ['B'], True),
+    )]
+    packages = PackageList(rows, [])
+    query = expression('and', ('and', (A,)))
+    for findings_only in (False, True):
+        params = dict(query='pkg-', monitor='m', filters=query, findings_only=findings_only)
+        intersection = packages.select(**params, next_logic='and')
+        union = packages.select(**params, next_logic='or')
+        assert union['maintenance_labels']['B'] == (1 if findings_only else 2)
+        assert intersection['maintenance_labels']['B'] == 0
+        assert union['check_statuses']['unsupported'] == 1  # Checks always target coverage.
+        for key in ('items', 'total', 'pages', 'result_count', 'coverage_count'):
+            assert union[key] == intersection[key]
+        assert union['total'] == union['counts']['all'] == union['requires_counts']['all'] == 1
+    empty = packages.select(filters=FilterQuery(), next_logic='or', query='pkg-')
+    assert empty['total'] == 3 and empty['maintenance_labels']['B'] == 2
 
 
 def test_mode_links_only_change_edit_state_and_counts(scoped_client):
@@ -345,4 +391,9 @@ def test_mode_links_only_change_edit_state_and_counts(scoped_client):
             if not choice['selected']:
                 destination = scoped_client.get('/api/ui/packages?' + urlsplit(choice['href']).query)
                 assert destination.status_code == 200, destination.text
-                assert destination.json()['total'] == choice['count']
+                params = parse_qs(urlsplit(choice['href']).query)
+                candidate = FilterQuery.model_validate_json(params['filters'][0]).groups[0].conditions[-1]
+                params['filters'] = expression('and', ('and', (candidate,))).encode()
+                standalone = scoped_client.get('/api/ui/packages', params=params)
+                assert standalone.status_code == 200, standalone.text
+                assert choice['count'] == min(destination.json()['total'], standalone.json()['total'])
