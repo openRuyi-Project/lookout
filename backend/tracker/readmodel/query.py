@@ -81,8 +81,25 @@ class FilterQuery(QueryModel):
     def nodes(self):
         return sum(1 + len(group.conditions) for group in self.groups)
 
+    @classmethod
+    def decode(cls, value):
+        if not isinstance(value, str):
+            return cls.model_validate(value)
+        if value.lstrip().startswith('{'):
+            return cls.model_validate_json(value)
+        dimension, separator, term = value.partition('=')
+        if not separator:
+            raise ValueError('Expected dimension=value or a JSON filter query')
+        return cls(groups=(Group(conditions=(Condition(dimension=dimension, value=term),)),))
+
     def encode(self):
-        return self.model_dump_json()
+        if len(self.groups) == 1:
+            group = self.groups[0]
+            if group.logic == 'and' and len(group.conditions) == 1:
+                condition = group.conditions[0]
+                if '=' not in condition.dimension and not condition.dimension.lstrip().startswith('{'):
+                    return condition.dimension + '=' + condition.value
+        return self.model_dump_json(exclude_defaults=True)
 
 
 def segments(operands):
@@ -109,7 +126,7 @@ class Evaluation:
     """Results depend only on predicates; counts also use the next edit's context.
 
     Candidate counts add one condition idempotently to the active row.
-    OR counts are capped by that condition's own scoped population; matches
+    Counts are capped by that condition's own scoped population; matches
     always contains the full expression result. Empty rows are not ALL operands.
     """
     def __init__(self, index, scope, query, active=0, next_logic: Logic = 'and'):
@@ -150,7 +167,7 @@ class Evaluation:
                 candidate = self.alternatives | (self.tail & members if self.next_logic == 'and'
                                                  else self.tail | members)
             count = len(self.fixed_matches | (candidate & self.possible_matches))
-        return min(count, len(members)) if self.next_logic == 'or' else count
+        return min(count, len(members))
 
     def substitute(self, candidate):
         groups = list(zip((g.logic for g in self.query.groups), self.groups))

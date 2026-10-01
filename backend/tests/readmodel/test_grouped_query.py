@@ -74,8 +74,7 @@ def test_result_totals_and_candidate_counts_against_row_oracle():
             groups[active] = groups[active].append(term, mode)
             candidate = FilterQuery(groups=tuple(groups))
             count = sum(oracle(candidate, row['monitors']['m']['dimensions']) for row in rows)
-            if mode == 'or':
-                count = min(count, sum(term.value in row['monitors']['m']['dimensions']['maintenance'] for row in rows))
+            count = min(count, sum(term.value in row['monitors']['m']['dimensions']['maintenance'] for row in rows))
             assert evaluation.count(term) == count == result['maintenance_labels'][term.value]
 
 
@@ -133,14 +132,14 @@ def test_url_roundtrip_preserves_query_not_editor_identity():
     query = expression('or', ('and', (A,)), ('or', (B, C)))
     links = Links({'filters': query.model_dump(), 'active_group': 1, 'next_logic': 'or', 'q': 'with spaces & symbols', 'per_page': 3})
     params = parse_qs(urlsplit(links.to(page=2)).query)
-    assert FilterQuery.model_validate_json(params['filters'][0]) == query
+    assert FilterQuery.decode(params['filters'][0]) == query
     assert set(json.loads(params['filters'][0])) == {'groups'}
     assert params['next_logic'] == ['or']
     assert params['active_group'] == ['1']
     assert params['q'] == ['with spaces & symbols']
     assert params['per_page'] == ['3'] and params['page'] == ['2']
     changed = parse_qs(urlsplit(links.condition('maintenance', 'B')).query)
-    result = FilterQuery.model_validate_json(changed['filters'][0])
+    result = FilterQuery.decode(changed['filters'][0])
     assert result.groups[0] == query.groups[0] and tuple(c.identity for c in result.groups[1].conditions) == (C.identity,)
     assert links.to(monitor='build').find('filters=') > 0
 
@@ -190,12 +189,15 @@ def test_api_and_document_share_query_limit_results_and_candidate_links(scoped_c
     assert body['query_node_limit'] == page['controls']['editor']['node_limit'] == MAX_QUERY_NODES
     choices = [choice for nav in page['controls']['choice_rows'] for choice in nav['choices']]
     for choice in choices:
-        if choice['selected']:
-            assert choice['count'] == page['total']
-        else:
-            dest = scoped_client.get('/api/ui/packages?' + urlsplit(choice['href']).query)
-            assert dest.status_code == 200, dest.text
-            assert dest.json()['total'] == choice['count']
+        dest = scoped_client.get('/api/ui/packages?' + urlsplit(choice['href']).query)
+        assert dest.status_code == 200, dest.text
+        edited = FilterQuery.decode(parse_qs(urlsplit(choice['href']).query).get('filters', ['{}'])[0])
+        changed = set(c.identity for c in query.groups[0].conditions) ^ set(
+            c.identity for g in edited.groups for c in g.conditions)
+        dimension, value = changed.pop()
+        alone = scoped_client.get('/api/ui/packages', params={'filters': f'{dimension}={value}'})
+        assert alone.status_code == 200, alone.text
+        assert choice['count'] == min(page['total'] if choice['selected'] else dest.json()['total'], alone.json()['total'])
     for route in ('/api/v2/packages', '/api/ui/packages'):
         too_big = json.dumps({'groups': [{}] * (MAX_QUERY_NODES + 1)})
         rejected = scoped_client.get(route, params={'filters': too_big})
@@ -242,9 +244,9 @@ def test_group_switches_do_not_change_results_and_links_preserve_all_groups(scop
         assert sum(g['active'] for g in page['controls']['editor']['groups']) == 1
         for choice in page['pagination'] + page['navigation']['choices']:
             params = parse_qs(urlsplit(choice['href']).query)
-            assert FilterQuery.model_validate_json(params['filters'][0]) == query
+            assert FilterQuery.decode(params['filters'][0]) == query
         hidden = {p['name']: p['value'] for p in page['controls']['hidden']}
-        assert FilterQuery.model_validate_json(hidden['filters']) == query
+        assert FilterQuery.decode(hidden['filters']) == query
         active = page['controls']['editor']['active_group']
         other = 1 - active
         groups = page['controls']['editor']['groups']
@@ -331,12 +333,11 @@ def test_mixed_connectors_at_both_levels_and_count_all_append_contexts():
             groups[active] = groups[active].append(term, mode)
             candidate = FilterQuery(groups=tuple(groups))
             count = sum(oracle(candidate, row['monitors']['m']['dimensions']) for row in rows)
-            if mode == 'or':
-                count = min(count, sum(term.value in row['monitors']['m']['dimensions']['maintenance'] for row in rows))
+            count = min(count, sum(term.value in row['monitors']['m']['dimensions']['maintenance'] for row in rows))
             assert evaluation.count(term) == count
 
 
-def test_or_counts_cap_candidates_not_results_or_boolean_membership():
+def test_counts_cap_candidates_not_results_or_boolean_membership():
     index = {'maintenance': {'A': {0, 1, 2}, 'B': {2, 3}, 'C': {0, 2, 4}, 'D': {4, 5}}}
     query = expression('and', ('and', (A,)), ('and', (C,)))
     selected = Evaluation(index, range(6), query, next_logic='or')
@@ -350,7 +351,8 @@ def test_or_counts_cap_candidates_not_results_or_boolean_membership():
     for mode in ('and', 'or'):
         evaluated = Evaluation(index, range(6), union, next_logic=mode)
         assert evaluated.matches == {0, 1, 2, 3}
-        assert evaluated.count(B) == (2 if mode == 'or' else 4)
+        assert evaluated.count(B) == 2
+        assert evaluated.count(condition('maintenance', 'absent')) == 0
 
 
 def test_or_counts_use_search_and_evidence_scope_without_changing_totals():
@@ -392,8 +394,106 @@ def test_mode_links_only_change_edit_state_and_counts(scoped_client):
                 destination = scoped_client.get('/api/ui/packages?' + urlsplit(choice['href']).query)
                 assert destination.status_code == 200, destination.text
                 params = parse_qs(urlsplit(choice['href']).query)
-                candidate = FilterQuery.model_validate_json(params['filters'][0]).groups[0].conditions[-1]
+                candidate = FilterQuery.decode(params['filters'][0]).groups[0].conditions[-1]
                 params['filters'] = expression('and', ('and', (candidate,))).encode()
                 standalone = scoped_client.get('/api/ui/packages', params=params)
                 assert standalone.status_code == 200, standalone.text
                 assert choice['count'] == min(destination.json()['total'], standalone.json()['total'])
+
+
+@pytest.mark.parametrize('scope', [range(16), (0, 1, 4, 11), ()])
+def test_and_counts_never_exceed_or_or_standalone_counts(scope):
+    index = {'maintenance': {term.value: {i for i, bits in enumerate(product((False, True), repeat=4))
+        if bits[n]} for n, term in enumerate((A, B, C, D))}}
+    for root, left, right, active in product(('and', 'or'), ('and', 'or'), ('and', 'or'), range(3)):
+        query = expression(root, (left, (A, B)), (right, (B, C)), ('and', ()))
+        intersection = Evaluation(index, scope, query, active, 'and')
+        union = Evaluation(index, scope, query, active, 'or')
+        assert intersection.matches == union.matches
+        for term in (A, B, C, D, condition('maintenance', 'absent')):
+            own = len(set(scope) & index['maintenance'].get(term.value, set()))
+            assert 0 <= intersection.count(term) <= union.count(term) <= own
+
+
+def test_switch_from_two_or_choices_to_and_preserves_results_and_bounded_counts(scoped_client):
+    query = expression('and', ('or', (condition('build:rva20', 'failed'), condition('build:rva20', 'excluded'))))
+    union = scoped_client.get('/api/ui/packages', params={'filters': query.encode(), 'next_logic': 'or'}).json()
+    switched = scoped_client.get('/api/ui/packages?' + urlsplit(union['controls']['editor']['operators'][0]['href']).query).json()
+    assert switched['total'] == union['total'] == 2
+    assert [r['key'] for r in switched['table']['rows']] == [r['key'] for r in union['table']['rows']]
+    assert switched['controls']['editor']['query'] == union['controls']['editor']['query']
+    assert switched['controls']['editor']['operators'][0]['selected']
+    for before, after in zip(union['controls']['choice_rows'], switched['controls']['choice_rows']):
+        for left, right in zip(before['choices'], after['choices']):
+            assert right['label'] == left['label']
+            assert right['count'] <= left['count']
+    build = next(n for n in switched['controls']['choice_rows'] if n['label'] == 'rva20')
+    assert {c['label']: c['count'] for c in build['choices'] if c['selected']} == {'Failed': 1, 'Excluded': 1}
+
+
+@pytest.mark.parametrize('dimension,value', [
+    ('maintenance', 'DepMismatch'), ('build:rva23', 'failed'),
+    ('check:security', 'failed'), ('maintenance', '值 &=#? + <script>'),
+    ('a=b', 'c=d'), (' {dimension', 'value'),
+])
+def test_single_condition_codec_and_url_roundtrip(dimension, value):
+    query = expression('and', ('and', (condition(dimension, value),)))
+    encoded = query.encode()
+    assert FilterQuery.decode(encoded) == query
+    href = Links({'filters': query.model_dump()}).to()
+    params = parse_qs(urlsplit(href).query)
+    assert set(params) == {'filters'}
+    assert FilterQuery.decode(params['filters'][0]) == query
+    assert not urlsplit(href).fragment
+    if dimension in ('maintenance', 'build:rva23', 'check:security'):
+        assert not encoded.startswith('{')
+
+
+def test_simple_query_links_omit_defaults_and_preserve_nondefault_scope(scoped_client):
+    page = scoped_client.get('/api/ui/packages', params={
+        'page': 1, 'per_page': 100, 'next_logic': 'and', 'active_group': 0, 'section': 'results',
+    }).json()
+    mismatch = next(c for n in page['controls']['choice_rows'] for c in n['choices'] if c['label'] == 'DepMismatch')
+    assert mismatch['href'] == '/?filters=maintenance=DepMismatch'
+    scoped = scoped_client.get('/api/ui/packages', params={'monitor': 'build', 'section': 'coverage', 'per_page': 2, 'q': 'foo'}).json()
+    choice = next(c for n in scoped['controls']['navigation'] for c in n['choices'] if c['label'] == 'CheckFailed')
+    params = parse_qs(urlsplit(choice['href']).query)
+    assert {k: params[k] for k in ('monitor', 'section', 'per_page', 'q')} == {
+        'monitor': ['build'], 'section': ['coverage'], 'per_page': ['2'], 'q': ['foo']}
+    assert 'page' not in params and 'active_group' not in params and 'next_logic' not in params
+
+
+@pytest.mark.parametrize('wire', ['maintenance=DepMismatch', 'build:rva20=failed', 'check:requires=failed'])
+def test_shorthand_and_json_share_api_results_and_normalized_query(scoped_client, wire):
+    query = FilterQuery.decode(wire)
+    for route in ('/api/v2/packages', '/api/ui/packages'):
+        simple = scoped_client.get(route, params={'filters': wire})
+        native = scoped_client.get(route, params={'filters': query.model_dump_json()})
+        assert simple.status_code == native.status_code == 200
+        assert simple.json() == native.json()
+        normalized = simple.json()['filters'] if route == '/api/v2/packages' else simple.json()['controls']['editor']['query']
+        assert normalized == query.model_dump(mode='json')
+
+
+@pytest.mark.parametrize('wire', ['', 'maintenance', '=Advisory', 'maintenance=', 'a' * 101 + '=A', 'maintenance=' + 'a' * 101])
+def test_shorthand_is_validated_and_rejected_without_truncation(scoped_client, wire):
+    for route in ('/api/v2/packages', '/api/ui/packages'):
+        response = scoped_client.get(route, params={'filters': wire})
+        assert response.status_code == 422
+
+
+def test_complex_wire_omits_defaults_without_losing_connectors():
+    query = expression('and', ('and', (A,)), ('or', (B, C)))
+    assert FilterQuery.decode(query.encode()) == query
+    assert len(query.encode()) < len(query.model_dump_json())
+    assert '"logic":"and"' not in query.encode()
+    assert '"logic":"or"' in query.encode()
+
+
+def test_openapi_describes_filter_text_not_json_only(scoped_client):
+    spec = scoped_client.get('/openapi.json').json()
+    for route in ('/api/v2/packages', '/api/ui/packages'):
+        parameter = next(p for p in spec['paths'][route]['get']['parameters'] if p['name'] == 'filters')
+        assert parameter['schema']['type'] == 'string'
+        assert 'contentMediaType' not in parameter['schema']
+        assert 'dimension=value' in parameter['description']

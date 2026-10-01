@@ -37,7 +37,9 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         (default: all). IDs come from the list response's <code>monitors</code>.</li>
       <li><code>q</code> searches names; <code>search=observations</code> adds fact values,
         restricted by <code>monitor</code> when set. Matching is case-insensitive substring.</li>
-      <li><code>filters</code>: JSON <code>groups</code>; each group has
+      <li><code>filters</code>: one <code>dimension=value</code>, e.g.
+        <a href="/api/v2/packages?filters=maintenance=DepMismatch"><code>filters=maintenance=DepMismatch</code></a>.
+        Combinations use JSON <code>groups</code>; each group has
         <code>logic</code> (<code>and</code>/<code>or</code>) + <code>conditions</code>
         (<code>dimension</code>, <code>value</code>, <code>logic</code>). Each logic joins the preceding term;
         AND binds before OR, and rows are parentheses. The first condition shares its row’s connector.
@@ -45,7 +47,7 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         The response returns the normalized query and <code>query_node_limit</code>.</li>
       <li>Counts evaluate the complete expression after adding a candidate to <code>active_group</code>
         (zero-based, default 0), using <code>next_logic</code> (default <code>and</code>).
-        OR counts take the smaller of that result and the candidate's own scoped count, including selected choices.
+        Counts take the smaller of that result and the candidate's own scoped count, including selected choices, in either mode.
         <code>total</code> always counts the current expression; editing context does not change its results.
         OR deduplicates packages.
         Search stays in scope. Evidence views default to findings; <code>section=coverage</code>

@@ -14,7 +14,14 @@ const filtered = (conditions, parameters = {}, logic = 'and', root = 'and') => {
   const groups = conditions.map(terms => ({logic: root, conditions: terms.map(([dimension, value], i) => ({dimension, value, logic: i === 0 ? root : logic}))}));
   return '/?' + new URLSearchParams({...parameters, filters: JSON.stringify({groups})});
 };
-const filterFrom = href => JSON.parse(new URL(href.replaceAll('&amp;', '&'), 'http://fixture').searchParams.get('filters') || '{"groups":[]}');
+const filterFrom = href => {
+  const wire = new URL(href.replaceAll('&amp;', '&'), 'http://fixture').searchParams.get('filters') || '{"groups":[]}';
+  const split = wire.indexOf('=');
+  const parsed = wire.startsWith('{') ? JSON.parse(wire) :
+    {groups: [{conditions: [{dimension: wire.slice(0, split), value: wire.slice(split + 1)}]}]};
+  return {groups: parsed.groups.map(group => ({logic: group.logic || 'and',
+    conditions: (group.conditions || []).map(condition => ({logic: 'and', ...condition}))}))};
+};
 const targets = ['rva23', 'rva20', 'x86_64'].map(id => ({id, label: id, repository: id, architecture: 'riscv64'}));
 const makePackage = (name, patch = {}) => ({
   buildsystem: null, buildsystem_status: 'not_declared', maintenance: [], maintenance_findings: [], monitor_checks: [], presentation: {buildsystems: {}},
@@ -392,20 +399,32 @@ try {
     assert.ok(alertLinks.some(q => q.groups[0].conditions.some(c => c.dimension === 'maintenance' && c.value === value)));
   }
   assert.match(packageMenu, />DepMismatch<\/span>[^]*?>DepChanges<\/span>/);
+  const simpleLink = [...packageMenu.matchAll(/href="([^"]+)"/g)]
+    .map(([, href]) => href).find(href => href.includes('filters=maintenance=DepMismatch'));
+  assert.equal(simpleLink, '/?filters=maintenance=DepMismatch');
+  const simplePage = await read(simpleLink);
+  const jsonPage = await read(filtered([[['maintenance', 'DepMismatch']]]));
+  assert.deepEqual(simplePage.match(/<tr data-key="[^"]+"/g), jsonPage.match(/<tr data-key="[^"]+"/g));
+  assert.deepEqual(simplePage.match(/\b\d+ packages\b/g), jsonPage.match(/\b\d+ packages\b/g));
   const alertCount = (html, label) => {
     const alerts = html.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
     return Number(alerts.match(new RegExp(`>${label}</span></span>\\s*<b>(\\d+)</b>`))[1]);
   };
   const unionTerms = [[['maintenance', 'Outdated'], ['maintenance', 'Untracked']]];
   const unionCount = alertCount(listing, 'Outdated') + alertCount(listing, 'Untracked');
+  const palettes = {};
   for (const mode of ['and', 'or']) {
     const unionPage = await read(filtered(unionTerms, {next_logic: mode}, 'or'));
     assert.deepEqual(unionPage.match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
     assert.equal((unionPage.match(/<tr data-key=/g) || []).length, unionCount);
     for (const label of ['Outdated', 'Untracked']) {
-      assert.equal(alertCount(unionPage, label), mode === 'or' ? alertCount(listing, label) : unionCount);
+      assert.equal(alertCount(unionPage, label), alertCount(listing, label));
     }
+    palettes[mode] = Object.fromEntries(['Outdated', 'Untracked', 'Advisory', 'EOL', 'DepMismatch']
+      .map(label => [label, alertCount(unionPage, label)]));
   }
+  for (const label of Object.keys(palettes.and)) assert.ok(palettes.and[label] <= palettes.or[label]);
+  assert.equal(palettes.and.EOL, 0);
   const paginatedUnion = await read(filtered(unionTerms, {next_logic: 'or', per_page: '2'}, 'or'));
   assert.deepEqual(paginatedUnion.match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
   assert.equal((paginatedUnion.match(/<tr data-key=/g) || []).length, 2);
@@ -415,7 +434,7 @@ try {
   });
   assert.ok(pageLinks[0].length > 0);
   assert.deepEqual(pageLinks[0], pageLinks[1]);
-  console.log('PASS OR palette counts: capped options; one unchanged expression total and matching rows');
+  console.log('PASS palette counts: AND <= OR <= own scope; one expression total; simple URL/JSON equivalence');
   const changedPage = await read(filtered([[['version_signal', 'requires']]]));
   assert.match(changedPage, /aria-label="Remove DepChanges from group 1"/);
   assert.match(changedPage, /name="filters"/);

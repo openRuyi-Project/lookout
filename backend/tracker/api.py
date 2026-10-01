@@ -7,7 +7,7 @@ import threading
 from typing import Annotated, Literal
 
 from fastapi import FastAPI, HTTPException, Query, Response
-from pydantic import BaseModel, ConfigDict, Field, Json
+from pydantic import BaseModel, ConfigDict, Field, Json, WithJsonSchema, field_validator
 
 from tracker import state
 from tracker.monitors.model import RawFinding
@@ -337,14 +337,21 @@ class ListingQuery(BaseModel):
     q: str = Field('', max_length=100)
     page: int = Field(1, ge=1, le=1000000)
     per_page: int = Field(100, ge=1, le=200)
-    filters: Json[FilterQuery] = Field(default='{}', validate_default=True,
-        description=f'JSON: groups with explicit AND/OR links on groups and conditions; AND binds before OR. Max {MAX_QUERY_NODES} groups + conditions in total. Empty groups are ignored.')
+    filters: Annotated[Json[FilterQuery], WithJsonSchema({'type': 'string'}, mode='validation')] = Field(default='{}', validate_default=True,
+        description=f'Single condition: dimension=value (e.g. maintenance=DepMismatch). Combinations: JSON groups with explicit AND/OR links on groups and conditions; AND binds before OR. Max {MAX_QUERY_NODES} groups + conditions in total. Empty groups are ignored.')
     active_group: int = Field(0, ge=0,
         description='Editor position, not a filter. Candidate counts add a condition to this group; selected conditions are counted idempotently.')
     next_logic: Literal['and', 'or'] = Field('and',
-        description='Operator for the next addition. OR candidate counts are min(combined result, candidate alone in the same scope). Does not change the current query or total.')
+        description='Operator for the next addition. Candidate counts are min(combined result, candidate alone in the same scope), in either mode. Does not change the current query or total.')
     monitor: str = Field('', max_length=64)
     section: Literal['results', 'coverage'] = 'results'
+
+    @field_validator('filters', mode='before')
+    @classmethod
+    def simple_filter(cls, value):
+        if isinstance(value, str) and not value.lstrip().startswith('{'):
+            return FilterQuery.decode(value).model_dump_json()
+        return value
 
 
 FULL_PAGE_LIMIT = 20
@@ -440,7 +447,7 @@ def create_app(db=None):
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
         if document:
-            result['query'] = {**filters.model_dump(), 'section': section, 'page': result['page']}
+            result['query'] = filters.model_copy(update={'section': section, 'page': result['page']}).model_dump(exclude_defaults=True)
         return {**result,
                 'section': section,
                 'monitors': catalog, 'targets': snap['targets'], 'collection': collection,

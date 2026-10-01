@@ -61,7 +61,7 @@ elif operation == 'list':
         filters=filters.filters, active_group=filters.active_group, next_logic=filters.next_logic, page=filters.page, per_page=filters.per_page,
         monitor=filters.monitor, findings_only=bool(focus and focus['kind'] in ('evidence', 'requires') and section == 'results'))
     result = presentation_pages.listing({**payload, **selection, 'section': section},
-        {**filters.model_dump(), 'section': section, 'page': selection['page']}).model_dump()
+        filters.model_copy(update={'section': section, 'page': selection['page']}).model_dump(exclude_defaults=True)).model_dump()
 elif operation == 'theme':
     result = presentation_pages.theme(request['payload'])
 else:

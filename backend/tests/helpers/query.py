@@ -21,5 +21,5 @@ def terms_in(href):
     """Flatten only for assertions about membership, never to evaluate logic."""
     from urllib.parse import parse_qs, urlsplit
     wire = parse_qs(urlsplit(href).query).get('filters', ['{}'])[0]
-    query = FilterQuery.model_validate_json(wire)
+    query = FilterQuery.decode(wire)
     return [(term.dimension, term.value) for group in query.groups for term in group.conditions]

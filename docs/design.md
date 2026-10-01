@@ -111,10 +111,11 @@ package once. Search and the chosen results/coverage view bound the dataset.
 
 The list total and pagination use the current expression, independent of editing
 mode. Candidate counts evaluate the whole expression after adding the candidate
-idempotently to the active group using `next_logic`. In OR mode, the displayed
+idempotently to the active group using `next_logic`. In either mode, the displayed
 count is `min(combined count, candidate's own count in the same scope)`, including
 selected choices. This cap avoids repeating the union total on every option; it
 is neither a new-package count nor an intersection, and never limits results.
+For a fixed expression and scope, AND candidate counts cannot exceed OR counts.
 Check choices count coverage; other choices keep the current results/coverage
 view. Search bounds both counts. Pagination follows selection, never precedes it.
 
@@ -125,6 +126,11 @@ addition to an empty row sets its connector; subsequent additions keep that
 connector. Removing the first condition keeps the row connector. Clearing a row
 preserves the others; removing the final condition clears all empty rows and
 resets the active row until the next condition.
+
+`filters=dimension=value` represents one AND condition. Combinations use the same
+`FilterQuery` as JSON, omitting default fields. Both encodings pass the same
+validation and produce the same normalized response. Links omit default request
+parameters; editor state is included only when needed to continue an edit.
 Adding a row inserts it immediately after the chosen row and selects it.
 `presentation/navigation.py` projects edits as GET links and
 `FilterGroups.astro` renders them. The browser has no second expression evaluator.

@@ -116,7 +116,7 @@ def test_failed_build_is_not_a_failed_monitor_check(snapshot, tmp_path):
 
 @pytest.mark.parametrize('monitor', ['source', 'version', 'build', 'alpha', 'beta', 'requires'])
 @pytest.mark.parametrize('logic', ['and', 'or'])
-def test_navigation_counts_distinguish_results_from_or_candidates(snapshot, tmp_path, monitor, logic):
+def test_navigation_counts_distinguish_results_from_candidates(snapshot, tmp_path, monitor, logic):
     from tracker.readmodel.query import FilterQuery, Group, Condition
     snapshot['monitor_catalog'] = {'alpha': {'title': 'First'}, 'beta': {'title': 'Second'}, 'requires': {'title': 'RuntimeDeps'}}
     snapshot['monitors'] = {name: {mid: observed(snapshot, name, status)
@@ -134,8 +134,8 @@ def test_navigation_counts_distinguish_results_from_or_candidates(snapshot, tmp_
         assert destination.status_code == 200, destination.text
         expected = destination.json()['total']
         params = parse_qs(urlsplit(choice['href']).query)
-        candidate_query = FilterQuery.model_validate_json(params['filters'][0])
-        if logic == 'or' and candidate_query != query:
+        candidate_query = FilterQuery.decode(params['filters'][0])
+        if candidate_query != query:
             candidate = candidate_query.groups[0].conditions[-1]
             params['filters'] = FilterQuery(groups=(Group(conditions=(candidate,)),)).encode()
             standalone = client.get('/api/ui/packages', params=params)

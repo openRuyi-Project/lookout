@@ -17,19 +17,22 @@ class Links:
     def __init__(self, query=None):
         self.query = {key: value for key, value in (query or {}).items() if value}
         raw = self.query.get('filters', {})
-        filters = FilterQuery.model_validate_json(raw) if isinstance(raw, str) else FilterQuery.model_validate(raw)
+        filters = FilterQuery.decode(raw)
         self.query['filters'] = filters.model_dump()
         self.editor = QueryEditor(filters, self.query.get('active_group', 0), self.query.get('next_logic', 'and'))
 
     def to(self, **changes):
-        query = {**self.query, 'page': 1, **changes}
+        query = {**self.query, 'page': None, **changes}
+        if query.get('page') == 1:
+            del query['page']
         if raw := query.get('filters'):
-            filters = FilterQuery.model_validate(raw)
+            filters = FilterQuery.decode(raw)
             query['filters'] = filters.encode() if filters.groups else ''
-        return '/?' + urlencode({key: value for key, value in query.items() if value})
+        return '/?' + urlencode({key: value for key, value in query.items() if value}, safe=':=')
 
     def edited(self, editor, **changes):
-        return self.to(filters=editor.query.model_dump(), active_group=editor.active, next_logic=editor.next_logic, **changes)
+        return self.to(filters=editor.query.model_dump(), active_group=editor.active,
+                       next_logic=editor.next_logic if editor.next_logic != 'and' else '', **changes)
 
     def selected(self, dimension, value):
         return self.editor.current.contains(Condition(dimension=dimension, value=value))
