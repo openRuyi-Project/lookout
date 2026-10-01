@@ -7,17 +7,25 @@ import type {DetailDocument} from '../../lib/document';
 const name = Astro.params.name || '';
 const {data, status} = await api<DetailDocument>('/api/ui/packages/' + encodeURIComponent(name));
 if (!data) Astro.response.status = status === 404 ? 404 : 503;
+const topSections = data?.sections.filter(section => section.placement !== 'flow') || [];
+const flowSections = data?.sections.filter(section => section.placement === 'flow') || [];
 ---
 <Base title={name} result={data || undefined}>
   <div class="package-detail"><a class="back" href="/">← Packages</a>
   {data ? <>
     {data.notices.map(notice => <p class="notice">{notice}</p>)}
-    <header class="package-heading"><h1>{data.title}</h1><div class="identity"><Values values={data.identity}/></div></header>
-    {data.subtitle && <p class="package-subtitle">{data.subtitle}</p>}
-    <nav class="package-links" aria-label="Package sources"><Values values={data.links}/></nav>
-    <nav class="section-nav" aria-label="Page sections">{data.sections.map(section => <a href={`#${section.id}`}>{section.title}</a>)}</nav>
     <div class="detail-workspace">
-      <div class="document-sections">{data.sections.map(section => <Section section={section}/>)}</div>
+      <div class="detail-overview">
+        <div class="detail-lead">
+          <header class="package-heading"><h1>{data.title}</h1><div class="identity"><Values values={data.identity}/></div></header>
+          {data.subtitle && <p class="package-subtitle">{data.subtitle}</p>}
+          <nav class="package-links" aria-label="Package sources"><Values values={data.links}/></nav>
+          {topSections.filter(section => section.placement === 'lead').map(section => <Section section={section}/>)}
+        </div>
+        <div class="detail-aside">{topSections.filter(section => section.placement === 'aside').map(section => <Section section={section}/>)}</div>
+      </div>
+      <nav class="section-nav" aria-label="Page sections">{data.sections.filter(section => section.title).map(section => <a href={`#${section.id}`}>{section.title}</a>)}</nav>
+      <div class="document-sections">{flowSections.map(section => <Section section={section}/>)}</div>
 
     </div>
   </> : <div role="alert" class="notice">{status === 404 ? 'No such source package.' : 'Snapshot unavailable. Please try again later.'}</div>}

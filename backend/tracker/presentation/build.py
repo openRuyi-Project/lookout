@@ -72,7 +72,7 @@ def build_sections(result, links):
             rows.append(Row(key=f"{build['target']}:{observation.get('package', '')}", cells=[
                 cell(identity), cell(*status_lines),
                 cell([text(last.get('version'), kind='code')]), cell([stamp(last.get('time'))])]))
-    return [Section(id=result['id'], title=result['title'],
+    return [Section(placement='aside', id=result['id'], title=result['title'],
         table=Table(label='Build status by target', columns=[Column(title='Target'),
             Column(title='Result'), Column(title='Last successful version'), Column(title='Succeeded at')], rows=rows))]
 

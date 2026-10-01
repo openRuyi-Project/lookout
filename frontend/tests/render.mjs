@@ -655,6 +655,10 @@ try {
   assert.doesNotMatch(listing, / style=/);
   const sourceContext = await read('/packages/success');
   assert.match(sourceContext, /Fixture package/);
+  assert.doesNotMatch(sourceContext, /<h2><\/h2>|href="#source"/);
+  assert.match(sourceContext, /class="detail-aside"[^]*?<section[^>]*id="build"/);
+  assert.match(sourceContext, /class="detail-lead"[^]*?<section[^>]*id="source"/);
+  assert.ok(sourceContext.indexOf('class="document-sections"') > sourceContext.indexOf('class="detail-aside"'));
   assert.match(sourceContext, /Fixture source description/);
   assert.match(sourceContext, />MIT<\/span>/);
   assert.match(sourceContext, />\/SPECS\/success<\/a>/);

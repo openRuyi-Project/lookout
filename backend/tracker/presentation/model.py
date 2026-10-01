@@ -94,6 +94,7 @@ class Entry(DocumentModel):
 
 
 class Section(DocumentModel):
+    placement: Literal["flow", "lead", "aside"] = "flow"
     id: str
     title: str
     collapsible: bool = False

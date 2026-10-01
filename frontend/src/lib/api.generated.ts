@@ -337,6 +337,12 @@ export interface components {
         };
         /** Section */
         Section: {
+            /**
+             * Placement
+             * @default flow
+             * @enum {string}
+             */
+            placement: "flow" | "lead" | "aside";
             /** Id */
             id: string;
             /** Title */

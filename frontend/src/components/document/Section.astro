@@ -9,7 +9,7 @@ const Container = section.collapsible ? 'details' : 'section';
 const Heading = section.collapsible ? 'summary' : 'h2';
 ---
 <Container class="document-section" id={section.id}>
-  <Heading>{section.title}</Heading>
+  {(section.title || section.collapsible) && <Heading>{section.title}</Heading>}
   <Fields fields={section.fields} compact/>
   {section.notes.map(note => <p class="section-note">{note}</p>)}
   {section.table && <Table table={section.table}/>}

@@ -512,6 +512,15 @@ a.value-tag {
   grid-template-columns: minmax(0, 1fr);
   gap: 30px;
 }
+.detail-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 13fr);
+  gap: 30px;
+  align-items: start;
+}
+.detail-lead { grid-column: 1; }
+.detail-aside { grid-column: 2; }
+.detail-lead, .detail-aside { min-width: 0; }
 .section-nav {
   display: flex;
   flex-wrap: wrap;
@@ -584,6 +593,11 @@ a.value-tag {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
+  .detail-overview {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .detail-lead, .detail-aside { grid-column: 1; }
   .control-bar {
     flex-wrap: wrap;
   }

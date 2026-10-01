@@ -417,3 +417,17 @@ def test_upstream_link_shows_the_address_without_an_indirect_label(snapshot):
     document = presentation_pages.detail(pkg)
     link, = [value for value in document.links if value.href == url]
     assert link.text == url
+
+
+def test_detail_overview_placement_does_not_hide_monitor_evidence(snapshot):
+    add_evidence(snapshot)
+    pkg = view.project_monitors(snapshot)[0][0]
+    pkg['monitors']['source']['data']['metadata'] = {'license': 'MIT', 'description': 'Observed description'}
+    sections = presentation_pages.detail(pkg).sections
+    placements = {section.id: section.placement for section in sections}
+    assert placements['build'] == 'aside'
+    assert placements['source'] == 'lead'
+    assert next(section for section in sections if section.id == 'source').title == ''
+    assert placements['external_signature'] == 'flow'
+    assert placements['checks'] == 'flow'
+    assert all(not section.collapsible for section in sections if section.id != 'checks')
