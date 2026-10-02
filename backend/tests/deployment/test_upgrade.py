@@ -408,19 +408,23 @@ def test_automation_keeps_host_update_and_backup_separate(tmp_path, monkeypatch)
     monkeypatch.setattr(install, 'manager', lambda *args: calls.append(args))
     monkeypatch.setattr(install, 'service_action', lambda *args: calls.append(args))
     unit = tmp_path / 'lookout.container'
-    install.install_automation('lookout', tmp_path, unit, 'ghcr.io/example/lookout:main')
+    monkeypatch.setattr(install, 'refresh_tools', lambda engine, image, link: link)
+    install.install_automation('lookout', tmp_path, unit, 'ghcr.io/example/lookout:main', NEW)
     user_units = tmp_path / '.config/systemd/user'
     update = (user_units / 'lookout-update.service').read_text()
     backup = (user_units / 'lookout-backup.service').read_text()
     assert '--image ghcr.io/example/lookout:main' in update
     assert '--unit ' + str(unit) in update and '--quiet' in update
+    assert '--workflow checks.yml' in update
+    assert '--tools-link ' + str(tmp_path / 'automation/current') in update
+    assert 'OnUnitInactiveSec=5min' in (user_units / 'lookout-update.timer').read_text()
     assert '--backup-dir ' + str(tmp_path / 'backups') in backup
     assert '@' not in update and '@' not in backup
     assert ('EnableUnitFiles', 'asbb', '2', 'lookout-update.timer', 'lookout-backup.timer', 'false', 'false') in calls
     assert ('lookout-update.timer', 'StartUnit') in calls
     assert ('lookout-backup.timer', 'StartUnit') in calls
     with pytest.raises(ValueError, match='already exist'):
-        install.install_automation('lookout', tmp_path, unit, 'ghcr.io/example/lookout:main')
+        install.install_automation('lookout', tmp_path, unit, 'ghcr.io/example/lookout:main', NEW)
 
 
 def test_rootless_installer_requires_linger_before_creating_directories(tmp_path, monkeypatch):

@@ -86,7 +86,8 @@ installation destinations are refused. A failed installation retains its files;
 inspect the error and journal rather than rerunning initialization over them.
 
 ```text
-$ROOT/tools/            host tools
+$ROOT/tools/            initial installation tools
+$ROOT/automation/current active host tools (atomic pointer)
 $ROOT/config/           operator configuration
 $ROOT/data/             database, SPEC repository, caches
 $ROOT/backups/          backups and upgrade records
@@ -95,9 +96,13 @@ $UNIT                   application Quadlet
 ~/.config/systemd/user/$NAME-{update,backup}.{service,timer}
 ```
 
-The image update timer checks roughly once a minute, with jitter. The backup
-timer runs daily. Both serialize with upgrades. Collector schedules remain inside
-the application.
+The image update timer checks GitHub every five minutes, with jitter: about
+12 requests/hour, below the 60/hour anonymous limit for an unshared address.
+Only a successful `checks.yml` run on `main` selects its published `sha-<commit>`
+image. No new revision means no GHCR requests, pulls or restarts. A GitHub error
+or rate limit leaves the service unchanged; the next timer tick retries. Public
+GitHub access is required for unattended GHCR `main`/`latest` channels.
+The backup timer runs daily; collector schedules stay inside the application.
 
 To adopt existing state, stop its writer and back it up first. Add
 `--data /absolute/existing/data --config /absolute/reviewed/config` to installation;
@@ -215,10 +220,8 @@ image. New default installations record that identity. Explicit `--config`
 installations remain operator-owned. It never treats the last running image as
 the original baseline, nor replaces a local catalog without provenance.
 
-Older installations need the [one-time host-tool procedure](#refresh-host-tools)
-below. New default installations do not: their launcher delegates to each selected
-release, and their catalogs already follow the image. If the original image is
-unavailable, keep the local catalog until its ownership can be reviewed.
+If the original image is unavailable, keep the local catalog until its ownership
+can be reviewed. Do not supply a guessed baseline.
 
 The stopped-state transaction backs up SQLite, prepares a new private config,
 validates it, then selects the new image **and** config together. Local rule/identity
@@ -251,12 +254,11 @@ python3 "$TOOLS/upgrade.py" --image "$SELECTED_IMAGE" \
 
 An active backup/update lock rejects the command; retry after that job finishes.
 The upgrade preserves the data mount, port, environment and resource limits.
-Before pulling image layers, the updater compares the registry configuration digest
-for the running platform. An unchanged image is not pulled or restarted; only
-small manifest requests are made. Failed metadata checks abort that tick without
-changing the service. This applies to channel tags and commit tags alike.
-The host `upgrade.py` and `deployment.py` must also be updated; replacing the
-application image alone does not replace copied host tools.
+GHCR `main`/`latest` use successful GitHub workflow publications, not registry
+polling. A new publication is pinned to its commit tag and checked against the
+image revision; a cached candidate is reused on retry. Other explicit image
+references are compared through registry metadata for that manual invocation.
+Discovery errors abort without changing the service.
 A copied-catalog migration selects a new config mount; other updates keep it. It records the prior image, unit and backup under `$ROOT/backups/upgrade-*`.
 If the new image fails, the old image resumes only when it can read the resulting
 data. Otherwise the instance stays stopped. Arbitrary downgrade compatibility is
@@ -315,70 +317,16 @@ for JOB in "$NAME-update.service" "$NAME-backup.service"; do
 done
 ```
 
-### Refresh host tools
+### Host automation
 
-The host launcher extracts and executes upgrade tools from each selected immutable
-image. Trusting the update channel therefore also authorizes that release's host-side
-upgrade code. No container receives the engine socket. Backup jobs still use their
-installed host tool. An older launcher without this protocol needs a one-time
-replacement; to replace that launcher or the backup tool, [pause scheduled jobs](#pause-scheduled-jobs), then
-extract that trusted image's tools into a new directory:
+Scheduled updates and backups execute `$ROOT/automation/current`, an atomic
+pointer to a complete versioned tool directory. A successful image upgrade
+selects that image's tools; failed upgrades keep the previous pointer. No manual
+script copying is required. Previous tool directories remain available for review.
 
-```sh
-read -r -p 'Published tools image reference: ' TOOLS_IMAGE
-podman pull "$TOOLS_IMAGE"
-TOOLS_ID=$(podman image inspect --format '{{.Id}}' "$TOOLS_IMAGE")
-NEW_TOOLS="$ROOT/tools-$(date -u +%Y%m%dT%H%M%SZ)"
-test ! -e "$NEW_TOOLS"
-HELPER="lookout-tools-$$"
-podman create --name "$HELPER" --network none --entrypoint /bin/true "$TOOLS_ID"
-trap 'podman rm "$HELPER" >/dev/null' EXIT
-podman cp "$HELPER:/app/deploy" "$NEW_TOOLS"
-podman rm "$HELPER"
-trap - EXIT
-python3 "$NEW_TOOLS/upgrade.py" --help
-python3 "$NEW_TOOLS/maintain.py" --help
-printf 'New tools: %s\n' "$NEW_TOOLS"
-systemctl --user edit --full "$NAME-update.service" "$NAME-backup.service"
-```
-
-In both services, change only the script directory in `ExecStart` to the printed
-absolute path. Preserve their arguments and proxy settings. Reload and inspect
-the resolved services; keep the timers paused until any catalog migration finishes:
-
-```sh
-systemctl --user daemon-reload
-systemctl --user cat "$NAME-update.service" "$NAME-backup.service"
-TOOLS="$NEW_TOOLS"
-```
-
-For **copied image defaults**, use the original immutable image from
-`installation.json` or the retained `$ROOT/units/$NAME.container`, not the current
-running image or `main`. Run this before resuming timers:
-
-```sh
-read -r -p 'Original installation image ID or registry digest: ' ORIGINAL_IMAGE
-python3 "$NEW_TOOLS/upgrade.py" --image "$TOOLS_ID" \
-  --unit "$UNIT" --backups "$ROOT/backups" \
-  --catalog-baseline "$ORIGINAL_IMAGE" --apply
-```
-
-For an intentionally local catalog, or one whose origin is unknown, skip migration.
-Do not supply a guessed baseline. The old config and database remain intact.
-
-Verify readiness and the active `/config` mount, then resume only previously active
-timers. Keep the old tools and previous config until acceptance:
-
-```sh
-curl --fail "http://127.0.0.1:$PORT/readyz"
-podman inspect --format '{{range .Mounts}}{{.Source}} → {{.Destination}}{{println}}{{end}}' "$NAME"
-if [ "$UPDATE_WAS_ACTIVE" = active ]; then systemctl --user start "$NAME-update.timer"; fi
-if [ "$BACKUP_WAS_ACTIVE" = active ]; then systemctl --user start "$NAME-backup.timer"; fi
-```
-
-Replacing host tools alone does not restart the application. Catalog migration is
-a backed-up stop/start transaction. Later image updates use the scheduled launcher;
-no manual tool replacement or catalog-copy step is needed.
+Trusting the image channel authorizes its host-side upgrade code. No container
+receives the engine socket. Application configuration, data, port and proxy
+settings remain independent of the tool pointer.
 
 ### Restore into a separate instance
 

@@ -3,7 +3,7 @@ Description=Check for a tested Lookout image
 
 [Timer]
 OnBootSec=2min
-OnUnitInactiveSec=1min
+OnUnitInactiveSec=5min
 RandomizedDelaySec=15s
 
 [Install]

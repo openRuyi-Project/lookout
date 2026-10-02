@@ -13,8 +13,10 @@ import tarfile
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from automation_tools import refresh_tools
 from deployment import (LABEL, PROTECTION, PYTHON, Docker, Quadlet, healthy, image_command,
                         image_reference, manager, no_data_users, resolve_image, run, service_action, write_exclusive)
+from publication import channel_repository
 
 PREPARE = '''import os, runpy, shutil, sys, tarfile, tempfile
 from pathlib import Path
@@ -120,8 +122,8 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
     if os.geteuid() == 0 or run(['podman', 'info', '--format', '{{.Host.Security.Rootless}}']) != 'true':
         raise ValueError('use the non-root Rootless Podman service owner')
     if auto_update:
-        if not image_reference(auto_update):
-            raise ValueError('automatic updates require a registry channel, not a local image ID')
+        if not channel_repository(auto_update):
+            raise ValueError('automatic updates require a GHCR main/latest channel with a successful Checks publication workflow')
         if run(['loginctl', 'show-user', str(os.geteuid()), '--property=Linger', '--value']) != 'yes':
             raise ValueError('enable user linger before unattended installation: loginctl enable-linger USER')
     root = directory.resolve() if directory else Path.home() / '.local/share/lookout'
@@ -191,21 +193,23 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
         service.stop()
         raise
     if auto_update:
-        install_automation(name, root, unit, auto_update)
+        install_automation(name, root, unit, auto_update, manifest['image'])
     return dict(container=name, image=manifest['image'], unit=str(unit),
                 config=str(root / 'config'), data=str(data), backups=str(root / 'backups'), status='ready')
 
 
-def install_automation(name, root, unit, channel):
-    tools = Path(__file__).resolve().parent
+def install_automation(name, root, unit, channel, image):
+    templates = Path(__file__).resolve().parent
+    tools = root / 'automation' / 'current'
     user_units = Path.home() / '.config/systemd/user'
     user_units.mkdir(parents=True, exist_ok=True)
     values = {'TOOLS': str(tools), 'UNIT': str(unit), 'BACKUPS': str(root / 'backups'), 'IMAGE': channel}
     paths = [user_units / (name + '-' + suffix) for suffix in ('update.service', 'update.timer', 'backup.service', 'backup.timer')]
     if any(os.path.lexists(path) for path in paths):
         raise ValueError('automation units already exist; review them instead of overwriting')
+    refresh_tools('podman', image, tools)
     for path in paths:
-        text = (tools / 'systemd' / path.name.removeprefix(name + '-')).read_text()
+        text = (templates / 'systemd' / path.name.removeprefix(name + '-')).read_text()
         for key, value in values.items():
             text = text.replace('@' + key + '@', value)
         write_exclusive(path, text.encode())
