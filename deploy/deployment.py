@@ -66,7 +66,12 @@ def unchanged_image(engine, reference, current):
         return 'sha256:' + reference.removeprefix('sha256:') == current
     info = json.loads(run([engine, 'image', 'inspect', current]))[0]
     manifest = json.loads(run([engine, 'manifest', 'inspect', reference], timeout=60, retry_transport=True))
-    if 'manifests' in manifest:
+    # Podman projects single-image manifests as a list with manifests=null.
+    # Skopeo preserves the configuration digest without downloading layers.
+    if engine == 'podman' and manifest.get('manifests', []) is None:
+        manifest = json.loads(run(['skopeo', 'inspect', '--raw', 'docker://' + reference],
+                                  timeout=60, retry_transport=True))
+    if isinstance(manifest.get('manifests'), list):
         candidates = [entry for entry in manifest['manifests']
                       if entry.get('platform', {}).get('os') == info['Os']
                       and entry.get('platform', {}).get('architecture') == info['Architecture']

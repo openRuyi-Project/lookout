@@ -10,7 +10,7 @@ belong to a separate proxy.
 | Requirement | Check or responsibility |
 |---|---|
 | Linux x86_64, cgroup v2, Landlock ABI 6+ and seccomp | The published image targets linux/amd64. Installation probes the native RPM sandbox; unsupported isolation stops startup. |
-| Rootless Podman, Quadlet, a user systemd manager and Python 3.11+ | The service account needs subordinate UID/GID ranges and linger. The image supplies application dependencies. |
+| Rootless Podman, Skopeo, Quadlet, a user systemd manager and Python 3.11+ | The service account needs subordinate UID/GID ranges and linger. The image supplies application dependencies. |
 | Writable local persistent storage | Keep the same data directory across updates. It contains SQLite, the SPEC repository and provider caches; do not use tmpfs or a network filesystem. |
 | A trusted image and reachable providers | Public GHCR permits anonymous pulls. OBS, Git and upstream providers also need network access. |
 | Private configuration and backups | Maintain free space, backup retention and an independent backup copy. Local backups do not protect against host loss. |
@@ -28,7 +28,7 @@ The host administrator installs prerequisites and enables linger, replacing
 `SERVICE_USER` with the dedicated non-root account:
 
 ```sh
-sudo dnf install podman python3 curl
+sudo dnf install skopeo podman python3 curl
 sudo loginctl enable-linger SERVICE_USER
 ```
 

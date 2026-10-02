@@ -606,3 +606,18 @@ def test_registry_failures_preserve_failure_and_limit_attempts(monkeypatch, mess
         operations.run(['podman', 'pull', 'ghcr.io/fixture/image:main'], retry_transport=retry)
     assert 'fixture-secret' not in str(failure.value)
     assert len(calls) == expected
+
+
+def test_podman_single_image_projection_uses_raw_manifest(monkeypatch):
+    calls = []
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if argv[:3] == ['podman', 'image', 'inspect']:
+            return json.dumps([{'Os': 'linux', 'Architecture': 'amd64'}])
+        if argv[:3] == ['podman', 'manifest', 'inspect']:
+            return json.dumps({'schemaVersion': 2, 'manifests': None})
+        assert argv == ['skopeo', 'inspect', '--raw', 'docker://ghcr.io/owner/lookout:main']
+        return json.dumps({'schemaVersion': 2, 'config': {'digest': OLD}})
+    monkeypatch.setattr(operations, 'run', run)
+    assert operations.unchanged_image('podman', 'ghcr.io/owner/lookout:main', OLD)
+    assert not any('pull' in call for call in calls)
