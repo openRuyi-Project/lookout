@@ -19,7 +19,7 @@ class Text(DocumentModel):
     text: str
     href: str | None = None
     title: str | None = None
-    kind: Literal['text', 'code', 'tag', 'time'] = 'text'
+    kind: Literal['text', 'code', 'tag', 'time', 'icon'] = 'text'
     variant: Literal['outline', 'solid'] = 'outline'
     tone: Literal['normal', 'muted', 'positive', 'negative', 'notice'] = 'normal'
     appearance: str | None = None

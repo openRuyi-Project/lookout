@@ -7,63 +7,71 @@
     "license_url": "https://github.com/simple-icons/simple-icons/blob/16.15.0/LICENSE.md",
     "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/cmake.svg",
     "monochrome": true,
-    "changes": "None; vendored SVG.",
-    "sha256": "06757bccadf0459aca0a4c6a3898bd58e2dd71ea552bf7058cd406adc32fefa9"
+    "changes": "None; vendored SVG. Used only to identify CMake.",
+    "sha256": "06757bccadf0459aca0a4c6a3898bd58e2dd71ea552bf7058cd406adc32fefa9",
+    "trademark_symbol": ""
   },
   "gnu": {
     "title": "GNU",
-    "credit": "Aurélio A. Heckert; Simple Icons contributors",
+    "credit": "Copyright 2003 Free Software Foundation, Inc.; artwork by Aur\u00e9lio A. Heckert; Simple Icons contributors",
     "source": "https://www.gnu.org/graphics/heckert_gnu.html",
     "license": "CC-BY-SA-2.0",
     "license_url": "https://creativecommons.org/licenses/by-sa/2.0/",
     "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/gnu.svg",
     "monochrome": true,
-    "changes": "None; vendored SVG.",
-    "sha256": "24a8ccdc9e076463d3162309ddf6db5ded394c109ca9d8ece9709a339894f21e"
+    "changes": "None; vendored SVG. Displayed in white in dark mode.",
+    "sha256": "24a8ccdc9e076463d3162309ddf6db5ded394c109ca9d8ece9709a339894f21e",
+    "trademark_symbol": ""
   },
   "linux": {
     "title": "Linux / Tux",
     "credit": "Larry Ewing and The GIMP; Simple Icons contributors",
     "source": "https://isc.tamu.edu/~lewing/linux/",
     "license": "Tux usage permission",
-    "license_url": "https://isc.tamu.edu/~lewing/linux/",
+    "license_url": "https://web.archive.org/web/20080521142553/http://www.isc.tamu.edu/~lewing/linux/",
     "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/linux.svg",
     "monochrome": true,
-    "changes": "None; vendored SVG.",
-    "sha256": "7e55f2779ae11a83c9dad2d0414a65d8ca7867d0716ce58bfe41ed299ae1447f"
+    "changes": "None; vendored SVG. Displayed in white in dark mode.",
+    "sha256": "7e55f2779ae11a83c9dad2d0414a65d8ca7867d0716ce58bfe41ed299ae1447f",
+    "trademark_symbol": ""
   },
   "perl": {
     "title": "Perl",
-    "credit": "Olaf Alders; Zach Roszczewski; Sébastien Feugère; Simple Icons contributors",
+    "credit": "Olaf Alders; Zach Roszczewski; S\u00e9bastien Feug\u00e8re; Simple Icons contributors",
     "source": "https://github.com/metacpan/perl-assets",
     "license": "CC-BY-4.0",
     "license_url": "https://creativecommons.org/licenses/by/4.0/",
     "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/perl.svg",
     "monochrome": true,
-    "changes": "None; vendored SVG.",
-    "sha256": "6f1d3f3ac779079b0306437550cf1bc7532e1aa161ddf5934e8f109d006a7fca"
+    "changes": "None; vendored SVG. Displayed in white in dark mode.",
+    "sha256": "6f1d3f3ac779079b0306437550cf1bc7532e1aa161ddf5934e8f109d006a7fca",
+    "trademark_symbol": ""
   },
   "python": {
     "title": "Python",
-    "credit": "Python Software Foundation; Simple Icons contributors",
+    "credit": "Python Software Foundation",
     "source": "https://www.python.org/community/logos/",
     "license": "PSF logo usage policy",
     "license_url": "https://www.python.org/psf/trademarks/",
-    "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/python.svg",
-    "monochrome": true,
-    "changes": "None; vendored SVG.",
-    "sha256": "ad9468e1c4903f73ae7eebfbe980f0f727a10db695be3d914e7d8bd25356a862"
+    "asset_source": "https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/files/python-logo-only.svg",
+    "monochrome": false,
+    "changes": "None; official SVG, displayed at reduced size.",
+    "sha256": "baec8662a1461c2cacc326b54d2727cb2f1ce07ba02d00f5b826d035104f649f",
+    "trademark_url": "https://www.python.org/psf/trademarks/",
+    "trademark_symbol": "\u2122"
   },
   "rust": {
     "title": "Rust",
-    "credit": "Rust project; Simple Icons contributors",
+    "credit": "Rust Foundation",
     "source": "https://github.com/rust-lang/rust-artwork",
-    "license": "CC-BY-SA-4.0",
-    "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
-    "asset_source": "https://raw.githubusercontent.com/simple-icons/simple-icons/16.15.0/icons/rust.svg",
+    "license": "CC-BY-4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "asset_source": "https://raw.githubusercontent.com/rust-lang/rust-artwork/master/logo/rust-logo-gear-only-single-path.svg",
     "monochrome": true,
-    "changes": "None; vendored SVG.",
-    "sha256": "95a291d8887610d103704adcc5c5f2cbfa4c80a96f8e72b00531d5691beb67a8"
+    "changes": "None; official SVG, displayed at reduced size. Displayed in white in dark mode.",
+    "sha256": "68fe66f92ef4ccbc44186a99ac68c701bac3b5341913288c2852ffc95015cb8f",
+    "trademark_url": "https://rustfoundation.org/policy/rust-trademark-policy/",
+    "trademark_symbol": ""
   },
   "gopher": {
     "title": "Go Gopher",
@@ -74,7 +82,8 @@
     "asset_source": "https://raw.githubusercontent.com/devicons/devicon/v2.17.0/icons/go/go-original.svg",
     "monochrome": false,
     "changes": "None; vendored SVG.",
-    "sha256": "2d4558b96d3ec71d0d922a62668cb2ea5a5d83ed7d4caf6b0479b3266f795a2f"
+    "sha256": "2d4558b96d3ec71d0d922a62668cb2ea5a5d83ed7d4caf6b0479b3266f795a2f",
+    "trademark_symbol": ""
   },
   "meson": {
     "title": "Meson",
@@ -84,7 +93,8 @@
     "license_url": "https://github.com/mesonbuild/meson/blob/1.9.1/COPYING",
     "asset_source": "https://github.com/mesonbuild/meson/blob/1.9.1/graphics/meson_logo.svg",
     "monochrome": true,
-    "changes": "Emblem extracted from the upstream logo sheet; geometry unchanged.",
-    "sha256": "787022282bbe299ebea5c36e2cb317beb6b67a5e8162bdb5b48266facc3ec0b1"
+    "changes": "Emblem extracted from the upstream logo sheet; geometry unchanged. Displayed in white in dark mode.",
+    "sha256": "787022282bbe299ebea5c36e2cb317beb6b67a5e8162bdb5b48266facc3ec0b1",
+    "trademark_symbol": ""
   }
 }

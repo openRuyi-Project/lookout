@@ -25,7 +25,7 @@ SPDX-License-Identifier = "CC0-1.0"
 
 [[annotations]]
 path = "frontend/src/assets/logos/gnu.svg"
-SPDX-FileCopyrightText = "Aurélio A. Heckert; Simple Icons contributors"
+SPDX-FileCopyrightText = "2003 Free Software Foundation, Inc.; Aurélio A. Heckert; Simple Icons contributors"
 SPDX-License-Identifier = "CC-BY-SA-2.0"
 
 [[annotations]]
@@ -40,13 +40,13 @@ SPDX-License-Identifier = "CC-BY-4.0"
 
 [[annotations]]
 path = "frontend/src/assets/logos/python.svg"
-SPDX-FileCopyrightText = "Python Software Foundation; Simple Icons contributors"
+SPDX-FileCopyrightText = "Python Software Foundation"
 SPDX-License-Identifier = "LicenseRef-Python-Logo"
 
 [[annotations]]
 path = "frontend/src/assets/logos/rust.svg"
-SPDX-FileCopyrightText = "Rust project; Simple Icons contributors"
-SPDX-License-Identifier = "CC-BY-SA-4.0"
+SPDX-FileCopyrightText = "Rust Foundation"
+SPDX-License-Identifier = "CC-BY-4.0"
 
 [[annotations]]
 path = "frontend/src/assets/logos/gopher.svg"
@@ -57,3 +57,9 @@ SPDX-License-Identifier = "CC-BY-4.0 AND LicenseRef-Devicon-MIT"
 path = "frontend/src/assets/logos/meson.svg"
 SPDX-FileCopyrightText = "The Meson development team"
 SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "frontend/src/assets/icons/obs-*.svg"
+precedence = "override"
+SPDX-FileCopyrightText = "Fonticons, Inc."
+SPDX-License-Identifier = "CC-BY-4.0"

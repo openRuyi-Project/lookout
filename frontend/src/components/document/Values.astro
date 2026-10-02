@@ -12,5 +12,5 @@ const {values} = Astro.props;
     datetime={value.datetime || undefined}
     data-variant={value.kind === 'tag' ? value.variant : undefined}
     data-decoration={value.decoration || undefined}
-    data-appearance={value.appearance ? encodeURIComponent(value.appearance) : undefined}>{value.icon && <Icon name={value.icon}/>}{value.text}</Tag>;
+    data-appearance={value.appearance ? encodeURIComponent(value.appearance) : undefined}>{value.icon && <Icon name={value.icon}/>}{value.kind === 'icon' && value.icon ? <span class="visually-hidden">{value.text}</span> : value.text}</Tag>;
 })}

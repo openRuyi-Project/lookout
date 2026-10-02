@@ -19,6 +19,7 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+COPY LICENSES/ /build/LICENSES/
 ENV ASTRO_TELEMETRY_DISABLED=1
 RUN npm run quality && npm run check && npm run build && npm prune --omit=dev
 

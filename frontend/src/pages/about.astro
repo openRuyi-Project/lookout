@@ -1,5 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
+import fontAwesomeLicense from '../../../LICENSES/LicenseRef-FontAwesome-Free.txt?raw';
+import octiconsLicense from '../../../LICENSES/LicenseRef-Octicons-MIT.txt?raw';
 import logos from '../assets/logos/catalog.json';
 ---
 <Base title="About">
@@ -28,10 +30,15 @@ import logos from '../assets/logos/catalog.json';
     <p><a href="/LICENSE.txt">MulanPSL-2.0 license</a></p>
     <p><a href="https://github.com/openRuyi-Project/openRuyi-logo">openRuyi logo</a> © 2026 ISCAS and openRuyi Project Contributors. Used unchanged under <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>.</p>
     <p>Activity icons: <a href="https://github.com/primer/octicons">GitHub Primer Octicons</a>, used unchanged under the <a href="https://github.com/primer/octicons/blob/main/LICENSE">MIT license</a>.</p>
+    <details><summary>Octicons license</summary><pre>{octiconsLicense}</pre></details>
+    <p>Build icons: <a href="https://fontawesome.com/">Font Awesome Free 6.7.2</a> by Fonticons, Inc., used unchanged under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p>
+    <details><summary>Font Awesome notices</summary><pre>{fontAwesomeLicense}</pre></details>
     <h2>Tool and ecosystem marks</h2>
     <p>Marks identify tools or language families, not endorsement. GNU identifies the Autotools family; language marks do not identify a particular build backend.</p>
+    <p>Python and the Python logos are trademarks or registered trademarks of the Python Software Foundation, used under its nominative-use policy.</p>
+    <p>CMake is a Kitware trademark, used only to identify the build tool; no affiliation or endorsement is implied.</p>
     <dl class="api-list">
-      {Object.values(logos).map(logo => <><dt><a href={logo.source}>{logo.title}</a></dt><dd>{logo.credit}. <a href={logo.license_url}>{logo.license}</a>. <a href={logo.asset_source}>SVG source</a>. {logo.changes}</dd></>)}
+      {Object.values(logos).map(logo => <><dt><a href={logo.source}>{logo.title}</a></dt><dd>{logo.credit}. <a href={logo.license_url}>{logo.license}</a>. <a href={logo.asset_source}>SVG source</a>. {logo.changes} {'trademark_url' in logo && <a href={logo.trademark_url}>Trademark policy</a>}</dd></>)}
     </dl>
   </article>
 </Base>

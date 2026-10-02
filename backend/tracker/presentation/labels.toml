@@ -72,12 +72,15 @@ text = "Ambiguous"
 style = "warning"
 
 [labels."Failed"]
+icon = "obs-circle-exclamation"
 style = "important"
 
 [labels."Unresolvable"]
+icon = "obs-circle-exclamation"
 style = "important"
 
 [labels."Broken"]
+icon = "obs-circle-exclamation"
 style = "important"
 
 [labels.PR]
@@ -107,3 +110,60 @@ style = "important"
 
 [labels.github-inactive]
 style = "neutral"
+
+[labels."Succeeded"]
+icon = "obs-check"
+icon_only = true
+style = "build-success"
+
+[labels."Blocked"]
+icon = "obs-shield"
+style = "warning"
+
+[labels."Scheduled"]
+icon = "obs-hourglass-half"
+style = "build-active"
+
+[labels."Dispatching"]
+icon = "obs-plane-departure"
+style = "build-active"
+
+[labels."Building"]
+icon = "obs-gear"
+style = "build-active"
+
+[labels."Finishing"]
+icon = "obs-check"
+style = "build-active"
+
+[labels."Signing"]
+icon = "obs-signature"
+style = "build-active"
+
+[labels."Disabled"]
+icon = "obs-ban"
+style = "neutral"
+
+[labels."Excluded"]
+icon = "obs-ban"
+style = "neutral"
+
+[labels."Locked"]
+icon = "obs-lock"
+style = "neutral"
+
+[labels."Deleting"]
+icon = "obs-eraser"
+style = "neutral"
+
+[labels."No result"]
+icon = "obs-question"
+style = "neutral"
+
+[styles.build-success]
+background = "#1a7f37"
+foreground = "#ffffff"
+
+[styles.build-active]
+background = "#0969da"
+foreground = "#ffffff"

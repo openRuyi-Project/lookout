@@ -392,7 +392,7 @@ a.value-tag {
 .tone-notice {
   color: var(--amber);
 }
-.value-tag, .value-text[data-appearance] {
+.value-tag, .value-text[data-appearance], .value-icon[data-appearance] {
   color: light-dark(var(--appearance-background, var(--fg)),
     color-mix(in srgb, var(--appearance-background, var(--fg)) 35%, var(--fg)));
 }
@@ -745,3 +745,16 @@ a[aria-disabled] { opacity: .55; cursor: not-allowed; }
 .entry-header { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; }
 .entry-header .entry-heading { flex: 1 1 20rem; min-width: 0; }
 .entry-metadata { margin-left: auto; white-space: nowrap; font-size: .85em; color: var(--muted); }
+
+.value-icon .document-icon { margin-inline-end: 0; }
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}

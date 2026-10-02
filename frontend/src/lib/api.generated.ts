@@ -398,7 +398,7 @@ export interface components {
              * @default text
              * @enum {string}
              */
-            kind: "text" | "code" | "tag" | "time";
+            kind: "text" | "code" | "tag" | "time" | "icon";
             /**
              * Variant
              * @default outline

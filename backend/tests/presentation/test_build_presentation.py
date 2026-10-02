@@ -147,3 +147,62 @@ def test_multiple_flavors_keep_reasons_attached_to_flavor_status(observed, clien
     assert flavored['cells'][0]['lines'][0][1]['text'] == flavor
     assert [line[0]['text'] for line in flavored['cells'][1]['lines']] == [
         'Blocked', 'waiting for fixture-toolkit']
+
+
+def test_all_build_status_icons_keep_accessible_names_and_log_links():
+    from tracker.monitors.build.status import STATES, label
+    from tracker.presentation.build import build_cell
+    from tracker.presentation.labels import icon_only
+    for code, state in {**STATES, 'future-status': STATES['unknown']}.items():
+        observed = dict(raw_status=code, text=state.text, kind=state.kind,
+                        log_url='https://example.org/log', updated_at=None)
+        value = build_cell(observed, None, '/packages/example').lines[0][0]
+        assert value.text == label(code)
+        assert value.href == observed['log_url']
+        assert code in value.title
+        assert value.kind == ('icon' if code in STATES and icon_only(label(code)) else 'text')
+        assert bool(value.icon) == (code in STATES)
+
+
+def test_build_glyphs_follow_obs_semantics_and_declared_palette():
+    from tracker.presentation.labels import icon, appearance, palettes
+    from tracker.presentation.build import build_cell
+    expected = {
+        'succeeded': ('Succeeded', 'check'),
+        'failed': ('Failed', 'circle-exclamation'),
+        'unresolvable': ('Unresolvable', 'circle-exclamation'),
+        'broken': ('Broken', 'circle-exclamation'),
+        'blocked': ('Blocked', 'shield'),
+        'scheduled': ('Scheduled', 'hourglass-half'),
+        'dispatching': ('Dispatching', 'plane-departure'),
+        'building': ('Building', 'gear'),
+        'signing': ('Signing', 'signature'),
+        'finished': ('Finishing', 'check'),
+        'disabled': ('Disabled', 'ban'),
+        'excluded': ('Excluded', 'ban'),
+        'locked': ('Locked', 'lock'),
+        'deleting': ('Deleting', 'eraser'),
+        'unknown': ('No result', 'question'),
+    }
+    for code, (label, glyph) in expected.items():
+        value = build_cell(dict(raw_status=code, text=label, kind='muted',
+                                updated_at=None), None, '/packages/example').lines[0][0]
+        assert value.icon == icon(label) == 'obs-' + glyph
+        assert value.appearance == appearance(label)
+        assert value.appearance in palettes()
+    from collections import Counter
+    shared = Counter(glyph for _, glyph in expected.values())
+    for code, (label, glyph) in expected.items():
+        value = build_cell(dict(raw_status=code, text=label, kind='muted', updated_at=None),
+                           None, '/packages/example').lines[0][0]
+        assert value.kind == ('icon' if code == 'succeeded' or shared[glyph] == 1 else 'text')
+
+
+def test_success_is_icon_only_and_build_detail_retains_time(observed, client_for):
+    from tracker.presentation.build import build_cell
+    value = build_cell(dict(raw_status="succeeded", kind="ok", updated_at="2026-01-01T00:00:00Z"), None, "").lines[0][0]
+    assert value.kind == "icon"
+    assert value.text == "Succeeded"
+    detail = client_for(observed).get(f"/api/ui/packages/{PACKAGE}").json()
+    build = next(section for section in detail["sections"] if section["id"] == "build")
+    assert [column["title"] for column in build["table"]["columns"]] == ["Target", "Result", "Last successful version", "Succeeded at"]

@@ -1,4 +1,6 @@
 """Build for reading documents; no collection or persistence."""
+from tracker.monitors.build.status import label as status_label
+from tracker.presentation.labels import appearance, icon, icon_only
 from tracker.presentation.model import Column, Row, RowNote, Section, Table
 from tracker.presentation.values import cell, stamp, text
 
@@ -47,7 +49,10 @@ def build_cell(build, current, detail_url, *, show_reason=False):
     title = f"OBS {build['raw_status']}; observed {stamp(build.get('updated_at')).text}"
     if last:
         title += f"; last succeeded {last.get('version') or 'version not recorded'}, {stamp(last['time']).text}"
-    values = [text(build['text'], href=build.get('log_url'), title=title,
+    status = status_label(build['raw_status'])
+    glyph = icon(status)
+    values = [text(status, kind='icon' if glyph and icon_only(status) else 'text', icon=glyph,
+                   href=build.get('log_url'), title=title, appearance=appearance(status),
                    tone={'error': 'negative', 'muted': 'muted', 'pending': 'notice'}.get(build['kind'], 'normal'))]
     previous = ([text(last['version'], kind='code', href=detail_url + '#build',
                       title='Last successful version: ' + stamp(last['time']).text)]

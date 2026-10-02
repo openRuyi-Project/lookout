@@ -605,7 +605,12 @@ try {
   assert.match(listing, /rel="icon" type="image\/svg\+xml" href="\/openruyi.svg"/);
   assert.match(listing, /<img src="\/openruyi.svg" width="38" height="28" alt=""/);
   assert.match(await read('/openruyi.svg'), /<svg/);
-  assert.match(await read('/about'), /CC BY-SA 4.0/);
+  const about = await read('/about');
+  assert.match(about, /CC BY-SA 4.0/);
+  assert.match(about, /Copyright .*2026 GitHub Inc/);
+  assert.match(about, /permission notice shall be included/);
+  assert.match(about, /Python Software Foundation/);
+  assert.match(about, /Trademark policy/);
   const simple = await read('/?monitor=version');
   assert.match(simple, /<table class="data-table"/);
   assert.match(await read('/?monitor=build'), /<table class="data-table wide status-matrix"/);
@@ -630,7 +635,8 @@ try {
   const row = name => listing.match(new RegExp(`<tr data-key="${name}"[^]*?</tr>`))?.[0] ?? '';
   assert.match(row('success'), /data-appearance="buildsystem%3Acustom"/);
   assert.doesNotMatch(row('success'), /#build/);
-  assert.equal((row('success').match(/>✓</g) || []).length, 3);
+  assert.equal((row('success').match(/class="visually-hidden">Succeeded<\/span>/g) || []).length, 3);
+  assert.equal((row('success').match(/class="document-icon"/g) || []).length, 3);
   for (const version of ['1.9', '1.8', '1.7']) assert.ok(row('failed').includes(`>${version}</a>`));
   assert.doesNotMatch(listing, /9\.9-shared/);
   assert.match(row('failed'), /tone-negative/);
