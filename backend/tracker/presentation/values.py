@@ -83,7 +83,7 @@ def version_value(pkg, *, compact=True, links=None):
             return [text(value['current'], kind='code', tone=tone, title=title, decoration=decoration), *annotation]
         current, latest = revision['current'], revision['latest']
         links = revision['links']
-        values = [text(dated_commit(current, revision['packaged_date'], latest), kind='code', tone=tone, href=links['current'],
+        values = [text(value['current'], kind='code', tone=tone, decoration=decoration, href=links['current'],
                        title=f"{value['current']} · {current}")]
         if value['relation'] == 'changed':
             values += [text('→', title='Tracked branch tip differs from packaged source'),

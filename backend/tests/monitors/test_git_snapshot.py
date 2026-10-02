@@ -47,7 +47,7 @@ def test_full_commit_comparison_and_compact_reading(config, snapshot, latest, re
     pkg = {'monitors': {'version': {'data': dict(kind='version', current=spec['version'], latest=latest,
         track='binutils', relation=relation, revision=decision.revision.public(latest))}}}
     values = presentation_values.version_value(pkg)
-    display = '20000101.' + CURRENT[:6]
+    display = spec['version']
     assert [v.text for v in values] == ([display] if relation == 'current' else [display, '→', LATEST[:6]])
     assert values[0].href == REPO + '/commit/' + CURRENT
     assert CURRENT in values[0].title
@@ -164,7 +164,7 @@ def test_native_github_date_and_revision_survive_import_and_render(config, snaps
     github_observation(config, snapshot)
     rows, _ = view.project_monitors(snapshot)
     row = next(r for r in rows if r['name'] == 'binutils')
-    assert [t.text for t in presentation_values.version_value(row)] == ['20000101.123456', '→', '20010203.abcdef']
+    assert [t.text for t in presentation_values.version_value(row)] == [snapshot['specs']['binutils']['version'], '→', '20010203.abcdef']
     data = row['monitors']['version']['data']
     assert data['revision']['latest'] == LATEST
     assert data['revision']['latest_committed_at'] == '2001-02-03T12:13:14+00:00'
@@ -192,7 +192,7 @@ def test_missing_or_unzoned_commit_time_is_not_replaced_by_poll_time(config, sna
     github_observation(config, snapshot, date=date)
     rows, _ = view.project_monitors(snapshot)
     row = next(r for r in rows if r['name'] == 'binutils')
-    assert [t.text for t in presentation_values.version_value(row)] == ['20000101.123456', '→', 'abcdef']
+    assert [t.text for t in presentation_values.version_value(row)] == [snapshot['specs']['binutils']['version'], '→', 'abcdef']
 
 
 def test_native_release_flags_and_component_scope_do_not_become_repository_tracking(config, snapshot):
@@ -284,3 +284,15 @@ def test_native_rate_limit_survives_generic_no_result_without_leaking_exception(
               dict(name='widget', level='error', event='no-result')]
     facts, _ = nv.import_events('\n'.join(map(json.dumps, events)), entries, {}, state.utcnow())
     assert facts['widget']['error'] == 'nvchecker rate limited'
+
+
+def test_only_commit_candidate_uses_date_skin():
+    revision = dict(current=CURRENT, latest=LATEST, packaged_date='2000-01-01',
+                    latest_committed_at='2001-02-03T04:05:06Z', branch='main',
+                    links={'current': REPO + '/commit/' + CURRENT, 'latest': REPO + '/commit/' + LATEST})
+    source = '0.7+git' + CURRENT[:7]
+    data = dict(kind='version', current=source, relation='changed', revision=revision)
+    pkg = {'monitors': {'version': {'data': data}}}
+    assert [v.text for v in presentation_values.version_value(pkg)] == [source, '→', '20010203.' + LATEST[:6]]
+    data['relation'] = 'current'
+    assert [v.text for v in presentation_values.version_value(pkg)] == [source]

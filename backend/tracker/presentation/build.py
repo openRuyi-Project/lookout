@@ -42,7 +42,7 @@ def build_reason_line(build, detail_url):
 
 def build_cell(build, current, detail_url, *, show_reason=False):
     last = build.get('last_success')
-    compact = (build['kind'] == 'ok' and build.get('matches_source') is True
+    compact = (build['raw_status'] == 'succeeded'
                and last and last.get('version') and last['version'] == current)
     title = f"OBS {build['raw_status']}; observed {stamp(build.get('updated_at')).text}"
     if last:

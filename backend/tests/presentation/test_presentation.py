@@ -200,13 +200,19 @@ def test_version_display_uses_decision_not_independent_comparison(snapshot):
     assert presentation_values.version_value(pkg)[0].title == 'No upstream version track configured'
 
 
-@pytest.mark.parametrize('matches,version', [(False, '3.9.0'), (None, '3.9.0'), (True, '3.9.0.arch')])
-def test_last_success_is_omitted_only_when_fully_inferable(snapshot, matches, version):
-    build = view.project_monitors(snapshot)[0][0]['monitors']['build']['data']['targets'][0]
-    build.update(matches_source=matches, last_success={'version': version, 'time': state.utcnow(), 'srcmd5': 'previous'})
-    assert presentation_build.build_cell(build, '3.9.0', '/packages/binutils').lines[1][0].text == version
+@pytest.mark.parametrize('matches', [False, None, True])
+@pytest.mark.parametrize('status,kind', [('succeeded', 'ok'), ('failed', 'error'), ('building', 'pending')])
+@pytest.mark.parametrize('version', ['3.9.0', '3.9.0.arch'])
+def test_last_success_is_omitted_only_for_success_at_current_version(matches, status, kind, version):
+    build = dict(raw_status=status, kind=kind, text=status, matches_source=matches,
+                 last_success={'version': version, 'time': state.utcnow()})
+    lines = presentation_build.build_cell(build, '3.9.0', '/packages/fixture').lines
+    if status == 'succeeded' and version == '3.9.0':
+        assert len(lines) == 1
+    else:
+        assert lines[1][0].text == version
     build['last_success'] = None
-    assert len(presentation_build.build_cell(build, '3.9.0', '/packages/binutils').lines) == 1
+    assert len(presentation_build.build_cell(build, '3.9.0', '/packages/fixture').lines) == 1
 
 
 def test_query_fact_does_not_turn_an_unrelated_monitor_into_security(snapshot):
