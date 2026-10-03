@@ -624,7 +624,7 @@ def create_app(db=None):
         observations = ((row['name'], row['monitors']['version']['data']['upstream']) for row in index.rows)
         return {**collection,
                 'source_versions': sum(bool(row['monitors']['source']['data']['version']) for row in index.rows),
-                'components': snap['components'], 'monitor_coverage': index.monitor_coverage(),
+                'components': view.component_status(snap['components']), 'monitor_coverage': index.monitor_coverage(),
                 'upstream_failures': view.upstream_failures(observations)}
     @app.get('/api/v2/export', response_model=MonitorExport)
     def export(response: Response):

@@ -76,3 +76,19 @@ def test_only_current_routes_and_monitor_export_are_published(tmp_path, snapshot
     detail = c.get('/api/v2/packages/binutils').json()
     assert package['monitors'] == detail['monitors']
     assert set(package) == {'name', 'detail_url', 'monitors'}
+
+
+def test_status_projects_health_without_exposing_collector_checkpoint(tmp_path, snapshot):
+    component = {'attempted_at': '2026-01-01T00:00:00Z', 'error': 'provider unavailable',
+                 'next_poll_at': '2026-01-01T00:10:00Z', 'page': 2,
+                 'batch': [{'body': 'x' * 100000}], 'pr_progress': {'detail': {'body': 'private checkpoint'}},
+                 'future_internal_field': {'raw': 'not a health field'}}
+    snapshot['components']['github:example/repo'] = component
+    c, db = client(tmp_path, snapshot)
+    before = state.read(db)
+    response = c.get('/api/v2/status')
+    assert response.status_code == 200
+    assert response.json()['components']['github:example/repo'] == {
+        key: component[key] for key in ('attempted_at', 'error', 'next_poll_at', 'page')}
+    assert len(response.content) < 100000
+    assert state.read(db) == before

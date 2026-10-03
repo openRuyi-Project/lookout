@@ -152,3 +152,12 @@ def upstream_failures(observations):
         group['packages'].append(name)
     return [{**group, 'count': len(group['packages']), 'packages': sorted(group['packages'])}
             for _, group in sorted(groups.items())]
+
+
+def component_status(components):
+    """Expose collection health, not resumable provider payloads or cursors."""
+    fields = ('attempted_at', 'fetched_at', 'checked_at', 'error', 'next_poll_at',
+              'stale_after_seconds', 'page', 'round_started', 'reconciled_at',
+              'selected_track_count', 'selected_packages', 'head', 'mode')
+    return {name: {key: value[key] for key in fields if key in value}
+            for name, value in components.items()}
