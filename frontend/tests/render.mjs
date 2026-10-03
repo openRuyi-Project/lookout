@@ -217,6 +217,7 @@ function project(operation, payload, query = {}) {
 }
 let unavailable = false;
 let health = 'ok';
+let errorStreamClosed;
 let ready = {status: 200, body: {status: 'degraded', generation: 1}};
 let appearancePalette = {custom: {background: '#123456', foreground: '#ffffff', icon: 'gopher'}};
 const publicPaths = [
@@ -251,6 +252,12 @@ const mock = createServer((req, res) => {
     res.end(JSON.stringify({path: url.pathname, query: [...url.searchParams]})); return;
   }
   if (url.pathname === '/healthz') {
+    if (health === 'stream-error') {
+      errorStreamClosed = once(res, 'close');
+      res.writeHead(503, {'Content-Type': 'application/json'});
+      res.write('{');
+      return;
+    }
     if (health === 'stall') return;
     if (health === 'disconnected') { req.socket.destroy(); return; }
     res.writeHead(health === 'error' ? 503 : 200, {'Content-Type': 'application/json'});
@@ -350,6 +357,13 @@ try {
     health = failure;
     await probe('/livez', 503, {status: 'unavailable'});
   }
+  health = 'stream-error';
+  await probe('/livez', 503, {status: 'unavailable'});
+  // The rejected body must close before the helper's two-second request timeout.
+  await Promise.race([errorStreamClosed, new Promise((_, reject) => {
+    const timer = setTimeout(() => reject(new Error('Rejected API response body was not cancelled')), 1000);
+    timer.unref();
+  })]);
   health = 'ok';
   unavailable = true;
   for (const path of ['/livez', '/readyz']) {

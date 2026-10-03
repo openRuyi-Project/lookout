@@ -6,6 +6,10 @@ export function backendURL(path: string): URL {
 export async function api<T>(path: string, timeoutMs = 8000): Promise<{status: number; data: T | null}> {
   try {
     const response = await fetch(backendURL(path), {signal: AbortSignal.timeout(timeoutMs), redirect: 'error'});
-    return {status: response.status, data: response.ok ? await response.json() as T : null};
+    if (!response.ok) {
+      await response.body?.cancel();
+      return {status: response.status, data: null};
+    }
+    return {status: response.status, data: await response.json() as T};
   } catch { return {status: 503, data: null}; }
 }
