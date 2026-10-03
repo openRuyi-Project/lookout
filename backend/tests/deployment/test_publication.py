@@ -192,6 +192,20 @@ def test_publication_failure_cannot_trigger_registry_fallback(tmp_path, monkeypa
         launcher.upgrade(REFERENCE, None, tmp_path, container='fixture', apply=True, workflow='checks.yml')
 
 
+def test_unchanged_tool_pointer_does_not_republish(tmp_path, monkeypatch):
+    destination = tmp_path / OLD.removeprefix('sha256:')
+    destination.mkdir()
+    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
+        (destination / name).write_text('# fixture')
+    pointer = tmp_path / 'current'
+    pointer.symlink_to(destination.name)
+    before = pointer.lstat()
+    monkeypatch.setattr(automation_tools, 'export_image_tree', lambda *a: pytest.fail('must reuse local tools'))
+    monkeypatch.setattr(automation_tools.os, 'replace', lambda *a: pytest.fail('must not republish unchanged pointer'))
+    assert automation_tools.refresh_tools('docker', OLD, pointer) == pointer
+    assert pointer.lstat() == before
+
+
 def test_incomplete_export_can_retry_same_image(tmp_path, monkeypatch):
     pointer = tmp_path / 'current'
     attempts = []

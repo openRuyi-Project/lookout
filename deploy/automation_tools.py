@@ -40,6 +40,8 @@ def stage_tools(engine, image, link):
 def refresh_tools(engine, image, link):
     link = Path(link).absolute()
     destination = stage_tools(engine, image, link)
+    if link.is_symlink() and link.resolve() == destination:
+        return link
     staged_link = link.with_name('.current-' + uuid.uuid4().hex)
     try:
         staged_link.symlink_to(destination.name)
