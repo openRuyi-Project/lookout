@@ -115,6 +115,8 @@ def test_missing_protocol_leaves_old_tool_pointer(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match='missing the host automation protocol'):
         automation_tools.refresh_tools('docker', NEW, pointer)
     assert pointer.resolve() == previous
+    assert not (tmp_path / NEW.removeprefix('sha256:')).exists()
+    assert not list(tmp_path.glob('.tools-*'))
 
 
 def test_regular_tool_directory_is_not_overwritten(tmp_path):
@@ -188,3 +190,21 @@ def test_publication_failure_cannot_trigger_registry_fallback(tmp_path, monkeypa
     monkeypatch.setattr(launcher, 'resolve_image', lambda *a: pytest.fail('registry fallback'))
     with pytest.raises(RuntimeError, match='GitHub unavailable'):
         launcher.upgrade(REFERENCE, None, tmp_path, container='fixture', apply=True, workflow='checks.yml')
+
+
+def test_incomplete_export_can_retry_same_image(tmp_path, monkeypatch):
+    pointer = tmp_path / 'current'
+    attempts = []
+    def export(engine, image, source, destination):
+        attempts.append(image)
+        destination.mkdir()
+        names = ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py')
+        for name in names[:1] if len(attempts) == 1 else names:
+            (destination / name).write_text('# fixture')
+    monkeypatch.setattr(automation_tools, 'export_image_tree', export)
+    with pytest.raises(ValueError, match='missing the host automation protocol'):
+        automation_tools.refresh_tools('docker', NEW, pointer)
+    assert not pointer.exists()
+    automation_tools.refresh_tools('docker', NEW, pointer)
+    assert pointer.resolve().name == NEW.removeprefix('sha256:')
+    assert attempts == [NEW, NEW]

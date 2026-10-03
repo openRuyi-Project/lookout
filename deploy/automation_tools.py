@@ -7,6 +7,14 @@ from pathlib import Path
 from deployment import export_image_tree, image_reference
 
 
+def validate_tools(directory):
+    if directory.is_symlink() or not directory.is_dir():
+        raise ValueError('host tools must be a regular version directory')
+    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
+        if not (directory / name).is_file():
+            raise ValueError('image is missing the host automation protocol')
+
+
 def stage_tools(engine, image, link):
     if image_reference(image):
         raise ValueError('host tools require a local immutable image ID')
@@ -19,16 +27,13 @@ def stage_tools(engine, image, link):
         with tempfile.TemporaryDirectory(prefix='.tools-', dir=link.parent) as temporary:
             staged = Path(temporary) / 'deploy'
             export_image_tree(engine, image, '/app/deploy', staged)
+            validate_tools(staged)
             for path in staged.rglob('*'):
                 if path.is_file():
                     with path.open('rb') as stream:
                         os.fsync(stream.fileno())
             os.rename(staged, destination)
-    if destination.is_symlink() or not destination.is_dir():
-        raise ValueError('host tools must be a regular version directory')
-    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
-        if not (destination / name).is_file():
-            raise ValueError('image is missing the host automation protocol')
+    validate_tools(destination)
     return destination
 
 
