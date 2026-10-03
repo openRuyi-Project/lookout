@@ -395,7 +395,7 @@ def test_registry_pull_is_pinned_before_metadata_probe(monkeypatch):
         return ''
     monkeypatch.setattr(operations, 'run', run)
     result = operations.resolve_image('podman', reference)
-    assert calls[0] == ['podman', 'pull', reference]
+    assert calls[0] == ['podman', 'pull', '--retry=0', reference]
     assert result['image'] == NEW and result['reference'] == reference
     assert result['storage'] == 2 and result['platform'] == 'linux/amd64'
 
@@ -625,3 +625,18 @@ def test_podman_single_image_projection_uses_raw_manifest(monkeypatch):
     monkeypatch.setattr(operations, 'run', run)
     assert operations.unchanged_image('podman', 'ghcr.io/owner/lookout:main', OLD)
     assert not any('pull' in call for call in calls)
+
+
+@pytest.mark.parametrize('engine', ['docker', 'podman'])
+def test_failed_pull_waits_for_next_scheduler_attempt(monkeypatch, engine):
+    calls = []
+    def failed(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 1, '', 'EOF')
+    monkeypatch.setattr(operations.subprocess, 'run', failed)
+    monkeypatch.setattr(operations.time, 'sleep', lambda _: None)
+    with pytest.raises(RuntimeError, match='pull failed'):
+        operations.resolve_image(engine, 'ghcr.io/example/lookout:main')
+    assert len(calls) == 1
+    assert calls[0][1] == 'pull'
+    assert ('--retry=0' in calls[0]) == (engine == 'podman')

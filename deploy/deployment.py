@@ -94,7 +94,9 @@ def resolve_image(engine, reference):
     """Pull a registry reference once; subsequent operations use its local immutable ID."""
     registry = image_reference(reference)
     if registry:
-        run([engine, 'pull', reference], timeout=600, retry_transport=True)
+        # The host scheduler retries failed upgrades; avoid nested pull retries.
+        options = ['--retry=0'] if engine == 'podman' else []
+        run([engine, 'pull', *options, reference], timeout=600)
     info = json.loads(run([engine, 'image', 'inspect', reference]))[0]
     labels = info['Config'].get('Labels') or {}
     version = labels.get('org.opencontainers.image.version', '')
