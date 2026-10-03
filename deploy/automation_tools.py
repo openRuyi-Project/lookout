@@ -18,7 +18,8 @@ def validate_tools(directory):
 def stage_tools(engine, image, link):
     if image_reference(image):
         raise ValueError('host tools require a local immutable image ID')
-    link = Path(link).absolute()
+    link = Path(link)
+    link = link.parent.resolve() / link.name
     if os.path.lexists(link) and (not link.is_symlink() or link.resolve().parent != link.parent):
         raise ValueError('host tool pointer must link to a sibling version directory')
     link.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -38,7 +39,8 @@ def stage_tools(engine, image, link):
 
 
 def refresh_tools(engine, image, link):
-    link = Path(link).absolute()
+    link = Path(link)
+    link = link.parent.resolve() / link.name
     destination = stage_tools(engine, image, link)
     if link.is_symlink() and link.resolve() == destination:
         return link

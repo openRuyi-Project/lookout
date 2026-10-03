@@ -222,3 +222,22 @@ def test_incomplete_export_can_retry_same_image(tmp_path, monkeypatch):
     automation_tools.refresh_tools('docker', NEW, pointer)
     assert pointer.resolve().name == NEW.removeprefix('sha256:')
     assert attempts == [NEW, NEW]
+
+
+def test_tool_pointer_accepts_a_symlinked_parent_directory(tmp_path, monkeypatch):
+    directory = tmp_path / 'tools'
+    directory.mkdir()
+    alias = tmp_path / 'alias'
+    alias.symlink_to(directory, target_is_directory=True)
+    previous = directory / 'previous'
+    previous.mkdir()
+    pointer = alias / 'current'
+    pointer.symlink_to('previous')
+    def export(engine, image, source, destination):
+        destination.mkdir()
+        for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
+            (destination / name).write_text('# fixture')
+    monkeypatch.setattr(automation_tools, 'export_image_tree', export)
+    automation_tools.refresh_tools('docker', NEW, pointer)
+    assert pointer.resolve() == directory / NEW.removeprefix('sha256:')
+    assert previous.is_dir()
