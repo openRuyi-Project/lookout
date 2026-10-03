@@ -13,6 +13,14 @@ from deployment import (Docker, Quadlet, export_image_tree, healthy, resolve_ima
 from publication import channel_repository, published_image
 
 
+def confirm_current(service, image, tools_link):
+    healthy(service.engine, service.name, image)
+    # A completed image switch may outlive a failed host-pointer publication.
+    # Recover only its staged tools, without pulling or exporting an image.
+    if tools_link and (tools_link.parent / image.removeprefix('sha256:')).is_dir():
+        refresh_tools(service.engine, image, tools_link)
+
+
 def upgrade(reference, unit, backups, *, container=None, apply=False, catalog_baseline=None, workflow=None, tools_link=None):
     if catalog_baseline is not None:
         validate_catalog_baseline(catalog_baseline)
@@ -30,7 +38,7 @@ def upgrade(reference, unit, backups, *, container=None, apply=False, catalog_ba
         revision = (info['Config'].get('Labels') or {}).get('org.opencontainers.image.revision')
         selected, expected_revision = published_image(reference, old_image, revision, workflow)
         if selected == old_image and not catalog_baseline:
-            healthy(service.engine, service.name, old_image)
+            confirm_current(service, old_image, tools_link)
             return {**result, 'image': old_image, 'revision': revision, 'status': 'unchanged'}
         try:
             cached = json.loads(run([service.engine, 'image', 'inspect', selected]))[0]
@@ -47,7 +55,7 @@ def upgrade(reference, unit, backups, *, container=None, apply=False, catalog_ba
     if expected_revision and manifest['revision'] != expected_revision:
         raise ValueError('published image revision does not match the successful workflow')
     if manifest['image'] == old_image and not catalog_baseline:
-        healthy(service.engine, service.name, old_image)
+        confirm_current(service, old_image, tools_link)
         return {**result, **manifest, 'status': 'unchanged'}
     # Executed code and migration policy come from the same pinned image. A
     # copied host script must not freeze upgrade behavior at installation time.

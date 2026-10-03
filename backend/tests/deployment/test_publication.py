@@ -69,6 +69,10 @@ def test_empty_publication_list_keeps_current_image(monkeypatch):
 def test_unchanged_heartbeat_has_no_registry_calls_or_probe_containers(tmp_path, monkeypatch):
     launcher = module('upgrade')
     calls = []
+    previous = tmp_path / 'bootstrap'
+    previous.mkdir()
+    pointer = tmp_path / 'current'
+    pointer.symlink_to(previous.name)
     monkeypatch.setattr(launcher, 'Docker', lambda _: SimpleNamespace(engine='docker', name='fixture', settings={'data': '/data'}))
     def run(argv):
         calls.append(argv)
@@ -81,8 +85,9 @@ def test_unchanged_heartbeat_has_no_registry_calls_or_probe_containers(tmp_path,
     monkeypatch.setattr(launcher, 'resolve_image', lambda *a: pytest.fail('must not pull or probe'))
     monkeypatch.setattr(launcher, 'healthy', lambda *a: None)
     for _ in range(3):
-        observed = launcher.upgrade(REFERENCE, None, tmp_path, container='fixture', apply=True, workflow='checks.yml')
+        observed = launcher.upgrade(REFERENCE, None, tmp_path, container='fixture', apply=True, workflow='checks.yml', tools_link=pointer)
         assert observed['status'] == 'unchanged'
+        assert pointer.resolve() == previous
     assert not any('pull' in call or 'manifest' in call or 'run' in call for call in calls)
 
 
@@ -222,6 +227,48 @@ def test_incomplete_export_can_retry_same_image(tmp_path, monkeypatch):
     automation_tools.refresh_tools('docker', NEW, pointer)
     assert pointer.resolve().name == NEW.removeprefix('sha256:')
     assert attempts == [NEW, NEW]
+
+
+@pytest.mark.parametrize('workflow', [None, 'checks.yml'])
+@pytest.mark.parametrize('healthy', [False, True])
+def test_unchanged_release_recovers_staged_tools_without_redeploy(tmp_path, monkeypatch, workflow, healthy):
+    launcher = module('upgrade')
+    previous = tmp_path / 'previous'
+    previous.mkdir()
+    pointer = tmp_path / 'current'
+    pointer.symlink_to(previous.name)
+    staged = tmp_path / OLD.removeprefix('sha256:')
+    staged.mkdir()
+    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
+        (staged / name).write_text('# fixture')
+    monkeypatch.setattr(launcher, 'Docker', lambda _: SimpleNamespace(engine='docker', name='fixture', settings={'data': '/data'}))
+    def run(argv):
+        if argv[1] == 'inspect':
+            return json.dumps([{'Image': OLD}])
+        assert argv == ['docker', 'image', 'inspect', OLD]
+        return json.dumps([{'Config': {'Labels': {'org.opencontainers.image.revision': REVISION}}}])
+    monkeypatch.setattr(launcher, 'run', run)
+    monkeypatch.setattr(launcher, 'published_image', lambda *a: (OLD, REVISION))
+    monkeypatch.setattr(launcher, 'unchanged_image', lambda *a: True)
+    monkeypatch.setattr(launcher, 'resolve_image', lambda *a: {'image': OLD, 'revision': REVISION})
+    def health(*args):
+        if not healthy:
+            raise RuntimeError('not ready')
+    monkeypatch.setattr(launcher, 'healthy', health)
+    monkeypatch.setattr(automation_tools, 'export_image_tree', lambda *a: pytest.fail('must reuse staged tools'))
+    monkeypatch.setattr(launcher.subprocess, 'run', lambda *a, **k: pytest.fail('must not redeploy'))
+    call = lambda: launcher.upgrade(REFERENCE, None, tmp_path, container='fixture', apply=True,
+                                    workflow=workflow, tools_link=pointer)
+    if not healthy:
+        with pytest.raises(RuntimeError, match='not ready'):
+            call()
+        assert pointer.resolve() == previous
+    else:
+        assert call()['status'] == 'unchanged'
+        assert pointer.resolve() == staged
+        unchanged = pointer.lstat()
+        assert call()['status'] == 'unchanged'
+        assert pointer.lstat() == unchanged
 
 
 def test_tool_pointer_accepts_a_symlinked_parent_directory(tmp_path, monkeypatch):
