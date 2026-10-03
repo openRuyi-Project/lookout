@@ -104,7 +104,7 @@ def test_response_limit_applies_after_decompression():
                 http_io.read_response(reply, max_bytes=100, deadline=float('inf'))
 
 
-@pytest.mark.parametrize('caller,budget', [('discovery', 20), ('monitor', 30), ('obs', 20)])
+@pytest.mark.parametrize('caller,budget', [('discovery', 20), ('monitor', 30), ('obs', 20), ('github', 30)])
 def test_request_budget_starts_before_headers(config, monkeypatch, caller, budget):
     clock = [0.0]
     monkeypatch.setattr(http_io.time, 'monotonic', lambda: clock[0])
@@ -117,6 +117,11 @@ def test_request_budget_starts_before_headers(config, monkeypatch, caller, budge
             assert record['error'] == 'ReadTimeout'
             assert record['http_status'] == 200
             assert 'body' not in record and 'body_sha256' not in record
+        elif caller == 'github':
+            from tracker.providers.github import Client
+            owner = Client(1, io=monitor_io.IO(client=client))
+            with pytest.raises(httpx.ReadTimeout):
+                owner.get('/repos/example/project/issues')
         elif caller == 'monitor':
             owner = monitor_io.IO(client=client)
             with pytest.raises(httpx.ReadTimeout):

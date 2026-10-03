@@ -45,6 +45,7 @@ class Client:
         if etag:
             headers['If-None-Match'] = etag
         self.io.wait_for_host('api.github.com', 1)
+        deadline = time.monotonic() + 30
         with self.io.connection() as client, client.stream('GET', 'https://api.github.com' + path,
                                                           headers=headers) as response:
             if response.status_code == 429 or response.status_code == 403 and (
@@ -68,5 +69,5 @@ class Client:
             if response.status_code == 304:
                 return None, etag
             response.raise_for_status()
-            body = read_response(response, max_bytes=16 * 1024 * 1024, deadline=time.monotonic() + 30)
+            body = read_response(response, max_bytes=16 * 1024 * 1024, deadline=deadline)
             return json.loads(body), response.headers.get('ETag')
