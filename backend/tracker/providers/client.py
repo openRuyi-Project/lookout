@@ -5,6 +5,7 @@ import math
 import os
 import threading
 import time
+from collections import defaultdict
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -36,9 +37,10 @@ class IO:
             self.clients.put(None)
         self.ttl = ttl
         self.today = datetime.now(UTC).date()
-        self.memory, self.locks = {}, {}
+        self.memory, self.locks = {}, defaultdict(threading.Lock)
         self.guard = threading.Lock()
-        self.host_locks, self.next_request, self.cooldowns = {}, {}, {}
+        self.host_locks = defaultdict(threading.Lock)
+        self.next_request, self.cooldowns = {}, {}
 
     def close(self):
         while not self.clients.empty():
@@ -80,7 +82,7 @@ class IO:
         if not isinstance(interval, (int, float)) or not math.isfinite(interval) or not 0 <= interval <= 60:
             raise ValueError('invalid provider request interval')
         with self.guard:
-            lock = self.host_locks.setdefault(host, threading.Lock())
+            lock = self.host_locks[host]
         with lock:
             if self.cooldowns.get(host, 0) > time.monotonic():
                 raise ValueError('provider requested a cooldown')
@@ -113,7 +115,7 @@ class IO:
         identity = [method, url, body] + (['text'] if text else [])
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         with self.guard:
-            lock = self.locks.setdefault(key, threading.Lock())
+            lock = self.locks[key]
         with lock:
             now = time.time()
             cached = self.memory.get(key)
