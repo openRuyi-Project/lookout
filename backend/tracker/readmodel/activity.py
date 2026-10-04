@@ -1,6 +1,7 @@
 """Package activity joins and bounded history; no collection on HTTP requests."""
 import base64
 import json
+import math
 from datetime import datetime
 from heapq import nlargest
 
@@ -29,11 +30,11 @@ def page(snapshot, name, kind, cursor=None, per_page=20):
                 raise ValueError
             decoded = json.loads(base64.urlsafe_b64decode(cursor.encode('ascii')))
             if (not isinstance(decoded, list) or len(decoded) != 5 or decoded[:2] != [name, kind]
-                    or not isinstance(decoded[2], (float, int))
+                    or type(decoded[2]) not in (float, int) or not math.isfinite(decoded[2])
                     or not all(isinstance(value, str) for value in decoded[3:])):
                 raise ValueError
             after = tuple(decoded[2:])
-        except (ValueError, UnicodeError, TypeError) as error:
+        except (ValueError, UnicodeError, TypeError, OverflowError) as error:
             raise ValueError('Invalid activity cursor') from error
     total = 0
 

@@ -537,3 +537,13 @@ def test_prose_matching_preserves_evidence_after_unrelated_tokens(snapshot, repe
     noise = 'unrelated-token ' * repetitions
     assert matcher.match({'title': noise + evidence, 'body': noise + evidence}) == expected
     assert set(expected) == {'unknown', 'foo3', 'foo4'}
+
+
+@pytest.mark.parametrize('timestamp', [True, False, float('nan'), float('inf'), -float('inf'), 10**400])
+def test_activity_cursor_rejects_nonfinite_and_boolean_timestamps(snapshot, timestamp):
+    import base64
+
+    populated(snapshot)
+    cursor = base64.urlsafe_b64encode(json.dumps(['foo3', 'issue', timestamp, REPO, '1']).encode()).decode()
+    with pytest.raises(ValueError, match='Invalid activity cursor'):
+        activity.page(snapshot, 'foo3', 'issue', cursor)
