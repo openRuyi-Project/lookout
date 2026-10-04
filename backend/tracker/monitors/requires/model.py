@@ -297,9 +297,10 @@ def project(findings, snapshot, now, resolver=None):
         if not declaration or declaration['kind'] != 'runtime':
             continue
         identity = key(declaration)
-        entry = pairs.setdefault(identity, {**{k: v for k, v in declaration.items()
-                                              if k != 'constraint'},
-                                            'current': None, 'target': None})
+        if identity not in pairs:
+            pairs[identity] = {k: v for k, v in declaration.items() if k != 'constraint'}
+            pairs[identity].update(current=None, target=None)
+        entry = pairs[identity]
         side = 'current' if finding['scope'] == 'current' else 'target'
         entry[side] = declaration['constraint']
         entry[side + '_stale'] = finding['stale']
