@@ -34,10 +34,12 @@ def fact_fields(facts):
     for fact in facts:
         if fact.get('code') == 'reference' and fact['status'] == 'observed':
             # A citation is a link, not the URL repeated as both value and source.
+            if fact['url'] in references:
+                continue
             url = urlsplit(fact['url'])
             identity = url.path.rstrip('/').split('/')[-1][:12] if '/commit/' in url.path else url.hostname
-            references.setdefault(fact['url'], text(f"{fact['key'].title()} · {identity}",
-                                                   href=fact['url'], title=fact['url']))
+            references[fact['url']] = text(f"{fact['key'].title()} · {identity}",
+                                            href=fact['url'], title=fact['url'])
             continue
         rendered = fact_field(fact)
         value = fact['value']

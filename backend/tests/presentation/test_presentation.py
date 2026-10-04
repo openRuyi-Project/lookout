@@ -437,3 +437,20 @@ def test_detail_overview_placement_does_not_hide_monitor_evidence(snapshot):
     assert placements['external_signature'] == 'flow'
     assert placements['checks'] == 'flow'
     assert all(not section.collapsible for section in sections if section.id != 'checks')
+
+
+def test_repeated_reference_keeps_first_caption_without_rebuilding(monkeypatch):
+    url = 'https://example.org/advisory/1'
+    first = monitor_model.evidence('FIX', url, 'OSV', url, code='reference')
+    later = {**first, 'key': 'Other caption'}
+    expected = presentation_evidence.fact_fields([first])
+    original = presentation_evidence.text
+    calls = []
+
+    def counted(*args, **kwargs):
+        calls.append(args)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(presentation_evidence, 'text', counted)
+    assert presentation_evidence.fact_fields([first, *([later] * 100)]) == expected
+    assert len(calls) == 1
