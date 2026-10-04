@@ -5,7 +5,7 @@ import Section from '../../components/document/Section.astro';
 import {api} from '../../lib/api';
 import type {DetailDocument} from '../../lib/document';
 const name = Astro.params.name || '';
-const {data, status} = await api<DetailDocument>('/api/ui/packages/' + encodeURIComponent(name));
+const {data, status} = Astro.locals.detail ?? await api<DetailDocument>('/api/ui/packages/' + encodeURIComponent(name));
 if (!data) Astro.response.status = status === 404 ? 404 : 503;
 const topSections = data?.sections.filter(section => section.placement !== 'flow') || [];
 const flowSections = data?.sections.filter(section => section.placement === 'flow') || [];

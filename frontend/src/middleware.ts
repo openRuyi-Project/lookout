@@ -1,7 +1,30 @@
 import {defineMiddleware} from 'astro:middleware';
 import {createHash} from 'node:crypto';
+import {api} from './lib/api';
+import type {DetailDocument, ListingDocument} from './lib/document';
+import {RenderCache} from './lib/render-cache.mjs';
+
+// Byte and entry bounds cover both large pages and many tiny search results.
+const rendered = new RenderCache();
 export const onRequest = defineMiddleware(async (context, next) => {
-  const response = await next();
+  let key: string | undefined;
+  if (context.request.method === 'GET') {
+    if (context.url.pathname === '/') {
+      context.locals.listing = await api<ListingDocument>('/api/ui/packages' + context.url.search);
+    } else if (context.params.name && /^\/packages\/[^/]+\/?$/.test(context.url.pathname)) {
+      context.locals.detail = await api<DetailDocument>('/api/ui/packages/' + encodeURIComponent(context.params.name));
+    }
+    const document = context.locals.listing || context.locals.detail;
+    // Hash the actual document, not generation: freshness and notices can change
+    // without a database write. URL and cookies also affect the rendered page.
+    if (document?.status === 200 && document.data) {
+      key = createHash('sha256').update(JSON.stringify([
+        context.url.href, context.request.headers.get('Cookie'), document.data,
+      ])).digest('hex');
+    }
+  }
+  const cached = key ? rendered.get(key) : undefined;
+  const response = cached || await next();
   const scripts = context.url.pathname === '/' || context.url.pathname.startsWith('/packages/')
     ? "'self'" : "'none'";
   response.headers.set('Content-Security-Policy', `default-src 'self'; script-src ${scripts}; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'`);
@@ -20,7 +43,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const headers = new Headers(response.headers);
     headers.set('Cache-Control', 'private, no-cache');
     headers.set('ETag', etag);
-    headers.append('Vary', 'Cookie');
+    if (!headers.get('Vary')?.split(',').some(value => value.trim().toLowerCase() === 'cookie')) headers.append('Vary', 'Cookie');
+    if (key && !cached) rendered.set(key, new Response(null, {headers}), body);
     const validators = context.request.headers.get('If-None-Match')?.split(',') || [];
     const unchanged = validators.some(value => value.trim() === '*'
       || value.trim().replace(/^W\//, '') === etag.slice(2));

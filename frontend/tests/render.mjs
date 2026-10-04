@@ -1,6 +1,7 @@
 // Render the production SSR bundle against deterministic API observations.
 import assert from 'node:assert/strict';
 import './http-cache.cjs';
+import './render-cache.mjs';
 import {spawn, spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {once} from 'node:events';
@@ -816,7 +817,9 @@ try {
   packages.pop();
   console.log('PASS documents: arbitrary monitor, opaque navigation, immediate GET, visible tables/fields, safe links, theme and retained evidence');
   // Wire-level tests deliberately bypass fetch's automatic decompression/cache.
+  const requestCount = forwardedRequests.length;
   const identity = await wire('/');
+  assert.equal(forwardedRequests.length, requestCount + 1, 'SSR obtains its document once');
   assert.equal(identity.status,200);assert.equal(identity.headers['content-encoding'],undefined);
   assert.equal(identity.headers['cache-control'],'private, no-cache');
   assert.match(identity.headers['content-security-policy'], /script-src 'self'/);
@@ -891,6 +894,7 @@ try {
   unavailable=true;
   const failure=await wire('/');assert.equal(failure.status,503);assert.equal(failure.headers['cache-control'],'no-store');assert.equal(failure.headers.etag,undefined);
   unavailable=false;
+  assert.equal((await wire('/')).status, 200, 'backend recovery is not hidden by a cached error');
   console.log('PASS transport: gzip/br, identity/q=0, decoded equality, ETag304, changed data/theme/query, immutable CSS GET, ranges, HEAD, JSON, errors, cookies and CSP');
   console.log('PASS SSR document renderer');
   }

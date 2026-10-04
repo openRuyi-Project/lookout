@@ -161,9 +161,13 @@ Read pages progressively enhance native links and GET forms with locally bundled
 htmx. One rendered-result frame owns rows, counts and pagination. Foreground polls
 revalidate HTML with ETag and compare document fingerprints before swapping; hidden
 tabs, offline clients and active forms/menus pause polling. Failed or superseded
-requests leave the previous frame intact. These checks reduce transfer and DOM
-work, not server computation. Response scripts and dynamic evaluation are disabled;
-changed application assets require a full navigation.
+requests leave the previous frame intact. Each list/detail request fetches the
+current display document. Unchanged documents reuse process-local rendered HTML,
+keyed by document content, URL and cookies; errors never reuse cached success.
+The LRU holds at most 64 pages and 8 MiB of body/key/header bytes. It disappears on
+restart, so a release cannot reuse an older renderer's output. ETag still validates
+the actual HTML. Response scripts and dynamic evaluation are disabled; changed
+application assets require a full navigation.
 
 ## Observation identity and time
 

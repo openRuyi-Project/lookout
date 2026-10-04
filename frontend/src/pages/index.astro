@@ -9,7 +9,7 @@ import Search from '../components/document/Search.astro';
 import {api} from '../lib/api';
 import type {ListingDocument} from '../lib/document';
 import NavigationMenu from '../components/document/NavigationMenu.astro';
-const {data, status} = await api<ListingDocument>('/api/ui/packages' + Astro.url.search);
+const {data, status} = Astro.locals.listing ?? await api<ListingDocument>('/api/ui/packages' + Astro.url.search);
 if (!data) Astro.response.status = status === 422 ? 422 : 503;
 ---
 <Base result={data || undefined}>
