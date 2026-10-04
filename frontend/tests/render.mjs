@@ -424,6 +424,7 @@ try {
   console.log('PASS activity: bounded history, state icons, escaped titles, progressive pagination');
 
   console.log('PASS API reference: OpenAPI, endpoint table and query links');
+
   const invalidSelection = await wire('/?monitor=not-registered');
   assert.equal(invalidSelection.status, 422);
   assert.match(invalidSelection.body.toString(), /Invalid filter selection/);
@@ -620,6 +621,15 @@ try {
   assert.match(listing, /<img src="\/openruyi.svg" width="38" height="28" alt=""/);
   assert.match(await read('/openruyi.svg'), /<svg/);
   const about = await read('/about');
+  assert.deepEqual([...about.matchAll(/<h2[^>]*>(.*?)<\/h2>/g)].map(match => match[1]),
+    ['Reading conventions', 'Data sources', 'License']);
+  for (const href of ['/api/v2/status', '/api', '/LICENSE.txt',
+    'https://osv.dev/', 'https://build.openruyi.cn/', 'https://endoflife.date/']) {
+    assert.ok(about.includes(`href="${href}"`), `About link: ${href}`);
+  }
+  assert.match(about, /Octicons license/);
+  assert.match(about, /Font Awesome notices/);
+  console.log('PASS About: reading conventions, data sources and license notices');
   assert.match(about, /CC BY-SA 4.0/);
   assert.match(about, /Copyright .*2026 GitHub Inc/);
   assert.match(about, /permission notice shall be included/);
