@@ -248,11 +248,11 @@ class Evaluation:
         return prefixes[-1]
 
     def count(self, condition):
-        members = self.predicate(condition)
+        members = self.index.get(condition.dimension, {}).get(condition.value, frozenset())
         if self.query.mode == 'advanced':
             if self.next_logic == 'or':
-                return len(members - self.matches)
-            return len(self.matches & members)  # AND intersection or NOT removable members.
+                return len((self.scope & members) - self.matches)
+            return len(self.matches & members)  # matches is already restricted to scope.
         if not self.current.contains(condition) and condition.dimension in self.alternative_scopes:
             return len((self.alternative_scopes[condition.dimension] & members) - self.matches)
         return len(self.matches & members)
