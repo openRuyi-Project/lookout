@@ -178,7 +178,8 @@ def main():
         tasks.extend((periodic, (phase, policy)) for phase, policy in policies.items())
         if config["spec"]["repo"]:
             tasks.append((specs, (config["spec"],)))
-        threads = [threading.Thread(target=fn, args=args, daemon=True) for fn, args in tasks]
+        threads = [threading.Thread(target=fn, args=args, daemon=True,
+                                    name="specs" if fn is specs else args[0]) for fn, args in tasks]
         for thread in threads:
             thread.start()
         log(f"supervising {len(threads)} tasks; web on :{WEB_PORT}, api on 127.0.0.1:{API_PORT}")

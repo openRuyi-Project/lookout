@@ -103,7 +103,7 @@ def collect(config, old, client, now, source_limit=None):
             except Exception as e:
                 return name, state.failure(previous, f'source version unavailable: {type(e).__name__}', now)
         workers = config['collector'].get('source_workers', 4)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="obs-source") as pool:
             for name, fact in pool.map(fetch_source, selected, buffersize=workers):
                 new['sources'][name] = fact
     else:

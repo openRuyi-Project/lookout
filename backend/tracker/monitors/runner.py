@@ -394,7 +394,7 @@ def collect(config, config_path, db, *, io=None):
                 return result
             last_published = 0.0
             unpublished = False
-            with ThreadPoolExecutor(max_workers=options['workers']) as pool:
+            with ThreadPoolExecutor(max_workers=options['workers'], thread_name_prefix='monitor') as pool:
                 pending = {pool.submit(execute, provider, proposed, io, previous, schedule=policy): (name, provider)
                            for _, provider, name, proposed, previous, policy in selected_jobs}
                 for future in as_completed(pending):

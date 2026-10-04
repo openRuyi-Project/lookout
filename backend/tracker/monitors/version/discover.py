@@ -303,7 +303,7 @@ def main(argv=None):
     timeout = httpx.Timeout(connect=20, read=20, write=20, pool=20)
     limits = httpx.Limits(max_connections=WORKERS, max_keepalive_connections=WORKERS)
     with httpx.Client(timeout=timeout, limits=limits, follow_redirects=False) as client:
-        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        with ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="discover") as pool:
             updates = {r['name']: r for r in pool.map(discover, selected, buffersize=WORKERS)}
     rows = [updates.get(r['name'], r) for r in rows]
     github_count = 0

@@ -58,9 +58,11 @@ class ContainerTests(unittest.TestCase):
 
     def test_service_commands_have_importable_working_directories_and_start_before_clone(self):
         jobs = []
+        names = []
         class Thread:
-            def __init__(self, *, target, args, daemon):
+            def __init__(self, *, target, args, daemon, name):
                 jobs.append((target, args))
+                names.append(name)
             def start(self):
                 pass
             def join(self, timeout):
@@ -75,6 +77,8 @@ class ContainerTests(unittest.TestCase):
              patch.object(entrypoint.subprocess, 'Popen') as popen, \
              patch.dict(os.environ, {'HOST': '127.0.0.2'}):
             entrypoint.main()
+        self.assertEqual(names, ['api', 'web', 'builds', 'obs-metadata', 'upstreams', 'specs'])
+        self.assertTrue(all(len(name.encode()) <= 15 for name in names))
         self.assertEqual(jobs[0][1][0], 'api')
         self.assertEqual(jobs[0][1][-1], '/app/backend')
         self.assertEqual(jobs[1][1][0], 'web')
@@ -88,8 +92,9 @@ class ContainerTests(unittest.TestCase):
 
     def test_monitor_heartbeat_is_automatic_and_separate_from_recheck_interval(self):
         jobs = []
+        names = []
         class Thread:
-            def __init__(self, *, target, args, daemon): jobs.append((target, args))
+            def __init__(self, *, target, args, daemon, name): jobs.append((target, args))
             def start(self): pass
             def join(self, timeout): pass
         config = {'collector': {'obs_interval_seconds':60, 'build_interval_seconds':15, 'nvchecker_interval_seconds':3600},
