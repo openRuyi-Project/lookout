@@ -527,3 +527,13 @@ def test_activity_pages_preserve_order_totals_and_snapshot(snapshot, count, per_
             assert len(found) < len(expected)
         assert found == [item['id'] for item in expected]
     assert snapshot == before
+
+
+@pytest.mark.parametrize('repetitions', [0, 10000])
+def test_prose_matching_preserves_evidence_after_unrelated_tokens(snapshot, repetitions):
+    matcher = Matcher(snapshot, Repository(aliases={'foo3': ['alias-foo']}, ambiguous_names=['unknown']))
+    evidence = ' `unknown` alias-foo SPECS/foo4/a.spec foo3 foo3 '
+    expected = matcher.match({'title': evidence, 'body': evidence})
+    noise = 'unrelated-token ' * repetitions
+    assert matcher.match({'title': noise + evidence, 'body': noise + evidence}) == expected
+    assert set(expected) == {'unknown', 'foo3', 'foo4'}

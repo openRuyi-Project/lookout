@@ -82,7 +82,8 @@ class Matcher:
             prefix = re.match(r'^\s*(?:\[([^\]]+)\]|([\w.+-]+)\s*:)', value)
             if prefix:
                 explicit.add((prefix[1] or prefix[2]).casefold())
-            for token in re.findall(r'[\w.+-]+', value):
+            for match in re.finditer(r'[\w.+-]+', value):
+                token = match[0]
                 key = token.casefold()
                 owners = self.names.get(key, ())
                 if len(owners) != 1:
