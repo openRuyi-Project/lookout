@@ -228,12 +228,12 @@ class Client:
                     r.raise_for_status()
                     return read_response(r, max_bytes=MAX_XML, deadline=deadline)
             except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as e:
-                # A missing/forbidden source will not recover from three immediate
-                # identical requests. Keep the error for the next scheduled poll.
-                permanent = (isinstance(e, httpx.HTTPStatusError)
-                             and e.response.status_code < 500
-                             and e.response.status_code not in (408, 429))
-                if permanent or attempt == self.attempts - 1:
+                # Do not turn explicit backpressure into a burst of immediate retries.
+                # Propagate the response to the collector's normal failure handling.
+                no_immediate_retry = (isinstance(e, httpx.HTTPStatusError)
+                                      and ((e.response.status_code < 500 and e.response.status_code != 408)
+                                           or (e.response.status_code == 503 and 'Retry-After' in e.response.headers)))
+                if no_immediate_retry or attempt == self.attempts - 1:
                     raise
                 time.sleep(0.25 * (2 ** attempt))
         raise AssertionError('unreachable')

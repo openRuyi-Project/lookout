@@ -447,3 +447,29 @@ def test_response_buffer_preserves_fragmented_bodies_and_exact_limit(parts, limi
             with pytest.raises(ValueError, match='size limit'):
                 http_io.read_response(response, max_bytes=limit, deadline=float('inf'))
     assert stream.closed
+
+
+@pytest.mark.parametrize('status,headers,expected', [
+    (429, {}, 1), (429, {'Retry-After': '3600'}, 1),
+    (503, {'Retry-After': '3600'}, 1), (503, {}, 3),
+    (500, {}, 3), (408, {}, 3), (404, {}, 1),
+])
+def test_obs_retry_classification_respects_explicit_backpressure(config, monkeypatch, status, headers, expected):
+    calls, sleeps = [], []
+
+    def handle(request):
+        calls.append(request)
+        return httpx.Response(status, headers=headers)
+
+    owner = obs.Client(config)
+    owner.client.close()
+    owner.client = httpx.Client(transport=httpx.MockTransport(handle))
+    monkeypatch.setattr(obs.time, 'sleep', sleeps.append)
+    try:
+        with pytest.raises(httpx.HTTPStatusError) as error:
+            owner.get('/source/project')
+        assert error.value.response.status_code == status
+        assert len(calls) == expected
+        assert len(sleeps) == expected - 1
+    finally:
+        owner.close()
