@@ -2,6 +2,7 @@
 import base64
 import json
 from datetime import datetime
+from heapq import nlargest
 
 
 def linked(snapshot, name):
@@ -34,14 +35,23 @@ def page(snapshot, name, kind, cursor=None, per_page=20):
             after = tuple(decoded[2:])
         except (ValueError, UnicodeError, TypeError) as error:
             raise ValueError('Invalid activity cursor') from error
-    items = sorted((dict(item, association=evidence) for item, evidence in linked(snapshot, name)
-                    if item['kind'] == kind), key=order, reverse=True)
-    total = len(items)
-    if after is not None:
-        items = [item for item in items if order(item) < after]
-    selected = items[:per_page]
+    total = 0
+
+    def candidates():
+        nonlocal total
+        for item, evidence in linked(snapshot, name):
+            if item['kind'] != kind:
+                continue
+            total += 1
+            key = order(item)
+            if after is None or key < after:
+                yield key, item, evidence
+
+    # One lookahead determines whether another page exists; retain only page-sized state.
+    window = nlargest(per_page + 1, candidates(), key=lambda entry: entry[0])
+    selected = [dict(item, association=evidence) for _, item, evidence in window[:per_page]]
     next_cursor = None
-    if len(items) > per_page:
+    if len(window) > per_page:
         next_cursor = base64.urlsafe_b64encode(json.dumps([name, kind, *order(selected[-1])]).encode()).decode()
     # Bodies and changed-file lists are indexed server-side, not repeated in history responses.
     fields = ('id', 'repository', 'number', 'kind', 'title', 'url', 'status', 'updated_at',

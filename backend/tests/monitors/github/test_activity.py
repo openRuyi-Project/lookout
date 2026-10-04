@@ -502,3 +502,28 @@ def test_http_retry_after_parsing(value, delay, monkeypatch):
         with pytest.raises(RateLimited) as error:
             client.get('/repos/owner/repo/issues')
         assert datetime.fromisoformat(error.value.retry_at).timestamp() == now + delay
+
+
+@pytest.mark.parametrize('count', [0, 1, 20, 21, 101])
+@pytest.mark.parametrize('per_page', [1, 20, 50])
+def test_activity_pages_preserve_order_totals_and_snapshot(snapshot, count, per_page):
+    populated(snapshot, count)
+    for index, item in enumerate(snapshot['github_items'][REPO].values()):
+        item['kind'] = 'pr' if index % 3 == 0 else 'issue'
+        item['updated_at'] = f'2026-01-{index % 7 + 1:02d}T12:00:00+00:00'
+    before = deepcopy(snapshot)
+    for kind in ('issue', 'pr'):
+        expected = sorted((item for item in snapshot['github_items'][REPO].values()
+                           if item['kind'] == kind), key=activity.order, reverse=True)
+        found, cursor = [], None
+        while True:
+            result = activity.page(snapshot, 'foo3', kind, cursor, per_page)
+            assert result['total'] == len(expected)
+            assert len(result['items']) <= per_page
+            found.extend(item['id'] for item in result['items'])
+            cursor = result['next_cursor']
+            if cursor is None:
+                break
+            assert len(found) < len(expected)
+        assert found == [item['id'] for item in expected]
+    assert snapshot == before
