@@ -6,5 +6,5 @@ export default defineConfig(
   {ignores: ['dist/**', '.astro/**', 'src/lib/api.generated.ts']},
   ...ts.configs.recommended,
   ...astro.configs.recommended,
-  {files: ['scripts/*.cjs'], rules: {'@typescript-eslint/no-require-imports': 'off'}},
+  {files: ['scripts/*.cjs', 'tests/*.cjs'], rules: {'@typescript-eslint/no-require-imports': 'off'}},
 );

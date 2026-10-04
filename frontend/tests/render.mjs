@@ -1,5 +1,6 @@
 // Render the production SSR bundle against deterministic API observations.
 import assert from 'node:assert/strict';
+import './http-cache.cjs';
 import {spawn, spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {once} from 'node:events';

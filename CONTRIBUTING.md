@@ -128,3 +128,7 @@ human approval before publishing issues, review comments or batches of PRs.
 Describe the problem and reproduction, why this fix is sufficient, checks actually
 run, and anything unverified or requiring a maintainer's decision. Do not retell
 the diff or report someone else's test results as your own.
+
+`http-cache-semantics` is pinned with an install/build-time security patch for
+GHSA-ch52-4w7c-c8xp. Its source checksum rejects unreviewed upgrades. Remove the
+patch only when `frontend/tests/http-cache.cjs` passes against unmodified upstream.

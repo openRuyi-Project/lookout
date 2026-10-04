@@ -9,6 +9,7 @@ RUN /opt/venv/bin/python -m ensurepip \
     && rm /tmp/requirements-test.lock
 # The generator is a development dependency, absent from the application image.
 COPY frontend/package.json frontend/package-lock.json /app/frontend/
+COPY frontend/scripts/harden-http-cache.cjs /app/frontend/scripts/
 RUN dnf install -y npm && dnf clean all \
-    && cd /app/frontend && npm ci --ignore-scripts --no-audit --no-fund
+    && cd /app/frontend && npm ci --ignore-scripts --no-audit --no-fund && npm run postinstall
 USER 10001:10001

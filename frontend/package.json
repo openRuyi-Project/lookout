@@ -15,13 +15,16 @@
     "boundaries": "depcruise --config dependency-cruiser.config.mjs src --include-only \"^src/\"",
     "quality": "npm run lint && npm run unused && npm run boundaries",
     "duplicates": "cd .. && jscpd --config .jscpd.json --no-gitignore --fail-on-empty --no-tips",
-    "duplicates:similar": "npm run duplicates -- --min-lines 5 --min-tokens 50 --ignore-identifiers"
+    "duplicates:similar": "npm run duplicates -- --min-lines 5 --min-tokens 50 --ignore-identifiers",
+    "postinstall": "node scripts/harden-http-cache.cjs",
+    "prebuild": "node scripts/harden-http-cache.cjs"
   },
   "dependencies": {
     "@astrojs/node": "11.1.5",
     "astro": "7.3.2",
     "compression": "1.8.1",
-    "htmx.org": "2.0.11"
+    "htmx.org": "2.0.11",
+    "http-cache-semantics": "4.3.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",

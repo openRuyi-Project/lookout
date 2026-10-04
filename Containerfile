@@ -17,6 +17,7 @@ FROM ${FEDORA_IMAGE} AS frontend
 RUN dnf install -y nodejs npm && dnf clean all
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/scripts/harden-http-cache.cjs ./scripts/
 RUN npm ci
 COPY frontend/ ./
 COPY LICENSES/ /build/LICENSES/
