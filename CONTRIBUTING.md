@@ -28,7 +28,9 @@ mappings, not name guessing or remote icon services. Unknown icons remain text.
 
 ## Run checks
 
-Local checks require Python 3.14+ and Node 22.13+. Native tests also require Linux,
+Local checks require Python 3.14+ and a Node version matching
+[`frontend/package.json`](frontend/package.json) `engines`. `npm ci` rejects
+unsupported versions. Native tests also require Linux,
 RPM bindings, Landlock ABI 6+ and seccomp. Install the backend `test` and `quality`
 extras (or the test lock), then run `npm ci` in `frontend`:
 
@@ -91,6 +93,10 @@ CONTAINER_ENGINE=docker deploy/check-image.sh "$IMAGE"
 CONTAINER_ENGINE=docker python3 deploy/smoke-image.py "$IMAGE"
 python3 deploy/smoke-release.py "$IMAGE"
 ```
+
+The container build pins the official Node image by digest and copies the same
+Node/npm into the Fedora runtime; the test image inherits them. Update that pin
+in `Containerfile` when upgrading Node.
 
 The native gate runs without provider network access and rejects skipped tests.
 Building its disposable test layer requires the package index; the runtime image

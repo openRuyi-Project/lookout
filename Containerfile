@@ -1,6 +1,6 @@
 # openRuyi Lookout — single-container image.
 #
-# Fedora base: native `rpm` Python bindings, git, and node are first-class here, which
+# Fedora base: native `rpm` Python bindings and git are first-class here, which
 # is why the SPEC source and version comparison need no extra tooling. The image runs
 # on compatible Linux kernels (see docs/deployment.md confinement requirements); the host
 # distribution is independent of the Fedora base image. One supervisor process runs the API, the web
@@ -13,12 +13,12 @@
 
 # ---- frontend build stage -------------------------------------------------
 ARG FEDORA_IMAGE=registry.fedoraproject.org/fedora:43@sha256:7bc1df1ba612dfd63f1eae89b6a91a7d75b2df994f4c35287e4165375c5ce1fd
-FROM ${FEDORA_IMAGE} AS frontend
-RUN dnf install -y nodejs npm && dnf clean all
+ARG NODE_IMAGE=docker.io/library/node:22.22.3-bookworm-slim@sha256:e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752
+FROM ${NODE_IMAGE} AS frontend
 WORKDIR /build/frontend
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/scripts/harden-http-cache.cjs ./scripts/
-RUN npm ci
+RUN node --version && npm --version && npm ci
 COPY frontend/ ./
 COPY LICENSES/ /build/LICENSES/
 ENV ASTRO_TELEMETRY_DISABLED=1
@@ -47,8 +47,15 @@ FROM ${FEDORA_IMAGE}
 RUN dnf install -y \
         python3 python3-rpm rpm-build systemd-rpm-macros \
         python-rpm-macros python3-rpm-macros pyproject-rpm-macros python3-rpm-generators \
-        git nodejs libcurl openssl-libs libseccomp catatonit \
+        git libstdc++ libcurl openssl-libs libseccomp catatonit \
     && dnf clean all
+# Build, test and runtime use the same Node/npm, independent of Fedora updates.
+COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
+COPY --from=frontend /usr/local/lib/node_modules/npm/ /usr/local/lib/node_modules/npm/
+COPY --from=frontend /usr/local/LICENSE /usr/local/share/licenses/node/LICENSE
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version
 RUN install -d -m 0755 -o 10001 -g 10001 /home/tracker /data
 ENV HOME=/home/tracker
 USER 10001:10001
@@ -71,7 +78,7 @@ ENV PYTHONPATH=/app/backend \
     TRACKER_SPEC_REPO=/data/spec-full.git \
     PORT=8080 \
     GIT_TERMINAL_PROMPT=0 \
-    PATH=/opt/venv/bin:/usr/bin:/bin
+    PATH=/opt/venv/bin:/usr/local/bin:/usr/bin:/bin
 # The deployment entrypoints mount explicit persistent storage; no anonymous volume.
 EXPOSE 8080
 

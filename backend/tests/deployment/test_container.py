@@ -50,7 +50,7 @@ class ContainerTests(unittest.TestCase):
             self.assertNotIn(package, runtime.split())
         for package in ('python3', 'python3-rpm', 'rpm-build', 'python-rpm-macros',
                         'python3-rpm-macros', 'pyproject-rpm-macros',
-                        'python3-rpm-generators', 'libcurl', 'openssl-libs', 'libseccomp', 'git', 'nodejs'):
+                        'python3-rpm-generators', 'libcurl', 'openssl-libs', 'libseccomp', 'git', 'libstdc++'):
             self.assertIn(package, runtime.split())
         self.assertIn('venv --system-site-packages /opt/venv', builder)
         self.assertIn('COPY --from=python-builder /opt/venv/ /opt/venv/', runtime)
