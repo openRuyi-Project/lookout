@@ -39,9 +39,11 @@ def test_identical_build_poll_keeps_payload_revision_and_projection(config, snap
     monkeypatch.setattr(view, 'project_monitors', lambda *a, **kw: calls.append(1) or project(*a, **kw))
     client = ProjectedClient(api.create_app(db))
     before = client.get('/api/v2/packages/binutils').json()
+    prior_index = client.app.state.projection.read()[1]
     clock[0] += timedelta(seconds=15)
     second = collector.collect_builds(config, db)
     after = client.get('/api/v2/packages/binutils').json()
+    assert client.app.state.projection.read()[1].index is prior_index.index
     assert stored() == original and second['generation'] == first['generation']
     assert len(requests) == 2 and len(calls) == 1
     assert after['monitors']['source'] == before['monitors']['source']

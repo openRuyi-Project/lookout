@@ -78,10 +78,10 @@ write an existing database.
 
 A background task checks storage once per second. Changes, semantic freshness
 deadlines or a backward clock jump rebuild the projection/index. A fresh clock-only
-update can reuse evidence and update build timestamps alone. Publication atomically
-swaps a complete model; concurrent readers keep the previous complete one.
-
-Status aggregates are prepared once per publication; refresh-failure notices remain live.
+update reuses unchanged facets and monitor search text; changed build timestamps
+remain searchable. Status aggregates are prepared once per publication, while
+refresh-failure notices remain live. Publication atomically swaps a complete model;
+concurrent readers keep the previous complete one.
 
 Before initial publication, readiness fails. A failed or overdue refresh retains
 the last model with a notice and degraded readiness. Liveness tests only the

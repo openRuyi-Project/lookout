@@ -23,17 +23,31 @@ def _search_values(value):
 
 
 class PackageList:
-    def __init__(self, rows, targets, query='', *, monitor=''):
+    def __init__(self, rows, targets, query='', *, monitor='', previous=None):
         self.rows = tuple(rows)
         self.by_name = MappingProxyType({row['name']: row for row in self.rows})
         self.names = tuple(row['name'].casefold() for row in self.rows)
-        # Built once with the projection; request handlers only search strings.
-        self.observations = tuple({mid: '\n'.join(_search_values({
-            'check': result.get('check', {}), 'data': result.get('data', {})}))
+        # Only identical monitor objects may reuse search text: check timestamps
+        # are searchable too, even when the corresponding facets did not change.
+        prior = previous.by_name if previous else {}
+        prior_text = dict(zip(previous.by_name, previous.observations)) if previous else {}
+        self.observations = tuple({mid: prior_text[row['name']][mid]
+            if result is prior.get(row['name'], {}).get('monitors', {}).get(mid)
+            else '\n'.join(_search_values({
+                'check': result.get('check', {}), 'data': result.get('data', {})}))
             for mid, result in row['monitors'].items()} for row in self.rows)
         self.all = frozenset(range(len(self.rows)))
         self.query = query
         self.monitor = monitor
+        if (previous and tuple(self.by_name) == tuple(previous.by_name)
+                and {f'build:{t["id"]}' for t in targets}
+                    == {dimension for dimension in previous.index if dimension.startswith('build:')}
+                and all(row['monitors'].keys() == old['monitors'].keys()
+                        and all(module['dimensions'] == old['monitors'][mid]['dimensions']
+                                for mid, module in row['monitors'].items())
+                        for row, old in zip(self.rows, previous.rows))):
+            self.index = previous.index
+            return
         index = defaultdict(lambda: defaultdict(set))
         for key in ('view', 'buildsystem', 'maintenance', 'requires', 'version_signal', *(f'build:{t["id"]}' for t in targets)):
             index[key]

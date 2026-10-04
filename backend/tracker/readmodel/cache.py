@@ -88,7 +88,8 @@ class ProjectionCache:
                 rows, collection = view.refresh_build_clock(snapshot, old.index.rows, now)
             else:
                 rows, collection = view.project_monitors(snapshot, now)
-            index = package_list.PackageList(rows, snapshot['targets'])
+            index = package_list.PackageList(rows, snapshot['targets'],
+                                            previous=old.index if old and clock_only else None)
             statistics = {
                 'source_versions': sum(bool(row['monitors']['source']['data']['version']) for row in rows),
                 'components': view.component_status(snapshot['components']),
