@@ -1,4 +1,5 @@
 """Transport boundaries use pooled clients and bounded decoded responses."""
+from contextlib import closing
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 import gzip
@@ -432,3 +433,17 @@ def test_monitor_non_directory_cache_does_not_discard_provider_success(tmp_path)
         assert owner.json('GET', 'https://example.org/release') == {'fresh': True}
         assert owner.json('GET', 'https://example.org/release') == {'fresh': True}
     assert len(calls) == 1 and cache.read_text() == 'not a directory'
+
+
+@pytest.mark.parametrize('parts,limit,allowed', [([], 0, True), ([b''], 0, True),
+    ([b'x'] * 10000, 10000, True), ([b'x'] * 10001, 10000, False),
+    ([b'abc', b'', b'def'], 6, True)])
+def test_response_buffer_preserves_fragmented_bodies_and_exact_limit(parts, limit, allowed):
+    stream = Stream(parts)
+    with closing(httpx.Response(200, stream=stream, request=httpx.Request('GET', 'https://example.org'))) as response:
+        if allowed:
+            assert http_io.read_response(response, max_bytes=limit, deadline=float('inf')) == b''.join(parts)
+        else:
+            with pytest.raises(ValueError, match='size limit'):
+                http_io.read_response(response, max_bytes=limit, deadline=float('inf'))
+    assert stream.closed

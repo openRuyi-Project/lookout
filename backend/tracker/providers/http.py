@@ -1,5 +1,6 @@
 """Shared response limits for collector-owned synchronous HTTP clients."""
 import time
+from io import BytesIO
 
 import httpx
 
@@ -20,12 +21,13 @@ def read_response(response, *, max_bytes, deadline):
             raise httpx.ReadTimeout('response exceeds elapsed-time budget', request=response.request)
 
     check_deadline()
-    chunks, size = [], 0
-    for chunk in response.iter_bytes():
+    size = 0
+    with BytesIO() as body:
+        for chunk in response.iter_bytes():
+            check_deadline()
+            size += len(chunk)
+            if size > max_bytes:
+                raise ValueError('response exceeds size limit')
+            body.write(chunk)
         check_deadline()
-        size += len(chunk)
-        if size > max_bytes:
-            raise ValueError('response exceeds size limit')
-        chunks.append(chunk)
-    check_deadline()
-    return b''.join(chunks)
+        return body.getvalue()
