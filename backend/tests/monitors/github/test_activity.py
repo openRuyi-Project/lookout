@@ -455,3 +455,50 @@ def test_no_budget_does_not_mark_unpolled_repositories_attempted(config, tmp_pat
     client = Limited()
     collect(config, db, client=client, now='2026-01-01T12:10:00Z')
     assert client.calls[0].startswith('/repos/owner/b/')
+
+
+@pytest.mark.parametrize('code', [200, 429])
+@pytest.mark.parametrize('reset', ['inf', 'nan', '1e300', '999999999999999999999', 'invalid'])
+def test_http_invalid_reset_keeps_a_finite_cooldown(code, reset, monkeypatch):
+    import httpx
+    from tracker.providers import github
+    from tracker.providers.client import IO
+    now = 1700000000
+    monkeypatch.setattr(github.time, 'time', lambda: now)
+    calls = []
+    def respond(request):
+        calls.append(request)
+        return httpx.Response(code, headers={'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': reset}, json={'fact': True})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
+        io = IO(client=transport)
+        monkeypatch.setattr(io, 'wait_for_host', lambda *_: None)
+        client = github.Client(2, io=io)
+        if code == 200:
+            assert client.get('/repos/owner/repo/issues')[0] == {'fact': True}
+        else:
+            with pytest.raises(RateLimited):
+                client.get('/repos/owner/repo/issues')
+        assert datetime.fromisoformat(client.retry_at).timestamp() == now + 300
+        with pytest.raises(RateLimited):
+            client.get('/repos/owner/repo/issues')
+        assert len(calls) == 1
+
+
+@pytest.mark.parametrize('value,delay', [
+    ('120', 120), ('0', 60), ('-1', 60),
+    ('Tue, 14 Nov 2023 22:15:20 GMT', 120),
+    ('inf', 300), ('nan', 300), ('1e300', 300), ('invalid', 300),
+])
+def test_http_retry_after_parsing(value, delay, monkeypatch):
+    import httpx
+    from tracker.providers import github
+    from tracker.providers.client import IO
+    now = 1700000000
+    monkeypatch.setattr(github.time, 'time', lambda: now)
+    with httpx.Client(transport=httpx.MockTransport(lambda _: httpx.Response(429, headers={'Retry-After': value}))) as transport:
+        io = IO(client=transport)
+        monkeypatch.setattr(io, 'wait_for_host', lambda *_: None)
+        client = github.Client(2, io=io)
+        with pytest.raises(RateLimited) as error:
+            client.get('/repos/owner/repo/issues')
+        assert datetime.fromisoformat(error.value.retry_at).timestamp() == now + delay

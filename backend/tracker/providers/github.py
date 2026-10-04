@@ -1,5 +1,6 @@
 """Serial, bounded GitHub requests; credentials never enter persisted facts."""
 import json
+import math
 import os
 import time
 from datetime import UTC, datetime
@@ -17,6 +18,24 @@ class RateLimited(Exception):
     def __init__(self, retry_at):
         super().__init__('GitHub requested a cooldown')
         self.retry_at = retry_at
+
+
+def retry_at(headers, now):
+    """Normalize provider cooldowns without letting malformed dates discard facts."""
+    try:
+        raw = headers.get('Retry-After')
+        if raw:
+            try:
+                retry = now + float(raw)
+            except ValueError:
+                retry = parsedate_to_datetime(raw).timestamp()
+        else:
+            retry = float(headers.get('X-RateLimit-Reset', now + 300))
+        if not math.isfinite(retry):
+            raise ValueError('non-finite cooldown')
+        return datetime.fromtimestamp(max(now + 60, retry), UTC).isoformat()
+    except (ValueError, TypeError, OverflowError, OSError):
+        return datetime.fromtimestamp(now + 300, UTC).isoformat()
 
 
 class Client:
@@ -50,22 +69,15 @@ class Client:
                                                           headers=headers) as response:
             if response.status_code == 429 or response.status_code == 403 and (
                     response.headers.get('Retry-After') or response.headers.get('X-RateLimit-Remaining') == '0'):
-                now = time.time()
-                try:
-                    raw = response.headers.get('Retry-After')
-                    retry = now + float(raw) if raw else float(response.headers.get('X-RateLimit-Reset', now + 300))
-                except ValueError:
-                    try:
-                        retry = parsedate_to_datetime(response.headers['Retry-After']).timestamp()
-                    except (ValueError, KeyError):
-                        retry = now + 300
-                self.retry_at = datetime.fromtimestamp(max(now + 60, retry), UTC).isoformat()
+                self.retry_at = retry_at(response.headers, time.time())
                 raise RateLimited(self.retry_at)
-            remaining = response.headers.get('X-RateLimit-Remaining')
-            reset = response.headers.get('X-RateLimit-Reset')
+            try:
+                remaining = int(response.headers.get('X-RateLimit-Remaining', ''))
+            except ValueError:
+                remaining = -1
             reserve = 50 if self.token else 6
-            if remaining and reset and remaining.isdigit() and reset.isdigit() and int(remaining) <= reserve:
-                self.retry_at = datetime.fromtimestamp(max(time.time() + 60, int(reset)), UTC).isoformat()
+            if 0 <= remaining <= reserve and response.headers.get('X-RateLimit-Reset'):
+                self.retry_at = retry_at(response.headers, time.time())
             if response.status_code == 304:
                 return None, etag
             response.raise_for_status()
