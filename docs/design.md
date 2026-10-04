@@ -81,6 +81,8 @@ deadlines or a backward clock jump rebuild the projection/index. A fresh clock-o
 update can reuse evidence and update build timestamps alone. Publication atomically
 swaps a complete model; concurrent readers keep the previous complete one.
 
+Status aggregates are prepared once per publication; refresh-failure notices remain live.
+
 Before initial publication, readiness fails. A failed or overdue refresh retains
 the last model with a notice and degraded readiness. Liveness tests only the
 Node → FastAPI chain. Neither endpoint proves provider coverage.

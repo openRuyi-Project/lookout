@@ -23,6 +23,7 @@ class Prepared:
     snapshot: dict
     index: package_list.PackageList
     collection: dict
+    statistics: dict
     signature: tuple
     revision: Revision | None
     deadline: datetime | None
@@ -87,7 +88,15 @@ class ProjectionCache:
                 rows, collection = view.refresh_build_clock(snapshot, old.index.rows, now)
             else:
                 rows, collection = view.project_monitors(snapshot, now)
-            prepared = Prepared(snapshot, package_list.PackageList(rows, snapshot['targets']), collection,
+            index = package_list.PackageList(rows, snapshot['targets'])
+            statistics = {
+                'source_versions': sum(bool(row['monitors']['source']['data']['version']) for row in rows),
+                'components': view.component_status(snapshot['components']),
+                'monitor_coverage': index.monitor_coverage(),
+                'upstream_failures': view.upstream_failures(
+                    (row['name'], row['monitors']['version']['data']['upstream']) for row in rows),
+            }
+            prepared = Prepared(snapshot, index, collection, statistics,
                                 signature, revision, view.next_transition(snapshot, now), now)
             with self._publishing:
                 self._prepared = prepared
@@ -96,7 +105,7 @@ class ProjectionCache:
             with self._publishing:
                 self._error = None
 
-    def read(self):
+    def _read(self):
         """Borrow one complete projection; callers must not mutate its contents.
 
         An overdue or failed refresh adds a collection-level notice; it does not
@@ -114,7 +123,15 @@ class ProjectionCache:
         collection = prepared.collection
         if notice:
             collection = {**collection, 'errors': [*collection['errors'], notice], 'projection_notice': notice}
+        return prepared, collection
+
+    def read(self):
+        prepared, collection = self._read()
         return prepared.snapshot, prepared.index, collection
+
+    def read_status(self):
+        prepared, collection = self._read()
+        return {**collection, **prepared.statistics}
 
     def run(self):
         # One stat per second; payload parsing and projection only on change or
