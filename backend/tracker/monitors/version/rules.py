@@ -39,7 +39,8 @@ def files(path):
 
 
 def digest(path):
-    return hashlib.sha256(files(path)[0].read_bytes()).hexdigest()
+    with files(path)[0].open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
 def load(path):

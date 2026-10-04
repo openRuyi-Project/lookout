@@ -41,3 +41,18 @@ def test_digest_tracks_parsed_bytes_and_rejects_symlinks(tmp_path):
     link.symlink_to(path)
     with pytest.raises(ValueError, match='regular file'):
         rules.load(link)
+
+
+@pytest.mark.parametrize('size', [0, 1, 262145, 1048576])
+def test_file_digests_preserve_exact_bytes(tmp_path, size):
+    import hashlib
+
+    from tracker import config_change
+    from tracker.monitors.version import rules
+
+    path = tmp_path / 'rules.toml'
+    content = (b'\x00\xff\r\n[rule]\n' * (size // 11 + 1))[:size]
+    path.write_bytes(content)
+    expected = hashlib.sha256(content).hexdigest()
+    assert config_change.digest(path) == rules.digest(path) == expected
+    assert path.read_bytes() == content
