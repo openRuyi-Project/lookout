@@ -55,3 +55,25 @@ def test_cached_requests_reuse_locks_without_constructing_discarded_ones(monkeyp
         assert created == []
         assert len(requests) == 1
         owner.close()
+
+
+@pytest.mark.parametrize('delays', [(3600, 60), (60, 3600), (3600, 'invalid')])
+def test_host_cooldowns_cannot_shorten_an_existing_deadline(monkeypatch, delays):
+    from tracker.providers import client as provider_client
+
+    now = 100.0
+    monkeypatch.setattr(provider_client.time, 'monotonic', lambda: now)
+    owner = IO()
+    try:
+        for delay in delays:
+            owner.defer_host('example.org', delay)
+        now = 161.0
+        with pytest.raises(ValueError, match='cooldown'):
+            owner.wait_for_host('example.org', 0)
+        owner.wait_for_host('other.example.org', 0)
+        now = 3700.0
+        owner.wait_for_host('example.org', 0)
+        owner.defer_host('example.org', 60)
+        assert owner.cooldowns['example.org'] == 3760.0
+    finally:
+        owner.close()

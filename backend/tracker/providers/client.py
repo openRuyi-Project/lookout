@@ -103,7 +103,8 @@ class IO:
         if not math.isfinite(delay):
             delay = 60
         with self.guard:
-            self.cooldowns[host] = time.monotonic() + max(60, delay)
+            deadline = time.monotonic() + max(60, delay)
+            self.cooldowns[host] = max(self.cooldowns.get(host, 0), deadline)
 
     def json(self, method, url, body=None, *, max_age=None, min_interval=0):
         return self._read(method, url, body, max_age=max_age, min_interval=min_interval)
