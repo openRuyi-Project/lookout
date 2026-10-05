@@ -18,7 +18,7 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         <tr><td><a href="/api/v2/packages/bash"><code>/packages/{'{name}'}</code></a></td>
           <td>Full package observations.</td></tr>
         <tr><td><code>/packages:batchGet</code></td>
-          <td>Full observations for 1–20 unique, repeated <code>names</code>, in request order.
+          <td>Full observations for 1–20 unique packages. Repeat <code>names</code> to specify request order.
             Any missing name fails the batch.</td></tr>
         <tr><td><a href="/api/v2/tracks/meson"><code>/tracks/{'{id}'}</code></a></td><td>Saved version-track observation.</td></tr>
         <tr><td><a href="/api/v2/targets"><code>/targets</code></a></td><td>OBS target identities.</td></tr>
@@ -32,7 +32,7 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
       <li><code>monitor</code> focuses filtering; repeated <code>include</code> selects returned monitors
         (default: all). IDs come from the list response's <code>monitors</code>.</li>
       <li><code>q</code> searches names; <code>search=observations</code> adds fact values,
-        restricted by <code>monitor</code> when set. Matching is case-insensitive substring.</li>
+        restricted by <code>monitor</code> when set. Matching uses case-insensitive substrings.</li>
       <li>Ordinary search: <code>?Outdated&amp;Yanked</code>. Conditions intersect;
         states of the same build target and BuildSystems form unions:
         <code>?rva23_failed+rva23_succeeded&amp;Yanked</code>,
@@ -43,12 +43,12 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         <code>advanced=1</code> opens the editor without conditions. Do not mix bare flags and operators.</li>
       <li>Ordinary counts show intersections; alternatives within a selected build target or BuildSystem count additions under the other conditions.
         Advanced Search uses <code>next_logic=and|or|not</code> (default: and): AND counts matches, OR counts additions, NOT counts removals.
-        Switching that operator does not change current results. Packages count once. Search and the focused view remain in scope.
+        The operator affects counts, not current results. Each package counts once within the search and focused view.
         Check counts target coverage.</li>
     </ul>
     <p><a href={groupedURL}>Build alternatives intersected with two alerts</a>:</p>
     <pre><code>{groupedURL}</code></pre>
-    <p>Other predicates use <code>dimension/value</code>, for example
+    <p>Use <code>dimension/value</code> for other predicates, such as
       <code>check:security/error</code>. The response includes the normalized query and
       <code>query_node_limit</code>: conditions plus explicit or implicit union groups.
       Raw repeated conditions count before deduplication. Invalid or oversized queries return 422.</p>

@@ -83,8 +83,7 @@ PYTHONPATH=backend python -m tracker.package check python-requests \
 ```
 
 `--format human` prints a short result. The default is JSON. `--output` saves the
-complete report. A matching result today does not prove two rules have identical
-identity or filtering semantics.
+complete report. Compare rule identities and filters, not just their current results.
 
 ### Supplied nvchecker sources
 
@@ -186,7 +185,7 @@ PYTHONPATH=backend python -m tracker.monitors.version.discover \
 ```
 
 Keep exact prerelease Source0 identities for registry queries even if RPM Version
-normalizes their spelling. Discovery is a proposal step, never runtime rule synthesis.
+normalizes their spelling. Review discovery proposals before use.
 
 ## Promote reviewed changes
 
@@ -242,7 +241,7 @@ aliases = { python-zmq = ["pyzmq"] }
 PR changed paths (including renamed paths), exact title/body names and
 `package:NAME` labels associate records with known source directories. Short
 names and `ambiguous_names` require a code span, title prefix or package label.
-Aliases must identify an existing package; shared aliases are not guessed.
+Aliases must identify one existing package.
 
 Open and closed records are retained in SQLite, independently of package
 versions. Incremental polls use `updated_at`, a two-minute overlap and ETags;
@@ -257,9 +256,8 @@ empty poll. Authenticated polls retain the configured fixed interval. The next d
 restarts. File lists are published only after confirming the same base/head
 revisions. A growing idle delay also extends the freshness deadline.
 
-A read-only token permits the configured request budget and interval. Requests
-are serialized; response quota headers reserve capacity before exhaustion,
-and GitHub cooldowns override the schedule. Anonymous access shares the host
+With a read-only token, polls use the configured budget and interval.
+Requests run serially. Quota headers reserve capacity, and GitHub cooldowns override the schedule. Anonymous access shares the host
 IP quota, so initial history may take days. GitHub returns at most 3,000 files
 per PR; incomplete paths remain explicit rather than becoming an empty match.
 

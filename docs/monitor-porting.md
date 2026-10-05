@@ -101,10 +101,9 @@ def refresh(subject, inputs, previous):
     return Schedule(interval_seconds=21600, retry_seconds=300, max_retry_seconds=3600)
 ```
 
-Changed fingerprints make checks eligible immediately, subject to batch and worker limits.
-Errors and partial results use capped exponential retries. Cache age cannot exceed the effective interval. Operators override policies in
-`[monitors.refresh.ID]`; staleness must exceed the normal interval. Vulnerabilities
-can appear without version changes, so periodic refresh remains necessary.
+Operators set overrides in `[monitors.refresh.ID]`. Staleness must exceed the normal interval.
+Keep periodic refresh enabled: vulnerabilities can appear without version changes.
+Scheduling, retries and cache-age rules are in [Design](design.md#observation-identity-and-time).
 
 Query fingerprints omit `VERSION`, allowing reinterpretation to retain dated evidence for the same query.
 Do not bump `VERSION` for layout-only changes or unrelated backends. Narrow subject
@@ -116,13 +115,7 @@ identity only when the omitted field cannot affect a query or its meaning:
 | Lifecycle | Derived product/cycle |
 | Local-patch-sensitive check | Relevant source revision retained |
 
-Source-version and upgrade-target changes invalidate dependent results and queue checks immediately. An in-flight response
-for the old query stays historical. Fixed security tags must match the queried
-version; fixed commits must agree with confined Source0. A patch update within the
-same lifecycle cycle can reuse that cycle's evidence.
-
-Cached bytes keep their original time. Unavailable sources do not freshen evidence.
-See [Design](design.md#observation-identity-and-time) for persistence and timestamp semantics.
+Fixed security tags must match the queried version. Fixed commits must agree with confined Source0.
 
 ## Verify the port
 
@@ -150,7 +143,7 @@ PYTHONPATH=backend python -m tracker.monitors check PACKAGE --monitor ID \
 ```
 
 `explain --db` adds saved context/due status. Run [development checks](../CONTRIBUTING.md#run-checks).
-Use one snapshot to measure identity coverage, eligible checks, successful checks and findings separately.
+Measure identity coverage, eligible checks, successful checks and findings on the same snapshot.
 
 ## Add a Requires backend
 
@@ -179,8 +172,7 @@ another provider request.
 Optional `provides(version, settings, io)` returns attributed component versions
 for `version_scope="component"` requirements, retained with the successful release
 check. Missing/ambiguous components never fall back to distribution versions.
-Build declarations remain raw evidence, outside list/DepMismatch assessment until
-a reliable build-dependency monitor exists. Test scope reuse, stale/missing metadata,
+Build declarations remain raw evidence, excluded from list/DepMismatch assessment. Test scope reuse, stale/missing metadata,
 mapping and target conditions through the API and presenter.
 
 ## Add a registry metadata backend

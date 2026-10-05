@@ -12,13 +12,13 @@ import logos from '../assets/logos/catalog.json';
     <h2>Reading conventions</h2>
     <dl class="api-list">
       <dt>Version</dt>
-      <dd>The RPM-expanded SPEC version. An arrow points to the tracked upstream target; comparison excludes Epoch and Release. Untracked means no upstream version rule.</dd>
+      <dd>RPM-expanded SPEC version → tracked upstream target. Comparison excludes Epoch and Release. Untracked means no upstream version rule.</dd>
       <dt>Builds</dt>
-      <dd>Each result belongs to its OBS target. A successful build does not confirm delivery of the current source; an older successful version remains visible when it differs.</dd>
+      <dd>Results belong to individual OBS targets. Success does not confirm delivery of the current source. A different last-successful version remains visible.</dd>
       <dt>Labels and checks</dt>
-      <dd>Labels filter packages with the same signal. CheckFailed means a collection check failed, not that an OBS build failed. Package details retain the evidence and failed checks.</dd>
+      <dd>CheckFailed means collection failed, not the build. Package details show evidence and failed checks.</dd>
       <dt>Time and scope</dt>
-      <dd>Collection time and build time are separate. Failed checks can retain older observations. Advisory matches do not establish whether local patches resolve a vulnerability.</dd>
+      <dd>Collection and build timestamps differ. Failed checks can retain older observations. Advisory matches do not account for local patches.</dd>
     </dl>
 
     <h2>Data sources</h2>
@@ -26,15 +26,15 @@ import logos from '../assets/logos/catalog.json';
       <dt>Source and builds</dt>
       <dd><a href="https://github.com/openRuyi-Project/openRuyi/tree/main/SPECS">openRuyi SPEC files</a> provide package metadata; <a href="https://build.openruyi.cn/">BuildService</a> provides target states and build history.</dd>
       <dt>Versions</dt>
-      <dd><a href="https://nvchecker.readthedocs.io/">nvchecker</a> queries configured upstream releases, registries and repositories. Rules determine identities and release lines.</dd>
+      <dd><a href="https://nvchecker.readthedocs.io/">nvchecker</a> queries configured upstream releases, registries and repositories. Rules select identities and release lines.</dd>
       <dt>Dependencies, licenses and withdrawn releases</dt>
       <dd>Upstream registries and release metadata, including PyPI, crates.io, Go module services and MetaCPAN. Coverage depends on the source and package identity.</dd>
       <dt>Security</dt>
-      <dd><a href="https://osv.dev/">OSV</a>, <a href="https://nvd.nist.gov/">NVD</a> and optional scanner results provide advisory matches; <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog">CISA KEV</a> and <a href="https://www.first.org/epss/">FIRST EPSS</a> add exploitation signals.</dd>
+      <dd><a href="https://osv.dev/">OSV</a>, <a href="https://nvd.nist.gov/">NVD</a> provide advisory matches; <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog">CISA KEV</a> and <a href="https://www.first.org/epss/">FIRST EPSS</a> add exploitation signals.</dd>
       <dt>Lifecycle and activity</dt>
       <dd><a href="https://endoflife.date/">endoflife.date</a> provides lifecycle dates. GitHub provides issues, pull requests and changed paths used for package associations.</dd>
     </dl>
-    <p>Package details link to the evidence. <a href="/api/v2/status">Collection status</a> reports coverage and errors; the <a href="/api">API</a> exposes observations and queries.</p>
+    <p><a href="/api/v2/status">Collection status</a>: coverage and errors. <a href="/api">API</a>: observations and queries.</p>
 
     <h2>License</h2>
     <p><a href="/LICENSE.txt">MulanPSL-2.0 license</a></p>
