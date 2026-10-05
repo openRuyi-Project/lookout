@@ -11,7 +11,7 @@ The web port binds to loopback. A separate proxy handles HTTPS, authentication a
 | Linux x86_64, cgroup v2, Landlock ABI 6+ and seccomp | The published image targets linux/amd64. Installation probes the native RPM sandbox; unsupported isolation stops startup. |
 | Rootless Podman, Skopeo, Quadlet, a user systemd manager and Python 3.11+ | The service account needs subordinate UID/GID ranges and linger. The image supplies application dependencies. |
 | Writable local persistent storage | Keep the same data directory across updates. It contains SQLite, the SPEC repository and provider caches; do not use tmpfs or a network filesystem. |
-| A trusted image and reachable providers | Public GHCR permits anonymous pulls. OBS, Git and upstream providers also need network access. |
+| A trusted image and reachable providers | Public GHCR, GitHub, OBS, Git and upstream providers must be reachable. |
 | Private configuration and backups | Maintain free space, backup retention and an independent backup copy. Local backups do not protect against host loss. |
 
 Only one application may write a data directory. The image runs as UID/GID 10001;
@@ -221,10 +221,8 @@ edits become explicit overrides; deleted tracks remain excluded. Credentials,
 schedules and data are preserved. Ambiguous deletions reject migration. Failure
 reselects the old config/image pair after checking database compatibility.
 
-The prior config stays untouched. `catalogs.json` in the upgrade record identifies
-both paths; the Quadlet or Docker mount identifies the active one. Keep active
-config and rollback copies when retaining/cleaning backups. Resume the paused
-timers after acceptance. Subsequent image upgrades need no catalog-copy step.
+The prior config stays untouched. `catalogs.json` records both paths; the container mount identifies the active one.
+Keep active config and rollback copies when cleaning backups. Resume paused timers after acceptance.
 
 ### Image upgrades
 

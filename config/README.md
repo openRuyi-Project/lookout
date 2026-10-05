@@ -42,9 +42,8 @@ This leaves other widget monitors intact. `false` disables that monitor, includi
 automatic identity derivation. Local `[openruyi]` tables override individual entries
 from `distribution.toml`. Unreferenced sibling files are never loaded.
 
-Keep operator config and credentials outside the checkout. Old copied catalogs
-need the [one-time ownership migration](../docs/deployment.md#copied-catalog-migration);
-do not replace them with the repository defaults.
+Keep operator config and credentials outside the checkout.
+For old copied catalogs, follow [ownership migration](../docs/deployment.md#copied-catalog-migration), not a replacement with repository defaults.
 
 Locate the effective rule and identity **without contacting providers**:
 
@@ -212,8 +211,7 @@ a new directory. It does not change the service's mounted configuration. Follow
 that directory.
 
 For installed configurations, plan/apply edits local overrides, not `/app/config`.
-All three inputs must reference the same release catalog. Catalog drift requires a
-new review; contributor changes to the release catalog arrive through the image.
+All three inputs must reference the same release catalog. Catalog drift requires a new review.
 
 ## SPEC inputs
 

@@ -149,9 +149,8 @@ characters.
 Account for the deployment CPU and package count. Reverse proxies must accept query URLs
 at the limit without truncation.
 
-The website renders typed display primitives, not provider payloads. Presenters supply
-captions, formatted values and evidence links. CSS controls layout. The display catalog
-supplies palette identities. OpenAPI generates the frontend types.
+Presenters supply typed display primitives, captions, formatted values and evidence links.
+CSS controls layout. The display catalog supplies palette identities.
 
 Untracked means no configured upstream version track, excluding packages explicitly
 marked not applicable. Other monitors do not change this classification. CheckFailed

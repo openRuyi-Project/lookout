@@ -1,12 +1,7 @@
 # Interface artwork
 
-Activity glyphs use unmodified, vendored Primer Octicons at the revision recorded
-in `frontend/src/assets/icons/README.md`. Labels retain their text. The complete
-MIT notice is included in About and `LICENSES/LicenseRef-Octicons-MIT.txt`.
-
-Build glyphs use selected Font Awesome Free 6.7.2 solid SVGs (CC-BY-4.0),
-with OBS status meanings. Fonticons attribution and the upstream notices appear
-in About and `LICENSES/LicenseRef-FontAwesome-Free.txt`.
+See [Interface icons](../frontend/src/assets/icons/README.md) for icon sources, revisions and license notices.
+About includes the notices and attribution. Labels retain their text.
 
 Tool marks identify the named ecosystem; they are not Lookout branding or an
 endorsement. `frontend/src/assets/logos/catalog.json` owns credits, source URLs,
@@ -30,6 +25,5 @@ inert SVG content, not legal permission.
 
 Review date: 2026-10-02. Tux permission was verified against the
 [archived author page](https://web.archive.org/web/20080521142553/http://www.isc.tamu.edu/~lewing/linux/).
-The CMake icon adaptation is attributed to Kitware and Simple Icons. The
-[software license](https://cmake.org/licensing/) does not grant trademark rights;
-the mark is used only for identification, not Lookout branding or endorsement.
+The CMake icon adaptation credits Kitware and Simple Icons.
+The [software license](https://cmake.org/licensing/) does not grant trademark rights.

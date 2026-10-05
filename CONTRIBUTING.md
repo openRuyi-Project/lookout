@@ -22,9 +22,8 @@ Tests follow these responsibilities under `backend/tests/`. Shared fixtures belo
 in `conftest.py` or `helpers/`, not in another test module. See [Design](docs/design.md)
 for write ownership and trust boundaries.
 
-SVGs are vendored at fixed upstream revisions. Add attribution, usage terms and a
-checksum to the asset catalog; About reads the same catalog. Use explicit identity
-mappings, not name guessing or remote icon services. Unknown icons remain text.
+For artwork provenance and usage terms, see [Interface artwork](docs/assets.md).
+Use explicit identity mappings, not name guessing or remote icon services. Unknown icons remain text.
 
 ## Run checks
 
@@ -112,17 +111,15 @@ operator acceptance; see [Deployment](docs/deployment.md).
 
 ## Documentation and comments
 
-Put each instruction in its task guide: configuration, deployment, monitor porting
-or design. Link to that guide instead of repeating it.
-Introduce the task. Place each runnable example beside its explanation.
-State the expected result and failure conditions.
+Keep instructions in their task guide and link to them elsewhere.
+Place runnable examples beside their explanations. State results and failure handling.
 Check commands, paths and links against the implementation.
 
 Use one term for each concept. Write one instruction per sentence.
 State conditions before actions. Name the component that performs each action.
 Aim for at most 20 words per instruction and 25 words per descriptive sentence.
 Keep technical names, command syntax and safety conditions exact.
-Put required actions in steps, not notes. Explain how to handle failures.
+Put required actions in steps, not notes.
 
 Comments explain protocol exceptions, ownership or why a simpler implementation
 would be wrong; they do not narrate code. Docstrings document a caller's non-obvious
