@@ -1,8 +1,8 @@
 # openRuyi Lookout
 
 Read-only package tracking for [openRuyi](https://openruyi.cn): RPM source versions,
-upstream releases, OBS builds and maintenance evidence. Collectors publish SQLite
-snapshots; page and API requests do not query providers.
+upstream releases, OBS builds and maintenance evidence. Collectors save observations in SQLite snapshots.
+Page and API requests read these snapshots. They do not query providers.
 
 | Task | Guide |
 |---|---|
@@ -16,7 +16,7 @@ A Linux container with native RPM bindings and Landlock ABI 6+ is required for
 confined SPEC parsing. Keep configuration and persistent data on separate mounts.
 
 The running site's `/api` page provides query examples; `/openapi.json` defines
-parameters and responses. Failed checks retain dated evidence. Upstream security
+parameters and responses. If a check fails, Lookout retains the previous evidence and its observation time. Upstream security
 matches do not evaluate local patches or the exploitability of distributed RPMs.
 
 [MulanPSL-2.0](LICENSE).

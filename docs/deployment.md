@@ -1,7 +1,7 @@
 # Deployment
 
 The preferred host is Fedora with Rootless Podman and user-level Quadlet. Lookout
-runs one web/API/collector container; the host schedules image updates and backups.
+runs the website, API and collectors in one container. The host schedules image updates and backups.
 The web port binds to host loopback. HTTPS, authentication and external access
 belong to a separate proxy.
 
@@ -81,9 +81,9 @@ python3 "$TOOLS/install.py" \
 ```
 
 Installation creates private configuration and persistent data, validates the
-runtime and Quadlet, then waits for the service to become ready. Existing
-installation destinations are refused. A failed installation retains its files;
-inspect the error and journal rather than rerunning initialization over them.
+runtime and Quadlet, then waits for the service to become ready. The installer refuses existing
+installation destinations. If installation fails, it retains its files.
+Read the error and journal. Do not initialize the same destination again.
 
 ```text
 $ROOT/tools/            initial installation tools
@@ -99,10 +99,10 @@ $UNIT                   application Quadlet
 The image update timer checks GitHub every five minutes, with jitter: about
 12 requests/hour, below the 60/hour anonymous limit for an unshared address.
 Only a successful `checks.yml` run on `main` selects its published `sha-<commit>`
-image. No new revision means no GHCR requests, pulls or restarts. A GitHub error
-or rate limit leaves the service unchanged; the next timer tick retries. Public
+image. No new revision means no GHCR requests, pulls or restarts. If GitHub returns an error or rate limit, the updater leaves the service unchanged.
+It retries at the next scheduled check. Public
 GitHub access is required for unattended GHCR `main`/`latest` channels.
-The backup timer runs daily; collector schedules stay inside the application.
+The backup timer runs daily. The application schedules its collectors.
 
 To adopt existing state, stop its writer and back it up first. Add
 `--data /absolute/existing/data --config /absolute/reviewed/config` to installation;
@@ -120,7 +120,7 @@ python3 "$TOOLS/maintain.py" --unit "$UNIT" --backup-dir "$ROOT/backups"
 python3 "$TOOLS/maintain.py" --unit "$UNIT" --status "$ROOT/backups"
 ```
 
-The service and both timers must be active; the backup status must report
+The service and both timers must be active. The backup status must report
 `"ok": true`. Check provider timestamps again after their next scheduled polls.
 
 | Endpoint | Meaning |
@@ -149,9 +149,9 @@ GitHub repository defaults follow the release distribution catalog. An explicit
 `[github]` in `tracker.toml` takes precedence, including an empty repository map
 to disable collection. See [GitHub activity configuration](../config/README.md#github-activity).
 
-SQLite stays in the same data directory; compatible updates reuse observations
-and indexes. Supported storage-format changes are backed up and migrated;
-unsupported changes refuse the upgrade.
+SQLite stays in the same data directory. Compatible updates reuse observations
+and indexes. Before a supported storage-format change, the upgrader backs up the database.
+It then migrates the data. If the storage-format change is unsupported, the upgrader refuses the upgrade.
 
 | Setting | Entry point |
 |---|---|
@@ -252,7 +252,7 @@ python3 "$TOOLS/upgrade.py" --image "$SELECTED_IMAGE" \
   --unit "$UNIT" --backups "$ROOT/backups" --apply
 ```
 
-An active backup/update lock rejects the command; retry after that job finishes.
+If a backup or update holds the lock, the command fails. Retry after that job finishes.
 The upgrade preserves the data mount, port, environment and resource limits.
 GHCR `main`/`latest` use successful GitHub workflow publications, not registry
 polling. A new publication is pinned to its commit tag and checked against the
@@ -275,7 +275,7 @@ systemctl --user start "$NAME-update.timer"
 Repeat the backup and status commands from [installation verification](#4-verify-and-take-the-first-backup)
 for an on-demand backup. Copy the database backups, private configuration and
 image references to independent storage. Set retention and monitor free space.
-Do not `cp` a live SQLite database; API export is not a database backup.
+Do not use `cp` to back up a running SQLite database. API export is not a database backup.
 
 Inspect failures without triggering collection or upgrades:
 
@@ -287,10 +287,10 @@ systemctl --user status "$NAME-update.timer" "$NAME-backup.timer" --no-pager
 
 | Observed failure | Administrator action |
 |---|---|
-| Image changes, but copied catalogs still stay under `/config` | Check whether the installed launcher delegates to the release. Use the one-time procedure below only for reviewed copied defaults. |
-| Pull, lock or provider/network failure | Read the job journal. Fix the named boundary; retry after any active job finishes. Do not reinitialize data. |
+| Image changes, but copied catalogs still stay under `/config` | Check whether the installed launcher delegates to the release. See [Copied catalog migration](#copied-catalog-migration). Do not replace catalogs without a recorded original installation image. |
+| Pull, lock or provider/network failure | Read the job journal. Correct the reported problem. Retry after any active job finishes. Do not reinitialize data. |
 | Upgrade record says `failed`, rollback `ready` | The old image/config pair resumed. Resolve the configuration conflict or missing original image before retrying. |
-| Upgrade record says `stopped`, rollback `failed` | Keep the instance stopped. Check storage compatibility or restore into a separate instance; do not force an old reader onto new data. |
+| Upgrade record says `stopped`, rollback `failed` | Keep the instance stopped. Check storage compatibility or restore into a separate instance. Do not force an old reader onto new data. |
 
 ### Pause scheduled jobs
 

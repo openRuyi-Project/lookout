@@ -112,12 +112,17 @@ operator acceptance; see [Deployment](docs/deployment.md).
 
 ## Documentation and comments
 
-Put each instruction with its task: configuration, deployment, monitor porting
-or design. Link to that owner rather than repeat it. Follow the
-[GNU manual structure](https://www.gnu.org/prep/standards/html_node/GNU-Manuals.html):
-introduce the task, place the runnable example beside its explanation, then state
-the result and failure conditions. Keep reference details easy to locate.
+Put each instruction in its task guide: configuration, deployment, monitor porting
+or design. Link to that guide instead of repeating it.
+Introduce the task. Place each runnable example beside its explanation.
+State the expected result and failure conditions.
 Check commands, paths and links against the implementation.
+
+Use one term for each concept. Write one instruction per sentence.
+State conditions before actions. Name the component that performs each action.
+Aim for at most 20 words per instruction and 25 words per descriptive sentence.
+Keep technical names, command syntax and safety conditions exact.
+Put required actions in steps, not notes. Explain how to handle failures.
 
 Comments explain protocol exceptions, ownership or why a simpler implementation
 would be wrong; they do not narrate code. Docstrings document a caller's non-obvious
