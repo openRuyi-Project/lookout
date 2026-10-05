@@ -2,13 +2,13 @@
 
 ## Ownership
 
-Installation references the image's version, identity and distribution catalogs;
-`/config` contains operating settings and explicit overrides. A native override
-replaces one complete track; a package override replaces one policy field or
-complete monitor identity. Publication and review checks include every parsed file. Observation keys contain the effective rule/query, not its path or image
-revision. Unrelated catalog changes therefore preserve evidence. Migrating old copied
-catalogs requires the original initialization baseline to distinguish defaults
-from operator edits.
+The installer references version, identity and distribution catalogs in the image.
+`/config` contains operating settings and explicit overrides. A native override replaces
+one complete track. A package override replaces one policy field or complete monitor
+identity. Publication and review checks include every parsed file. Observation keys
+identify the effective rule or query, not its path or image revision. Unrelated catalog
+changes preserve evidence. To distinguish defaults from operator edits, migration
+requires the original installation baseline.
 
 ```text
 configured identities → collectors → SQLite → readmodel → fact API
@@ -26,165 +26,175 @@ configured identities → collectors → SQLite → readmodel → fact API
 | Reading order and grouping | `presentation/` | Pure fields, tables, entries and links |
 | Layout and interaction | `frontend/` | Renders documents, submits queries; no monitor inference |
 
-Executable adapters register in `monitors/registry.py`; readers consume the saved
-catalog instead. Package initializers are inert. `scripts/check-architecture.py`
-and Import Linter enforce import boundaries.
-`scripts/api-types.py --check` checks generated types against OpenAPI. [Porting](monitor-porting.md) describes extension contracts;
-[Configuration](../config/README.md) owns editing and promotion.
+Adapters register in `monitors/registry.py`. Readers use the saved catalog. Package
+initializers do not run collection or registration. `scripts/check-architecture.py` and
+Import Linter enforce import boundaries. `scripts/api-types.py --check` checks generated
+types against OpenAPI. [Porting](monitor-porting.md) describes extension contracts.
+[Configuration](../config/README.md) explains editing and promotion.
 
 ## Persistence and publication
 
 Collectors fetch outside the writer lock, then merge onto the latest snapshot.
-`state.merge` rejects fields outside a phase's ownership. A complete Git tree of
-regular `SPECS/*/*.spec` files defines the package catalogue, including failed
-parses and packages absent from OBS. Failed refreshes retain the confirmed catalogue.
-OBS inventories describe build objects; they cannot add or remove source packages.
-OBS status and history share an identity but not ownership:
+`state.merge` rejects fields outside a phase's ownership. A complete Git tree of regular
+`SPECS/*/*.spec` files defines the package catalog. It includes packages whose SPEC
+parsing failed and packages absent from OBS. If a refresh fails, Lookout retains the
+confirmed catalog. OBS inventories describe build objects. They cannot add or remove
+source packages. OBS status and history share an identity but not ownership:
 
 | Phase | Writes |
 |---|---|
 | `builds` | Project-wide `_result` status, errors and poll timestamps |
 | `obs` | Inventory, source identity and successful-build history |
 
-`state.BUILD_FIELDS` prevents slow history responses from rewinding current
-status. Changed target repository/architecture invalidates old evidence and
-in-flight responses for that scope.
+`state.BUILD_FIELDS` prevents slow history responses from overwriting newer status. A
+change to the target repository or architecture invalidates old evidence and pending
+responses for that scope.
 
 SQLite stores source, track, SPEC, build and monitor observations as keyed rows.
-Transactions write changed rows, deletions and the snapshot header. Equal rows
-retain their storage revision without JSON re-encoding. Incremental commits must
-match the database revision and heartbeat they read; stale bases are rejected.
-`state.read_cached` captures header, clock and row revisions in one transaction,
+Transactions write changed rows, deletions and the snapshot header. Equal rows retain
+their storage revision without JSON re-encoding. Incremental commits must match the
+database revision and heartbeat they read. Storage rejects commits based on stale
+inputs. `state.read_cached` captures header, clock and row revisions in one transaction,
 then decodes changed JSON outside the lock. Borrowed unchanged data is read-only.
 
 A complete successful OBS poll with identical facts updates `snapshot_clock`, not
-content generation or all build records. Partial/failed vectors cannot freshen
-missing observations this way. Independent phase merges preserve the latest clock;
-importing even equal content gets a new storage identity.
+content generation or all build records. Partial or failed polls cannot update
+timestamps for missing observations this way. Independent phase merges preserve the
+latest clock. Imports get a new storage identity, even when their content is unchanged.
 
-Storage `user_version` is independent of public snapshot `schema`. Writers require
-the current format; the migration tool backs up, migrates transactionally and
-compares observations. Unknown formats fail closed. Compatible image upgrades keep
-the same data and query fingerprints; they do not reset evidence. Operational
-commands and rollback limits are in [Deployment](deployment.md#image-upgrades).
+Storage `user_version` is independent of public snapshot `schema`. Writers require the
+current format. The migration tool backs up the database, migrates it in a transaction
+and compares observations. It rejects unknown formats. Compatible image upgrades retain
+data, query fingerprints and evidence. Operational commands and rollback limits are in
+[Deployment](deployment.md#image-upgrades).
 
 Writes use rollback journals and `synchronous=FULL`. API connections are read-only.
-Startup recovery holds the writer lock while SQLite recovers a hot journal.
-It never deletes journals or replaces corrupt data. Standalone preflight does not
-write an existing database.
+Startup recovery holds the writer lock while SQLite recovers a hot journal. It never
+deletes journals or replaces corrupt data. Standalone preflight does not write an
+existing database.
 
 ### Prepared reads
 
-A background task checks storage once per second. Changes, semantic freshness
-deadlines or a backward clock jump rebuild the projection/index. A fresh clock-only
-update reuses unchanged facets and monitor search text; changed build timestamps
-remain searchable. Status aggregates are prepared once per publication, while
-refresh-failure notices remain live. Publication atomically swaps a complete model;
-concurrent readers keep the previous complete one.
+A background task checks storage once per second. It rebuilds the projection and index
+when data changes, a freshness deadline expires or the clock moves backward. Fresh
+clock-only updates reuse unchanged facets and monitor search text. Changed build
+timestamps remain searchable. The task prepares status aggregates once per publication.
+Refresh-failure notices remain live. Publication replaces the complete model atomically.
+Concurrent readers retain the previous complete model.
 
-Before initial publication, readiness fails. A failed or overdue refresh retains
-the last model with a notice and degraded readiness. Liveness tests only the
-Node → FastAPI chain. Neither endpoint proves provider coverage.
+Readiness fails until the first model is published. If a refresh fails or is overdue,
+Lookout retains the last model, shows a notice and reports degraded readiness. Liveness
+tests only the Node → FastAPI chain. Neither endpoint proves provider coverage.
 
-The fact API borrows one projection per request. List, detail and batch share typed
-monitor responses; `include` changes representation, not selection. Pagination,
-full-list and batch limits bound response work. OpenAPI is generated from the
-request/response models; the site's `/api` page owns usage examples.
+The fact API borrows one projection per request. List, detail and batch requests share
+typed monitor responses. `include` changes representation, not selection. Pagination,
+full-list and batch limits bound response work. OpenAPI is generated from request and
+response models. The site's `/api` page provides usage examples.
 
 ## Selection and presentation
 
-`readmodel/query.py` owns sealed groups plus a pending condition sequence. Ordinary search uses bare flags such as
-`?Outdated&Yanked`: AND between predicates, OR within a build target or BuildSystem.
-Alternatives serialize with `+`, e.g. `?rva23_failed+rva23_succeeded&Yanked`.
-Advanced Search uses ordered `TOKEN=AND|OR|NOT` and `Group=AND|OR|NOT` pairs.
-`advanced=1` selects an empty advanced editor. The two modes cannot mix.
-Entering advanced mode preserves the ordinary selection. Leaving advanced mode clears the expression but keeps the search text.
-Preserve repeated keys in advanced queries.
-A group marker seals conditions since the preceding marker; it cannot nest or
-capture an already sealed group. Its operator connects the entire group, independently
-of the first condition's operator. Each sequence is evaluated left to right, starting from the scoped ALL.
-AND intersects, OR unions and NOT subtracts the next operand. Pending terms have
-no implicit parentheses. A sealed group evaluates its conditions in the same
-order from the scoped ALL, then joins the outer result using its own operator. Every condition retains its operator when grouped.
+`readmodel/query.py` stores sealed groups and pending conditions. Ordinary search uses
+bare flags, such as `?Outdated&Yanked`. Different predicates use AND. Alternatives
+within one build target or BuildSystem use OR. URLs join alternatives with `+`, for
+example `?rva23_failed+rva23_succeeded&Yanked`. Advanced Search uses ordered
+`TOKEN=AND|OR|NOT` and `Group=AND|OR|NOT` pairs. `advanced=1` selects an empty advanced
+editor. The two modes cannot mix. Entering advanced mode preserves the ordinary
+selection. Leaving advanced mode clears the expression but keeps the search text.
+Preserve repeated keys in advanced queries. A group marker seals all pending conditions
+since the preceding marker. Groups cannot nest or include an already sealed group. The
+group operator is separate from its first condition's operator.
 
-`presentation/query_editor.py` adds/removes pending terms, seals groups and
-removes terms or groups without changing other operators. `next_logic` controls
-only the next action. Repeated conditions collapse within each sequence; a sealed
-group and pending terms may share a condition. Four cyclic colors distinguish
-adjacent groups, not severity or truth. `FilterGroups.astro` renders server-owned
-links; there is no browser evaluator. Navigation replaces controls, counts,
-packages and pagination together and remains usable without JavaScript.
+Evaluation starts from the scoped ALL and proceeds left to right. AND intersects, OR
+unions and NOT subtracts the next operand. Pending conditions have no implicit
+parentheses. Each sealed group also starts from the scoped ALL and evaluates left to
+right. Its operator then combines its result with the outer result. Grouping preserves
+every condition's operator.
 
-The list total evaluates the current expression. Ordinary counts show intersections; adding an alternative within a selected build
-target or BuildSystem shows new matches under all other conditions. Prefix/suffix
-intersections compute those alternative scopes once per request, not once per candidate.
-Advanced counts describe the next operation: AND shows intersection size,
-OR shows additions (candidate minus current), NOT shows removals (current
-intersection candidate). These counts naturally cannot exceed the candidate size.
-Changing the next operator never changes the expression or current page.
-Clicking an already selected pending condition removes it, independently of the
-next-addition operator. Indexed package
-sets implement union, intersection and subtraction, counting each package once.
-Search bounds the scope; Check counts target coverage, other counts use the
-selected results/coverage view. Pagination follows selection.
+`presentation/query_editor.py` adds or removes pending conditions and seals groups.
+Removing a condition or group leaves other operators unchanged. `next_logic` controls
+only the next action. Each sequence stores repeated conditions once. A sealed group and
+pending conditions may share a condition. Four cyclic colors distinguish adjacent
+groups, not severity or truth. `FilterGroups.astro` renders links from the server. The
+browser does not evaluate queries. Navigation replaces controls, counts, packages and
+pagination together and remains usable without JavaScript.
 
-`MAX_QUERY_NODES` is the single budget: 128 conditions + explicit or implicit union groups, including
-raw repetitions before deduplication. No per-group cap exists. Invalid operators,
-unknown dimensions, empty group operations and over-budget inputs return 422.
-Responses publish the same limit; additions are disabled at the boundary while
-removal remains available. Dimension/value identifiers are limited to 100 characters.
+The list total counts packages that match the current expression. Ordinary counts show
+intersections. For another alternative within a selected build target or BuildSystem,
+the count shows new matches under all other conditions. Prefix/suffix intersections
+compute those alternative scopes once per request, not once per candidate. Advanced
+counts describe the next operation:
 
-`python scripts/benchmark-filters.py` measures 31 parse + selection + count samples
-on 6,000 synthetic packages with overlapping facts. Re-run before raising the
-budget; deployment CPU and corpus size also matter. Reverse proxies must accept
-query URLs at the limit without truncation.
+| Operator | Count |
+|---|---|
+| AND | Intersection of candidate and current packages |
+| OR | Additions: candidate packages absent from the current result |
+| NOT | Removals: current packages that match the candidate |
 
-The website renders typed display primitives, not provider payloads. Presenters
-own captions, value formatting and evidence links; CSS owns layout, with palette
-identities supplied by the display catalog. OpenAPI generates the frontend types.
+Each count is at most the candidate size. Changing the next operator never changes the
+expression or current page. Clicking an already selected pending condition removes it,
+independently of the next-addition operator. Indexed package sets implement union,
+intersection and subtraction. They count each package once. Search bounds the scope.
+Check counts target coverage. Other counts use the selected results or coverage view.
+Pagination follows selection.
+
+`MAX_QUERY_NODES` limits the total to 128 nodes. Conditions and explicit or implicit
+union groups each consume nodes. Repeated conditions count before deduplication. No
+per-group cap exists. Invalid operators, unknown dimensions, empty group operations and
+over-budget inputs return 422. Responses publish the same limit. At the limit, users can
+remove conditions but cannot add them. Dimension/value identifiers are limited to 100
+characters.
+
+`python scripts/benchmark-filters.py` measures 31 parse + selection + count samples on
+6,000 synthetic packages with overlapping facts. Run it again before raising the budget.
+Account for the deployment CPU and package count. Reverse proxies must accept query URLs
+at the limit without truncation.
+
+The website renders typed display primitives, not provider payloads. Presenters supply
+captions, formatted values and evidence links. CSS controls layout. The display catalog
+supplies palette identities. OpenAPI generates the frontend types.
 
 Untracked means no configured upstream version track, excluding packages explicitly
-marked not applicable. Other monitors do not change this classification.
-CheckFailed counts packages, once each, with failed collection subchecks. Partial
-results, watch-track and build-history failures retain their reasons in Checks.
-An OBS failed build is a result, not a failed collection request. Unsupported,
-unconfigured and stale checks keep their distinct meanings.
+marked not applicable. Other monitors do not change this classification. CheckFailed
+counts packages, once each, with failed collection subchecks. Partial results,
+watch-track and build-history failures retain their reasons in Checks. An OBS failed
+build is a result, not a failed collection request. Unsupported, unconfigured and stale
+checks keep their distinct meanings.
 
 The aggregate page shows every matching dependency or build reason, grouping only
-identical facts. Full provider fields and dependency conditions remain in detail.
-Issue styles are declared once in `presentation/labels.toml`; BuildSystem identity
-styles live in operator config.
+identical facts. Full provider fields and dependency conditions remain in detail. Issue
+styles are declared once in `presentation/labels.toml`; BuildSystem identity styles live
+in operator config.
 
-Read pages progressively enhance native links and GET forms with locally bundled
-htmx. One rendered-result frame owns rows, counts and pagination. Foreground polls
-revalidate HTML with ETag and compare document fingerprints before swapping; hidden
-tabs, offline clients and active forms/menus pause polling. Failed or superseded
-requests leave the previous frame intact. Each list/detail request fetches the
-current display document. Unchanged documents reuse process-local rendered HTML,
-keyed by document content, URL and cookies; errors never reuse cached success.
-The LRU holds at most 64 pages and 8 MiB of body/key/header bytes. It disappears on
-restart, so a release cannot reuse an older renderer's output. ETag still validates
-the actual HTML. Response scripts and dynamic evaluation are disabled; changed
-application assets require a full navigation.
+Pages use locally bundled htmx to enhance native links and GET forms. One
+rendered-result frame owns rows, counts and pagination. Foreground polls revalidate HTML
+with ETag and compare document fingerprints before replacing the frame. Polling pauses
+for hidden tabs, offline clients and active forms or menus. Failed or superseded
+requests leave the previous frame intact. Each list/detail request fetches the current
+display document. Unchanged documents reuse process-local rendered HTML, keyed by
+document content, URL and cookies. Errors never reuse cached success. The LRU holds at
+most 64 pages and 8 MiB of body/key/header bytes. It disappears on restart, so a release
+cannot reuse an older renderer's output. ETag still validates the actual HTML. Response
+scripts and dynamic evaluation are disabled. Changed application assets require a full
+navigation.
 
 ## Observation identity and time
 
-`monitors.version.compare.evaluate` owns the version decision; `evaluate_all`
-shares it across a pass. Historical `last_known_relation` is evidence, not permission
-to run upgrade checks. Upgrade-only adapters need a confirmed comparable newer
-release; current-version security checks do not.
+`monitors.version.compare.evaluate` makes the version decision. `evaluate_all` shares it
+across a pass. Historical `last_known_relation` is evidence, not permission to run
+upgrade checks. Upgrade-only adapters need a confirmed comparable newer release.
+Current-version security checks do not.
 
 The runner owns scheduling, persistence and retries. Adapters own inputs and
-interpretation. Changed fingerprints queue work; unchanged inputs wait for their
-refresh interval. Failure retries are bounded, and HTTP cache age cannot exceed
-the effective policy. A heartbeat with unchanged observations/settings does not
-write; it can still publish changed input eligibility or catalog information.
+interpretation. Changed fingerprints queue work. Unchanged inputs wait for their refresh
+interval. Failure retries are bounded, and HTTP cache age cannot exceed the effective
+policy. A heartbeat does not write unchanged observations or settings. It can still
+publish changes to input eligibility or catalog information.
 
-A failed replacement retains one `last_result`, not a history chain. Only matching
-query evidence can reappear; incompatible interpretations are stale. A completed
+A failed replacement retains one `last_result`, not a history chain. Only evidence for
+the same query can reappear. Incompatible interpretations remain stale. A completed
 result, including empty success, replaces the saved result. Combined release scopes
-reuse each exact release independently; revision-sensitive checks cannot use that
-shortcut. The [adapter contract](monitor-porting.md#module-contract) defines scope.
+reuse each exact release independently. Revision-sensitive checks cannot use this reuse
+path. The [adapter contract](monitor-porting.md#module-contract) defines scope.
 
 | Field | Meaning |
 |---|---|
@@ -194,8 +204,8 @@ shortcut. The [adapter contract](monitor-porting.md#module-contract) defines sco
 | `evidence_revision`, `changed_at` | Query-input or normalized-fact changes, not poll time/order |
 
 Packaging-only revision changes need not invalidate upstream queries. EPSS changes
-revise evidence, not advisory identity. Status error groups aid triage; identical
-messages do not establish a common cause.
+revise evidence, not advisory identity. Status error groups help users investigate
+failures. Identical messages do not establish a common cause.
 
 ## Interpretation limits
 
@@ -207,22 +217,22 @@ messages do not establish a common cause.
 | Upstream EOL | Distribution support commitment |
 | Same-project SPDX difference | Legal assessment or a comparison with RPM's aggregate License |
 
-Security aliases are deduplicated. Failed enrichment preserves base advisories,
-not invented KEV/EPSS values. Missing comparable license metadata is unsupported,
-not unchanged. ABI comparison is absent. Reviewed CPE part/vendor/product mappings
-query NVD's CVE API with the current source version; NVD owns range matching.
-Git archive tags come only from confined Source0 evidence consistent with RPM
-Version. Floating branches and unresolved versions do not become release identities.
-Both providers use the existing heartbeat and dated HTTP cache; NVD requests are
-paced at 6.5 seconds per host and failures back off from 15 minutes to one hour.
+Security aliases are deduplicated. Failed enrichment preserves base advisories, not
+invented KEV/EPSS values. Missing comparable license metadata is unsupported, not
+unchanged. ABI comparison is absent. Reviewed CPE part/vendor/product mappings query
+NVD's CVE API with the current source version. NVD matches version ranges. Git archive
+tags come only from confined Source0 evidence consistent with RPM Version. Floating
+branches and unresolved versions do not become release identities. Both providers use
+the existing heartbeat and dated HTTP cache. NVD requests are paced at 6.5 seconds per
+host. Failure retries back off from 15 minutes to one hour.
 
 ## Native and network boundaries
 
 SPEC shell/Lua macros execute code. Each parse uses a new Linux worker, clean
-environment, private result socket and scratch. Landlock permits installed runtime
-and pinned inputs, not database/config/app files. The seccomp allow-list blocks
-network sockets, process inspection/signals, namespace and mount operations.
-Missing confinement fails parsing; there is no unrestricted fallback.
+environment, private result socket and scratch. Landlock permits installed runtime and
+pinned inputs, not database/config/app files. The seccomp allow-list blocks network
+sockets, process inspection/signals, namespace and mount operations. If confinement is
+unavailable, parsing fails. There is no unrestricted fallback.
 
 | Bound | Value |
 |---|---|
@@ -232,31 +242,31 @@ Missing confinement fails parsing; there is no unrestricted fallback.
 | Result / diagnostic output | 256 KiB / 16 KiB |
 | Processes | 256, shared by real UID, not a private worker quota |
 
-The parent kills the process group on timeout/output excess. Deployment bounds
-scratch to 128 MiB. These limits do not eliminate denial of service or hide all
-filesystem metadata; kernel/runtime remain trusted. Enforcement is in
-`monitors/source/rpm.py`, `spec_worker.py` and `spec_sandbox.py`.
-RPM `_tmppath` is pinned after macro loading; `TMPDIR` alone is insufficient.
-The worker sets target context before parsing the SPEC. Macros can still redefine it.
-Expanded metadata is not an OBS build or binary validation.
+The parent kills the process group on timeout/output excess. Deployment bounds scratch
+to 128 MiB. These limits do not eliminate denial of service or hide all filesystem
+metadata. The kernel and runtime remain trusted dependencies. Enforcement is in
+`monitors/source/rpm.py`, `spec_worker.py` and `spec_sandbox.py`. The worker pins RPM
+`_tmppath` after loading macros. `TMPDIR` alone is insufficient. The worker sets target
+context before parsing the SPEC. Macros can still redefine it. Expanded metadata is not
+an OBS build or binary validation.
 
-Adapter HTTP is confined to declared HTTPS hosts. Shared IO owns caching, pacing
-and exclusive reusable connections; a failed transport retires only its connection.
-Caller-injected clients remain caller-owned. The operator proxy applies only to
-monitor HTTP. Browser CSP permits same-origin styles and list-page scripts, not
-inline or external scripts; other pages disable scripts. BuildSystem CSS is
-same-origin and conditionally revalidated.
+Adapter HTTP is confined to declared HTTPS hosts. Shared IO owns caching, pacing and
+exclusive reusable connections. A transport failure closes only the affected connection.
+Caller-injected clients remain caller-owned. The operator proxy applies only to monitor
+HTTP. Browser CSP permits same-origin styles and list-page scripts, not inline or
+external scripts. Other pages disable scripts. BuildSystem CSS is same-origin and
+conditionally revalidated.
 
 ## Repository activity
 
 GitHub collection owns `github_items` (repository/item ID), `github_links`
 (package/evidence references) and per-repository checkpoints. It does not use
-version-monitor invalidation. SQLite format 3 adds these row collections;
-format 2 migration changes the storage header, preserving existing observations.
-The deployment migrator backs up before conversion; older readers require the
-matching pre-migration backup on rollback.
+version-monitor invalidation. SQLite format 3 adds these row collections. Migration from
+format 2 changes the storage header and preserves existing observations. The deployment
+migrator backs up the database before conversion. Rollback to an older reader requires
+the matching pre-migration backup.
 
-Readers derive counts and cursor pages from one prepared snapshot. Details load
-20 records per kind; requesting more pauses background page replacement while
-that expanded history is being read. Navigation resumes normal refreshing.
-Provider bodies and diffs are never rendered as HTML.
+Readers derive counts and cursor pages from one prepared snapshot. Details load 20
+records per kind. Requesting more pauses background page replacement while the user
+reads the expanded history. Navigation resumes normal refreshing. Provider bodies and
+diffs are never rendered as HTML.
