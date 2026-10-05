@@ -5,9 +5,8 @@
 Installation references the image's version, identity and distribution catalogs;
 `/config` contains operating settings and explicit overrides. A native override
 replaces one complete track; a package override replaces one policy field or
-complete monitor identity. All parsed files participate in publication and review
-guards. Observation keys contain the effective rule/query, not its path or image
-revision, so unrelated catalog changes preserve evidence. Migrating old copied
+complete monitor identity. Publication and review checks include every parsed file. Observation keys contain the effective rule/query, not its path or image
+revision. Unrelated catalog changes therefore preserve evidence. Migrating old copied
 catalogs requires the original initialization baseline to distinguish defaults
 from operator edits.
 
@@ -29,8 +28,8 @@ configured identities → collectors → SQLite → readmodel → fact API
 
 Executable adapters register in `monitors/registry.py`; readers consume the saved
 catalog instead. Package initializers are inert. `scripts/check-architecture.py`
-and Import Linter enforce import boundaries; `scripts/api-types.py --check` checks generated types
-against OpenAPI. [Porting](monitor-porting.md) describes extension contracts;
+and Import Linter enforce import boundaries.
+`scripts/api-types.py --check` checks generated types against OpenAPI. [Porting](monitor-porting.md) describes extension contracts;
 [Configuration](../config/README.md) owns editing and promotion.
 
 ## Persistence and publication
@@ -67,11 +66,11 @@ Storage `user_version` is independent of public snapshot `schema`. Writers requi
 the current format; the migration tool backs up, migrates transactionally and
 compares observations. Unknown formats fail closed. Compatible image upgrades keep
 the same data and query fingerprints; they do not reset evidence. Operational
-commands and rollback limits belong in [Deployment](deployment.md#upgrade-and-recovery).
+commands and rollback limits are in [Deployment](deployment.md#image-upgrades).
 
 Writes use rollback journals and `synchronous=FULL`. API connections are read-only.
-Startup recovery holds the writer lock and lets SQLite recover a hot journal;
-it never deletes journals or replaces corrupt data. Standalone preflight does not
+Startup recovery holds the writer lock while SQLite recovers a hot journal.
+It never deletes journals or replaces corrupt data. Standalone preflight does not
 write an existing database.
 
 ### Prepared reads
@@ -99,8 +98,7 @@ request/response models; the site's `/api` page owns usage examples.
 Alternatives serialize with `+`, e.g. `?rva23_failed+rva23_succeeded&Yanked`.
 Advanced Search uses ordered `TOKEN=AND|OR|NOT` and `Group=AND|OR|NOT` pairs.
 `advanced=1` selects an empty advanced editor. The two modes cannot mix.
-Entering advanced mode preserves ordinary selection; leaving clears its expression
-rather than silently approximating it as ordinary facets. Search text remains.
+Entering advanced mode preserves the ordinary selection. Leaving advanced mode clears the expression but keeps the search text.
 Preserve repeated keys in advanced queries.
 A group marker seals conditions since the preceding marker; it cannot nest or
 capture an already sealed group. Its operator connects the entire group, independently
@@ -239,7 +237,7 @@ scratch to 128 MiB. These limits do not eliminate denial of service or hide all
 filesystem metadata; kernel/runtime remain trusted. Enforcement is in
 `monitors/source/rpm.py`, `spec_worker.py` and `spec_sandbox.py`.
 RPM `_tmppath` is pinned after macro loading; `TMPDIR` alone is insufficient.
-Recorded target context precedes SPEC parsing, not proof against macro redefinition.
+The worker sets target context before parsing the SPEC. Macros can still redefine it.
 Expanded metadata is not an OBS build or binary validation.
 
 Adapter HTTP is confined to declared HTTPS hosts. Shared IO owns caching, pacing

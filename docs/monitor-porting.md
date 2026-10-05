@@ -29,10 +29,11 @@ no Astro branch or new API endpoint.
    Released identities belong in `config/packages.toml`; installation reads that
    catalog from the image. Administrator exceptions use `package_overrides`.
    Replace one complete adapter identity, never merge individual provider fields.
-4. Fetch through supplied `io`; return attributed facts using `finding()` and
-   `evidence()` from `monitors.model`. Reuse existing provider protocols; `providers.model.resolve_inputs()` selects
-   explicit registry identities or the first inferred match.
-5. Test the runner → storage → API path, inspect a sample and release code with config.
+4. Fetch through the supplied `io`. Return attributed facts with `finding()` and
+   `evidence()` from `monitors.model`. Reuse existing provider protocols.
+   `providers.model.resolve_inputs()` selects explicit registry identities or the first inferred match.
+5. Test the runner → storage → API path. Inspect a sample result.
+   Release the code and configuration together.
 
 ### Module contract
 
@@ -73,8 +74,8 @@ sensitive to local patches must retain source context and use a single scope.
 
 ### Facts
 
-Use the ingestion models, not a second schema. Finding IDs persist across polls;
-poll time is not identity. Labels/tags classify assertions, not urgency or
+Use the ingestion models, not a second schema. Keep finding IDs stable across polls.
+Do not use poll time as identity. Labels/tags classify assertions, not urgency or
 maintainer actions. Each evidence field carries a provider and public HTTPS URL:
 
 ```python
@@ -105,8 +106,7 @@ def refresh(subject, inputs, previous):
     return Schedule(interval_seconds=21600, retry_seconds=300, max_retry_seconds=3600)
 ```
 
-Changed fingerprints are immediately eligible; errors/partials use capped
-exponential retries. Batch/worker limits may delay eligible work. Cache age is
+Changed fingerprints make checks immediately eligible. Errors and partial results use capped exponential retries. Batch/worker limits may delay eligible work. Cache age is
 bounded by the effective interval. Operators override policies in
 `[monitors.refresh.ID]`; staleness must exceed the normal interval. Vulnerabilities
 can appear without version changes, so periodic refresh remains necessary.
@@ -123,7 +123,7 @@ identity only when the omitted field cannot affect a query or its meaning:
 | Local-patch-sensitive check | Relevant source revision retained |
 
 A source-version or upgrade-target change invalidates dependent results immediately
-and queues a check; it does not wait for the normal interval. An in-flight response
+and queues a check without waiting for the normal interval. An in-flight response
 for the old query stays historical. Fixed security tags must match the queried
 version; fixed commits must agree with confined Source0. A patch update within the
 same lifecycle cycle can reuse that cycle's evidence.
@@ -170,12 +170,11 @@ identity, conditions, extras and relationship. Use existing pure comparators in
 `requires.compare.COMPARATORS`, or test a new one against accepted/rejected syntax.
 Do not branch comparators on dependency names.
 
-Requires observes **upstream declarations**; SPEC requirements are not a substitute.
+Requires observes **upstream declarations**, not SPEC requirements.
 Local source versions only assess satisfaction, not installability/ABI. Mappings
 come from reviewed native identities and `[openruyi.dependencies]`; missing or
 ambiguous identities remain unknown. Current/target declarations are independent:
-a missing side does not prove addition/removal; changes require two fresh observed
-unequal declarations. Local dependency updates can reassess saved facts without
+A missing side does not prove addition or removal. Report a change only when two fresh observed declarations differ. Local dependency updates can reassess saved facts without
 another provider request.
 
 | Backend concern | Preserve |
@@ -199,8 +198,7 @@ Implement `HOSTS`, `inputs()` and `metadata()` in `providers/`; register in
 `providers.release.BACKENDS`. Return `Release` with attributed license metadata and
 original declaration. Optional `withdrawal()` enables Yanked only when the registry
 asserts it; Go uses proxy retraction, not deps.dev's deprecated flag.
-Raise `UnsupportedRelease` for absent/ambiguous assertions; transport failures remain
-errors. Neither is a negative finding. License comparison stays in the monitor.
+Raise `UnsupportedRelease` for absent or ambiguous assertions. Report transport failures as errors. Neither is a negative finding. License comparison stays in the monitor.
 
 ## Add a version source
 

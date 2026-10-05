@@ -16,8 +16,7 @@ Installation references the image's `/app/config/` catalogs, rather than copying
 them into `/config`. Release updates therefore supply new identities, rules and
 distribution mappings without replacing operator settings.
 Absolute references use the application container's filesystem. The installer
-initializes them inside the selected image; do not import host-checkout absolute
-paths as container paths.
+initializes them inside the selected image. Do not use absolute host-checkout paths as container paths.
 
 Administrator exceptions use separately named files:
 
@@ -68,8 +67,7 @@ python-requests = { source = "pypi", pypi = "requests" }
 "widget@3" = { source = "pypi", pypi = "widget", include_regex = '^3\.[0-9]+\.[0-9]+$' }
 ```
 
-Package name defaults to track name. Compare formal releases; preserve explicit
-maintenance lines. Shared KDE/Qt homepages do not establish component identity.
+The package name defaults to the track name. Compare formal releases. Preserve explicit maintenance lines. Shared KDE/Qt homepages do not establish component identity.
 
 For a prerelease side observation, define another track and bind it without
 changing the main comparison:
@@ -85,7 +83,7 @@ PYTHONPATH=backend python -m tracker.package check python-requests \
   --config config/tracker.toml --format human --output /tmp/requests-check.json
 ```
 
-`--format human` prints a short result; the default is JSON. `--output` saves the
+`--format human` prints a short result. The default is JSON. `--output` saves the
 complete report. A matching result today does not prove two rules have identical
 identity or filtering semantics.
 
@@ -154,8 +152,7 @@ widget = { monitors = { security = { vendor = "verified_vendor", product = "veri
 ```
 
 The default CPE part is `a` (application); use `part = "o"` for an OS kernel.
-Verify identity against upstream sources and the NVD CPE dictionary; package-name
-equality is not evidence. NVD rejects unresolved/snapshot versions instead of
+Verify identity against upstream sources and the NVD CPE dictionary. Matching package names alone do not establish identity. NVD rejects unresolved/snapshot versions instead of
 stripping them to a release. Public API requests are paced at 6.5 seconds;
 checks use the shared dated cache and retry automatically after errors.
 
@@ -176,7 +173,7 @@ PYTHONPATH=backend python -m tracker.package setup PACKAGE \
 ```
 
 Review identity and release policy before adding the entry. `entry=null` means no
-candidate was generated; inspect `reason`, not just the count. Aliases belong in
+candidate was generated. Inspect `reason`, not just the count. Aliases belong in
 identity data. A SPEC Name/directory mismatch is a packaging defect: an exception
 must state its `TODO(drop)` removal condition.
 
@@ -210,7 +207,7 @@ PYTHONPATH=backend python -m tracker.package apply \
 Conflicts or input drift reject promotion. It handles version rules, package
 policy, BuildSystem styles and monitor settings; other operator settings, including
 dependency mappings, need explicit edits in the new config directory. Apply creates
-a new directory; it does not change the service's mounted configuration. Follow
+a new directory. It does not change the service's mounted configuration. Follow
 [Configuration changes](../docs/deployment.md#configuration-and-ports) to switch to
 that directory.
 
@@ -252,8 +249,8 @@ Aliases must identify an existing package; shared aliases are not guessed.
 Open and closed records are retained in SQLite, independently of package
 versions. Incremental polls use `updated_at`, a two-minute overlap and ETags;
 weekly reconciliation detects missing records. Unchanged records and PR paths
-are reused; weekly reconciliation rechecks open PR revisions. Each list page processes issues before PRs. PR file paths and then
-bounded package-name matching in text provide association evidence.
+are reused. Weekly reconciliation rechecks open PR revisions.
+Each list page processes issues before PRs. Association checks use PR file paths first, then bounded package-name matching in text.
 
 Without `LOOKOUT_GITHUB_TOKEN`, each batch makes at most six requests, at least
 ten minutes apart. A completed poll with no changes adds one interval to the
@@ -268,7 +265,6 @@ and GitHub cooldowns override the schedule. Anonymous access shares the host
 IP quota, so initial history may take days. GitHub returns at most 3,000 files
 per PR; incomplete paths remain explicit rather than becoming an empty match.
 
-Credentials are not written to observations. Empty `repositories` disables
-collection. Homepage counts are packages; package badges count linked records
-across all states. `/api/v2/packages/NAME/activity?kind=pr` (or `issue`) returns
+Credentials are not written to observations. Homepage counts show packages.
+Package badges count linked records across all states. `/api/v2/packages/NAME/activity?kind=pr` (or `issue`) returns
 20 records, newest updated first, with `next_cursor`; `per_page` is at most 50.
