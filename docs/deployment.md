@@ -1,9 +1,8 @@
 # Deployment
 
-The preferred host is Fedora with Rootless Podman and user-level Quadlet. Lookout
-runs the website, API and collectors in one container. The host schedules image updates and backups.
-The web port binds to host loopback. HTTPS, authentication and external access
-belong to a separate proxy.
+Use Fedora with Rootless Podman and user-level Quadlet.
+Lookout runs the website, API and collectors in one container. The host schedules updates and backups.
+The web port binds to loopback. A separate proxy handles HTTPS, authentication and external access.
 
 ## Requirements
 
@@ -68,8 +67,7 @@ trap '"$ENGINE" rm "$HELPER" >/dev/null' EXIT
 trap - EXIT
 ```
 
-The GHCR package must be Public for anonymous access. Private packages require
-engine registry credentials, not a GitHub API key for version checks.
+Private GHCR packages require engine registry credentials, not a GitHub API key.
 
 ### 3. Install
 
@@ -80,10 +78,9 @@ python3 "$TOOLS/install.py" \
   --auto-update "$IMAGE" | tee "$ROOT/installation.json"
 ```
 
-Installation creates private configuration and persistent data, validates the
-runtime and Quadlet, then waits for the service to become ready. The installer refuses existing
-installation destinations. If installation fails, it retains its files.
-Read the error and journal. Do not initialize the same destination again.
+The installer creates private configuration and persistent data, checks runtime and Quadlet, then waits for readiness.
+It refuses existing destinations. On failure, it retains its files.
+Read the error and journal before recovery. Do not initialize the same destination again.
 
 ```text
 $ROOT/tools/            initial installation tools
@@ -100,8 +97,7 @@ The image update timer checks GitHub every five minutes, with jitter: about
 12 requests/hour, below the 60/hour anonymous limit for an unshared address.
 Only a successful `checks.yml` run on `main` selects its published `sha-<commit>`
 image. No new revision means no GHCR requests, pulls or restarts. If GitHub returns an error or rate limit, the updater leaves the service unchanged.
-It retries at the next scheduled check. Public
-GitHub access is required for unattended GHCR `main`/`latest` channels.
+It retries at the next scheduled check. Unattended GHCR `main`/`latest` updates require public GitHub access.
 The backup timer runs daily. The application schedules its collectors.
 
 To adopt existing state, stop its writer and back it up first. Add
@@ -129,22 +125,20 @@ The service and both timers must be active. The backup status must report
 | `/readyz`, or compatibility `/healthz` | The snapshot and its projection are readable. HTTP 200 may still report `degraded`. |
 | `/api/v2/status` | Collection timestamps, coverage and failures. |
 
-Initial collection is asynchronous. Readiness may initially be 503; installation
-waits for it within a bounded startup budget. Real provider access, persistence
-after logout and reboot recovery need acceptance on the target host.
+Initial collection is asynchronous. The installer waits a limited time for readiness to change from 503.
+On the target host, verify provider access and service recovery after logout and reboot.
 
 ## Operations
 
 Use the instance variables from installation. If host tools were replaced, set
 `TOOLS` to the active script directory in the update/backup units, not the old copy.
-The active `/config` mount is the configuration entry point after migration.
 
 ### Configuration and ports
 
 **Image updates replace release catalogs, not operator settings.** The default
 installation references `/app/config/` for version rules, monitor identities and
-distribution mappings. Explicit operator overrides remain in `/config`; see
-[Configuration](../config/README.md). A deliberately local catalog remains local.
+distribution mappings. Operator overrides remain in `/config`. See [Configuration](../config/README.md).
+Explicit local catalogs remain local.
 GitHub repository defaults follow the release distribution catalog. An explicit
 `[github]` in `tracker.toml` takes precedence, including an empty repository map
 to disable collection. See [GitHub activity configuration](../config/README.md#github-activity).
@@ -167,9 +161,9 @@ It then migrates the data. If the storage-format change is unsupported, the upgr
 
 Before changing the Quadlet or application configuration,
 [pause scheduled jobs](#pause-scheduled-jobs). Edit the active config path recorded in the `/config:ro,Z` mount, not an old copy.
-For a deliberately local replacement, remove `Label=org.openruyi.catalog-image=…`
-from the Quadlet and change its `/config:ro,Z` volume path; keep `/data` unchanged. After editing,
-set `PORT` to the selected host port and run:
+For a local replacement, remove `Label=org.openruyi.catalog-image=…` from the Quadlet.
+Change its `/config:ro,Z` volume path. Keep `/data` unchanged.
+Set `PORT` to the selected host port, then run:
 
 ```sh
 systemctl --user daemon-reload
@@ -207,8 +201,7 @@ Only web port 8080 is published, on host loopback; API 18731 stays internal. The
 [Caddy example](../deploy/Caddyfile.example) is for a host proxy. Port or ingress
 changes do not require a frontend rebuild.
 
-Security uses public OSV and NVD APIs; it needs neither a scanner installation nor
-a local vulnerability database. Reviewed CPE identities are in `packages.toml`.
+Security queries public OSV and NVD APIs. No scanner or local vulnerability database is required. Reviewed CPE identities are in `packages.toml`.
 Provider errors remain errors, not a claim of no advisories. The existing monitor
 heartbeat refreshes unchanged versions too; operators can override refresh timing
 in `[monitors.refresh.security]` without changing query identities.
@@ -217,8 +210,7 @@ in `[monitors.refresh.security]` without changing query identities.
 
 The upgrader migrates copied defaults only with a recorded original installation
 image. New default installations record that identity. Explicit `--config`
-installations remain operator-owned. It never treats the last running image as
-the original baseline, nor replaces a local catalog without provenance.
+installations remain operator-owned. The last running image is not necessarily the original baseline. Unverified local catalogs remain unchanged.
 
 If the original image is unavailable, keep the local catalog until its ownership
 can be reviewed. Do not supply a guessed baseline.
@@ -240,8 +232,7 @@ timers after acceptance. Subsequent image upgrades need no catalog-copy step.
 (EOF/reset/timeout) receive at most three attempts within the original request
 budget; authorization failures are not retried. A release tag `vX.Y.Z`, a
 `sha-<full-commit>` tag, or `@sha256:<registry-digest>` selects a published build.
-Unchanged images do not restart the application. A changed image has a short
-stop/start interval; this is **not zero-downtime deployment**.
+Unchanged images do not restart the application. A changed image requires a short **service interruption**.
 
 For a fixed image, enter its published release, commit tag or digest reference:
 
@@ -254,12 +245,12 @@ python3 "$TOOLS/upgrade.py" --image "$SELECTED_IMAGE" \
 
 If a backup or update holds the lock, the command fails. Retry after that job finishes.
 The upgrade preserves the data mount, port, environment and resource limits.
-GHCR `main`/`latest` use successful GitHub workflow publications, not registry
-polling. A new publication is pinned to its commit tag and checked against the
-image revision; a cached candidate is reused on retry. Other explicit image
+The updater pins each successful GHCR `main`/`latest` publication to its commit tag and checks the image revision.
+Retries reuse the cached candidate. Other explicit image
 references are compared through registry metadata for that manual invocation.
 Discovery errors abort without changing the service.
-A copied-catalog migration selects a new config mount; other updates keep it. It records the prior image, unit and backup under `$ROOT/backups/upgrade-*`.
+Catalog migration selects a new config mount. Other updates retain it.
+Upgrade records under `$ROOT/backups/upgrade-*` contain the prior image, unit and backup.
 If the new image fails, the old image resumes only when it can read the resulting
 data. Otherwise the instance stays stopped. Arbitrary downgrade compatibility is
 not guaranteed; restoring an older database is a separate data-loss decision.
@@ -321,12 +312,10 @@ done
 
 Scheduled updates and backups execute `$ROOT/automation/current`, an atomic
 pointer to a complete versioned tool directory. A successful image upgrade
-selects that image's tools; failed upgrades keep the previous pointer. No manual
-script copying is required. Previous tool directories remain available for review.
+selects that image's tools; failed upgrades keep the previous pointer. Previous tool directories remain available for review.
 
 Trusting the image channel authorizes its host-side upgrade code. No container
-receives the engine socket. Application configuration, data, port and proxy
-settings remain independent of the tool pointer.
+receives the engine socket. Changing the tool pointer does not change application configuration, data, port or proxy settings.
 
 ### Restore into a separate instance
 

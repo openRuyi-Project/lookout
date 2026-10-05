@@ -13,14 +13,12 @@
 
 Use [EOL](../backend/tracker/monitors/eol.py) for current-release evidence,
 [License](../backend/tracker/monitors/license.py) for upgrade evidence, or
-[Yanked](../backend/tracker/monitors/yanked.py) for registry reuse. A normal evidence
-adapter gets catalog, API, facets and detail presentation automatically; it needs
-no Astro branch or new API endpoint.
+[Yanked](../backend/tracker/monitors/yanked.py) for registry reuse. Evidence adapters reuse the catalog, API, facets and detail renderer.
 
 ## Add an evidence adapter
 
 1. Implement the [Adapter contract](../backend/tracker/monitors/contract.py) in
-   `monitors/ID.py`. Use a package only when responsibilities warrant separate files.
+   `monitors/ID.py`. Use a package only if the adapter needs separate files.
 2. Register the trusted module in `REGISTRY` and enable it in config. `source`,
    `version` and `build` are reserved batch collectors, not per-package adapters.
 3. Resolve identity with `identity.from_package()`, letting explicit monitor
@@ -62,9 +60,9 @@ upgrade scopes, `target_version`. Adapters receive no snapshot or storage handle
 | Exception | Failed/malformed response; runner isolates it and retains matching dated evidence |
 
 An upgrade-only adapter relies on the shared version decision, not another
-comparator. Combined scope additionally returns `scope_checks` for `current` and,
-when present, `upgrade`, each with `status` (`ok`, `error`, `unsupported`) and
-`note`. Its overall status may also be `error`. Findings identify their scope and
+comparator. Combined scope returns `scope_checks` for `current` and any `upgrade`.
+Each includes `status` (`ok`, `error`, `unsupported`) and `note`.
+The overall status can also be `error`. Findings identify their scope and
 target. Successful current results survive a failed target check; unsupported
 metadata does not become a transport failure.
 
@@ -74,8 +72,7 @@ sensitive to local patches must retain source context and use a single scope.
 
 ### Facts
 
-Use the ingestion models, not a second schema. Keep finding IDs stable across polls.
-Do not use poll time as identity. Labels/tags classify assertions, not urgency or
+Use the ingestion models. Keep finding IDs stable across polls. Labels/tags classify assertions, not urgency or
 maintainer actions. Each evidence field carries a provider and public HTTPS URL:
 
 ```python
@@ -84,11 +81,9 @@ return {'status': 'ok', 'findings': [finding('cycle:3', 'EOL', '3.x', facts, url
         'note': None}
 ```
 
-`key` is display text; `code` is a stable machine identifier when a consumer needs
-one. Missing values are null with `unavailable`, `not_applicable` or `not_evaluated`,
+`key` is display text. Use `code` for stable machine identification. Missing values are null with `unavailable`, `not_applicable` or `not_evaluated`,
 never false. Reuse issue names from `monitors/issues.py`; declare styles in
-`presentation/labels.toml`. The generic renderer distinguishes outline issue tags
-from solid BuildSystem identities.
+`presentation/labels.toml`.
 
 ### IO and scheduling
 
@@ -106,8 +101,8 @@ def refresh(subject, inputs, previous):
     return Schedule(interval_seconds=21600, retry_seconds=300, max_retry_seconds=3600)
 ```
 
-Changed fingerprints make checks immediately eligible. Errors and partial results use capped exponential retries. Batch/worker limits may delay eligible work. Cache age is
-bounded by the effective interval. Operators override policies in
+Changed fingerprints make checks eligible immediately, subject to batch and worker limits.
+Errors and partial results use capped exponential retries. Cache age cannot exceed the effective interval. Operators override policies in
 `[monitors.refresh.ID]`; staleness must exceed the normal interval. Vulnerabilities
 can appear without version changes, so periodic refresh remains necessary.
 
@@ -158,8 +153,7 @@ PYTHONPATH=backend python -m tracker.monitors check PACKAGE --monitor ID \
 ```
 
 `explain --db` adds saved context/due status. Run [development checks](../CONTRIBUTING.md#run-checks).
-Measure identity, eligible and successful-check coverage separately from findings,
-using the same snapshot; few alerts do not imply little coverage.
+Use one snapshot to measure identity coverage, eligible checks, successful checks and findings separately.
 
 ## Add a Requires backend
 
@@ -173,8 +167,8 @@ Do not branch comparators on dependency names.
 Requires observes **upstream declarations**, not SPEC requirements.
 Local source versions only assess satisfaction, not installability/ABI. Mappings
 come from reviewed native identities and `[openruyi.dependencies]`; missing or
-ambiguous identities remain unknown. Current/target declarations are independent:
-A missing side does not prove addition or removal. Report a change only when two fresh observed declarations differ. Local dependency updates can reassess saved facts without
+ambiguous identities remain unknown. Compare current and target declarations only when both are fresh.
+Missing data does not prove addition or removal. Local dependency updates can reassess saved facts without
 another provider request.
 
 | Backend concern | Preserve |
@@ -198,14 +192,14 @@ Implement `HOSTS`, `inputs()` and `metadata()` in `providers/`; register in
 `providers.release.BACKENDS`. Return `Release` with attributed license metadata and
 original declaration. Optional `withdrawal()` enables Yanked only when the registry
 asserts it; Go uses proxy retraction, not deps.dev's deprecated flag.
-Raise `UnsupportedRelease` for absent or ambiguous assertions. Report transport failures as errors. Neither is a negative finding. License comparison stays in the monitor.
+Raise `UnsupportedRelease` for absent or ambiguous assertions. Report transport failures as errors.
+Neither means no findings. Keep license comparison in the monitor.
 
 ## Add a version source
 
-Prefer native nvchecker sources/options. A missing reusable protocol can implement
+Use native nvchecker sources and options first. For a missing reusable protocol, implement
 `async get_version(name, conf, *, cache, **kwargs)` in
-`backend/nvchecker_source/NAME.py`; use nvchecker's cache/session. TOML owns package
-identities and release lines; nvchecker owns common filtering/normalization.
+`backend/nvchecker_source/NAME.py`; use nvchecker's cache/session. Keep package identities and release lines in TOML. Use nvchecker for common filtering and normalization.
 Provider ordering still matters: Anitya's first stable value is not unordered history.
 
 Extend `identity.from_native()` only if other monitors consume the new identity;
@@ -224,13 +218,11 @@ plugin. Release its rules with the installed code.
 | Layout, themes, keyboard behavior | Astro document components and styles |
 | API contract → TypeScript | `api.py`, then `scripts/api-types.py` |
 
-The common evidence shape needs no new renderer. A genuinely different shape needs
-a typed payload and pure `Presenter`, using fields/tables/entries first. Add a
-primitive only when those cannot express it. Every presenter supplies detail
+Reuse the evidence renderer. For a different shape, add a typed payload and pure `Presenter`.
+Use existing fields, tables and entries before adding a display primitive. Every presenter supplies detail
 sections; a Results page needs both `columns` and `cells`. Source is context,
 not a duplicate Version table. Collectors never emit HTML or component names.
 
 Aggregate `preview` shows all matching items, folding identical assertions only.
 RuntimeDeps shows mismatches, plus changes when selected; conditions stay in detail.
-Build reasons appear beneath their target statuses. The backend owns filter links
-and counts; Astro submits the GET query and renders the returned document.
+Build reasons appear beneath their target statuses. The backend supplies filter links and counts. Astro submits GET queries and renders the returned document.
