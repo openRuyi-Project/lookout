@@ -24,13 +24,13 @@ import logos from '../assets/logos/catalog.json';
     <h2>Data sources</h2>
     <dl class="api-list">
       <dt>Source and builds</dt>
-      <dd><a href="https://github.com/openRuyi-Project/openRuyi/tree/main/SPECS">openRuyi SPEC files</a> provide package metadata; <a href="https://build.openruyi.cn/">BuildService</a> provides target states and build history.</dd>
+      <dd><a href="https://github.com/openRuyi-Project/openRuyi/tree/main/SPECS">openRuyi SPEC files</a> provide package metadata. <a href="https://build.openruyi.cn/">BuildService</a> provides target states and build history.</dd>
       <dt>Versions</dt>
       <dd><a href="https://nvchecker.readthedocs.io/">nvchecker</a> queries configured upstream releases, registries and repositories. Rules select identities and release lines.</dd>
       <dt>Dependencies, licenses and withdrawn releases</dt>
       <dd>Upstream registries and release metadata, including PyPI, crates.io, Go module services and MetaCPAN. Coverage depends on the source and package identity.</dd>
       <dt>Security</dt>
-      <dd><a href="https://osv.dev/">OSV</a>, <a href="https://nvd.nist.gov/">NVD</a> provide advisory matches; <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog">CISA KEV</a> and <a href="https://www.first.org/epss/">FIRST EPSS</a> add exploitation signals.</dd>
+      <dd><a href="https://osv.dev/">OSV</a>, <a href="https://nvd.nist.gov/">NVD</a> provide advisory matches. <a href="https://www.cisa.gov/known-exploited-vulnerabilities-catalog">CISA KEV</a> and <a href="https://www.first.org/epss/">FIRST EPSS</a> add exploitation signals.</dd>
       <dt>Lifecycle and activity</dt>
       <dd><a href="https://endoflife.date/">endoflife.date</a> provides lifecycle dates. GitHub provides issues, pull requests and changed paths used for package associations.</dd>
     </dl>
@@ -44,9 +44,9 @@ import logos from '../assets/logos/catalog.json';
     <p>Build icons: <a href="https://fontawesome.com/">Font Awesome Free 6.7.2</a> by Fonticons, Inc., used unchanged under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p>
     <details><summary>Font Awesome notices</summary><pre>{fontAwesomeLicense}</pre></details>
     <h3>Tool and ecosystem marks</h3>
-    <p>Marks identify tools or language families, not endorsement. GNU identifies the Autotools family; language marks do not identify a particular build backend.</p>
+    <p>Marks identify tools or language families, not endorsement. GNU identifies the Autotools family. Language marks do not identify a particular build backend.</p>
     <p>Python and the Python logos are trademarks or registered trademarks of the Python Software Foundation, used under its nominative-use policy.</p>
-    <p>CMake is a Kitware trademark, used only to identify the build tool; no affiliation or endorsement is implied.</p>
+    <p>CMake is a Kitware trademark, used only to identify the build tool. This does not imply affiliation or endorsement.</p>
     <dl class="api-list">
       {Object.values(logos).map(logo => <><dt><a href={logo.source}>{logo.title}</a></dt><dd>{logo.credit}. <a href={logo.license_url}>{logo.license}</a>. <a href={logo.asset_source}>SVG source</a>. {logo.changes} {'trademark_url' in logo && <a href={logo.trademark_url}>Trademark policy</a>}</dd></>)}
     </dl>

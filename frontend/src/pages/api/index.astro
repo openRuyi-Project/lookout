@@ -14,7 +14,7 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
       <tbody>
         <tr><td><a href="/api/v2/packages"><code>/packages</code></a></td>
           <td>Summaries + filter counts. <code>per_page</code>: default 100, max 200.
-            <code>detail=full</code> adds evidence; requires <code>per_page≤20</code>.</td></tr>
+            <code>detail=full</code> adds evidence and requires <code>per_page≤20</code>.</td></tr>
         <tr><td><a href="/api/v2/packages/bash"><code>/packages/{'{name}'}</code></a></td>
           <td>Full package observations.</td></tr>
         <tr><td><code>/packages:batchGet</code></td>
@@ -23,25 +23,25 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         <tr><td><a href="/api/v2/tracks/meson"><code>/tracks/{'{id}'}</code></a></td><td>Saved version-track observation.</td></tr>
         <tr><td><a href="/api/v2/targets"><code>/targets</code></a></td><td>OBS target identities.</td></tr>
         <tr><td><a href="/api/v2/status"><code>/status</code></a></td><td>Collection freshness, coverage and errors.</td></tr>
-        <tr><td><a href="/api/v2/export"><code>/export</code></a></td><td>Complete snapshot, schema 2; unpaginated.</td></tr>
+        <tr><td><a href="/api/v2/export"><code>/export</code></a></td><td>Complete, unpaginated snapshot, schema 2.</td></tr>
       </tbody>
     </table>
 
     <h2>Queries</h2>
     <ul>
-      <li><code>monitor</code> focuses filtering; repeated <code>include</code> selects returned monitors
+      <li><code>monitor</code> focuses filtering. Repeated <code>include</code> selects returned monitors
         (default: all). IDs come from the list response's <code>monitors</code>.</li>
-      <li><code>q</code> searches names; <code>search=observations</code> adds fact values,
+      <li><code>q</code> searches names. <code>search=observations</code> adds fact values,
         restricted by <code>monitor</code> when set. Matching uses case-insensitive substrings.</li>
-      <li>Ordinary search: <code>?Outdated&amp;Yanked</code>. Conditions intersect;
-        states of the same build target and BuildSystems form unions:
+      <li>Ordinary search: <code>?Outdated&amp;Yanked</code>. Conditions intersect.
+        States of the same build target and BuildSystems form unions:
         <code>?rva23_failed+rva23_succeeded&amp;Yanked</code>,
         <code>?buildsystem_cmake+buildsystem_pyproject</code>.</li>
       <li>Advanced Search: <code>?Outdated=AND&amp;Advisory=OR&amp;EOL=NOT</code>.
         Operations run left to right from ALL. <code>Group=AND|OR|NOT</code>
-        seals the preceding ungrouped conditions; each group starts from ALL and cannot nest.
+        seals the preceding ungrouped conditions. Each group starts from ALL and cannot nest.
         <code>advanced=1</code> opens the editor without conditions. Do not mix bare flags and operators.</li>
-      <li>Ordinary counts show intersections; alternatives within a selected build target or BuildSystem count additions under the other conditions.
+      <li>Ordinary counts show intersections. Alternatives within a selected build target or BuildSystem count additions under the other conditions.
         Advanced Search uses <code>next_logic=and|or|not</code> (default: and): AND counts matches, OR counts additions, NOT counts removals.
         The operator affects counts, not current results. Each package counts once within the search and focused view.
         Check counts target coverage.</li>
@@ -58,10 +58,10 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
     <pre><code><a href={batch}>{batch}</a></code></pre>
 
     <p><code>404</code> missing resource · <code>422</code> invalid package query · <code>503</code> no snapshot.<br />
-      Preserve <code>check</code> and <code>stale</code>; null means unknown.
+      Preserve <code>check</code> and <code>stale</code>. Null means unknown.
       One snapshot per response, not across pages.</p>
     <p><code>check.failures</code> identifies failed subchecks, including partial results.
-      <code>check_groups</code> counts the <code>uncovered</code> and <code>failed</code> filters;
+      <code>check_groups</code> counts the <code>uncovered</code> and <code>failed</code> filters.
       <code>check_statuses</code> retains the individual states.</p>
     <p>Website display documents: <a href="/api/ui/packages">/api/ui/packages</a>,
       <a href="/api/ui/packages/bash">/api/ui/packages/{'{name}'}</a>.</p>

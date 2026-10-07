@@ -10,7 +10,7 @@ not to imply endorsement or brand Lookout.
 
 Preserve these asset-specific conditions:
 
-- Python: official two-snakes artwork, original colors and ™; nominative use only.
+- Python: official two-snakes artwork, original colors and ™. Use only to identify Python.
 - GNU: credit FSF and Aurélio A. Heckert. Share adaptations under CC-BY-SA-2.0.
 - Go Gopher: retain both the CC-BY-4.0 attribution and Devicon MIT notice.
 - Rust: follow the linked trademark policy as well as the artwork license.

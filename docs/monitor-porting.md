@@ -4,11 +4,11 @@
 
 | Need | Edit | Registration / consumer |
 |---|---|---|
-| Another package using an existing source | Native version rule or `packages.toml` identity | [Configuration](../config/README.md); no code |
+| Another package using an existing source | Native version rule or `packages.toml` identity | [Configuration](../config/README.md), without code changes |
 | New upstream fact | `monitors/ID.py` | `monitors/registry.py`, then `[monitors].enabled` |
 | Another requirements protocol | `monitors/requires/` | `monitor.BACKENDS` |
 | Another release-metadata registry | `providers/` | `providers.release.BACKENDS` |
-| Missing nvchecker protocol | `backend/nvchecker_source/NAME.py` | Native rule `source`; no monitor registration |
+| Missing nvchecker protocol | `backend/nvchecker_source/NAME.py` | Native rule `source`, without monitor registration |
 | New presentation of saved facts | `presentation/` | Existing presenter or a new data-kind presenter |
 
 Use [EOL](../backend/tracker/monitors/eol.py) for current-release evidence,
@@ -19,12 +19,11 @@ Use [EOL](../backend/tracker/monitors/eol.py) for current-release evidence,
 
 1. Implement the [Adapter contract](../backend/tracker/monitors/contract.py) in
    `monitors/ID.py`. Use a package only if the adapter needs separate files.
-2. Register the trusted module in `REGISTRY` and enable it in config. `source`,
-   `version` and `build` are reserved batch collectors, not per-package adapters.
+2. Register the trusted module in `REGISTRY` and enable it in config. The batch collectors reserve `source`, `version` and `build`. These names cannot identify per-package adapters.
 3. Resolve identity with `identity.from_package()`, letting explicit monitor
    settings override saved Source0/native-rule identity. Put package exceptions
    in `[NAME.monitors.ID]`, not Python name branches.
-   Released identities belong in `config/packages.toml`; installation reads that
+   Released identities belong in `config/packages.toml`. Installation reads that
    catalog from the image. Administrator exceptions use `package_overrides`.
    Replace one complete adapter identity, never merge individual provider fields.
 4. Fetch through the supplied `io`. Return attributed facts with `finding()` and
@@ -37,14 +36,14 @@ Use [EOL](../backend/tracker/monitors/eol.py) for current-release evidence,
 
 | Member | Contract |
 |---|---|
-| `VERSION` | Interpretation revision in the fingerprint; bump when identical inputs acquire different meaning |
+| `VERSION` | Interpretation revision in the fingerprint. Bump when identical inputs acquire different meaning |
 | `HOSTS` | Exact HTTPS hosts accepted by scoped IO |
 | `TITLE` | Optional display title, otherwise registry ID |
 | `SCOPE` | `current` (default), `upgrade`, or `current_and_upgrade` |
 | `inputs(package, configured)` | Pure JSON-compatible identity/settings, or `None` for no reliable identity |
 | `check(subject, inputs, io)` | Attributed `findings`, `status`, `note` |
-| `query_subject(subject, inputs)` | Optional pure fingerprint projection; `check` still receives the full subject |
-| `refresh(subject, inputs, previous)` | Optional `Schedule`; default recheck is six hours |
+| `query_subject(subject, inputs)` | Optional pure fingerprint projection. `check` still receives the full subject |
+| `refresh(subject, inputs, previous)` | Optional `Schedule`. Default recheck is six hours |
 
 `package` supplies name/revision, public native-rule `identity`, saved
 `source_release` and corroborated full `source_commit` when available. Its version
@@ -54,16 +53,16 @@ upgrade scopes, `target_version`. Adapters receive no snapshot or storage handle
 
 | Result | Meaning |
 |---|---|
-| `ok`, including no findings | Provider check completed; not a claim that the whole package is safe |
-| `partial` | Usable facts with incomplete subchecks; preserve failures and their evidence gaps |
-| `unsupported` | Identity/metadata cannot support this check; not an empty success |
-| Exception | Failed/malformed response; runner isolates it and retains matching dated evidence |
+| `ok`, including no findings | Provider check completed. This does not establish safety for the whole package |
+| `partial` | Usable facts with incomplete subchecks. Preserve failures and their evidence gaps |
+| `unsupported` | Identity/metadata cannot support this check. This is not an empty success |
+| Exception | Failed/malformed response. The runner isolates it and retains matching dated evidence |
 
 An upgrade-only adapter relies on the shared version decision, not another
 comparator. Combined scope returns `scope_checks` for `current` and any `upgrade`.
 Each includes `status` (`ok`, `error`, `unsupported`) and `note`.
 The overall status can also be `error`. Findings identify their scope and
-target. Successful current results survive a failed target check; unsupported
+target. Successful current results survive a failed target check. Unsupported
 metadata does not become a transport failure.
 
 Combined scope is for exact upstream releases. `runner.same_scope` matches adapter
@@ -82,16 +81,15 @@ return {'status': 'ok', 'findings': [finding('cycle:3', 'EOL', '3.x', facts, url
 ```
 
 `key` is display text. Use `code` for stable machine identification. Missing values are null with `unavailable`, `not_applicable` or `not_evaluated`,
-never false. Reuse issue names from `monitors/issues.py`; declare styles in
+never false. Reuse issue names from `monitors/issues.py`. Declare styles in
 `presentation/labels.toml`.
 
 ### IO and scheduling
 
 Use `io.json(method, url, body=None)`, `io.text(url)` and `io.today`. Shared IO owns
-bounded transport, cache, deduplication and the operator proxy. Text is limited to
-512 KiB. Credentials, redirects, fragments and nonstandard ports are rejected.
+bounded transport, cache, deduplication and the operator proxy. IO limits text to 512 KiB. It rejects credentials, redirects, fragments and nonstandard ports.
 `min_interval=1.0` paces a host across workers, not cache hits. HTTP 429/503 applies
-`Retry-After` with a 60-second minimum; this is a per-collector budget.
+`Retry-After` with a 60-second minimum. This is a per-collector budget.
 
 ```python
 from tracker.monitors.schedule import Schedule
@@ -117,7 +115,7 @@ identity only when the omitted field cannot affect a query or its meaning:
 
 Fixed security tags must match the queried version. Fixed commits must agree with confined Source0.
 
-## Verify the port
+## Check the port
 
 [Integration example](../backend/tests/monitors/test_monitor_porting.py) mocks
 provider HTTP while exercising runner, SQLite, catalog, projection and facets.
@@ -125,7 +123,7 @@ provider HTTP while exercising runner, SQLite, catalog, projection and facets.
 | Fixture | Required result |
 |---|---|
 | Valid response, with/without a finding | Attributed fact / completed empty result |
-| Missing identity, unsupported metadata, timeout | Distinct states; another package still progresses |
+| Missing identity, unsupported metadata, timeout | Distinct states. Another package still progresses |
 | Same query and facts | Check time advances, evidence revision stays stable |
 | New query or in-flight source change | Old evidence cannot become a fresh result for another subject |
 | Retry/refresh boundary and cached bytes | Effective schedule and original evidence age preserved |
@@ -156,17 +154,17 @@ Do not branch comparators on dependency names.
 
 Requires observes **upstream declarations**, not SPEC requirements.
 Local source versions only assess satisfaction, not installability/ABI. Mappings
-come from reviewed native identities and `[openruyi.dependencies]`; missing or
+come from reviewed native identities and `[openruyi.dependencies]`. Missing or
 ambiguous identities remain unknown. Compare current and target declarations only when both are fresh.
 Missing data does not prove addition or removal. Local dependency updates can reassess saved facts without
 another provider request.
 
 | Backend concern | Preserve |
 |---|---|
-| PyPI `Requires-Python` / `Requires-Dist` | Markers/extras; target environment, not collector host; unknown variables remain unknown |
-| Optional vs platform condition | Feature selection vs applicability; false target conditions are `not_applicable` |
+| PyPI `Requires-Python` / `Requires-Dist` | Markers/extras and target environment, not collector host. Unknown variables remain unknown |
+| Optional vs platform condition | Feature selection vs applicability. False target conditions are `not_applicable` |
 | crates.io `rust-version` | Build requirement, not runtime dependency |
-| CPAN prerequisites | Static `dynamic_config=false`; requires/recommends/suggests as distinct clauses |
+| CPAN prerequisites | Static `dynamic_config=false`, with distinct requires/recommends/suggests clauses |
 | CPAN module versions | Distribution versions cannot substitute for component versions |
 
 Optional `provides(version, settings, io)` returns attributed component versions
@@ -177,10 +175,10 @@ mapping and target conditions through the API and presenter.
 
 ## Add a registry metadata backend
 
-Implement `HOSTS`, `inputs()` and `metadata()` in `providers/`; register in
+Implement `HOSTS`, `inputs()` and `metadata()` in `providers/`. Register in
 `providers.release.BACKENDS`. Return `Release` with attributed license metadata and
 original declaration. Optional `withdrawal()` enables Yanked only when the registry
-asserts it; Go uses proxy retraction, not deps.dev's deprecated flag.
+asserts it. Go uses proxy retraction, not deps.dev's deprecated flag.
 Raise `UnsupportedRelease` for absent or ambiguous assertions. Report transport failures as errors.
 Neither means no findings. Keep license comparison in the monitor.
 
@@ -188,11 +186,11 @@ Neither means no findings. Keep license comparison in the monitor.
 
 Use native nvchecker sources and options first. For a missing reusable protocol, implement
 `async get_version(name, conf, *, cache, **kwargs)` in
-`backend/nvchecker_source/NAME.py`; use nvchecker's cache/session. Keep package identities and release lines in TOML. Use nvchecker for common filtering and normalization.
+`backend/nvchecker_source/NAME.py`. Use nvchecker's cache/session. Keep package identities and release lines in TOML. Use nvchecker for common filtering and normalization.
 Provider ordering still matters: Anitya's first stable value is not unordered history.
 
-Extend `identity.from_native()` only if other monitors consume the new identity;
-never import the source plugin into readers. `identity.request_url()` shares URL
+Extend `identity.from_native()` only if other monitors consume the new identity.
+Never import the source plugin into readers. `identity.request_url()` shares URL
 resolution with collection. Test the real CLI against loopback fixtures: empty,
 malformed, ordering, line changes and cache isolation. The wheel must contain the
 plugin. Release its rules with the installed code.
@@ -209,9 +207,9 @@ plugin. Release its rules with the installed code.
 
 Reuse the evidence renderer. For a different shape, add a typed payload and pure `Presenter`.
 Use existing fields, tables and entries before adding a display primitive. Every presenter supplies detail
-sections; a Results page needs both `columns` and `cells`. Source is context,
+sections. A Results page needs both `columns` and `cells`. Source is context,
 not a duplicate Version table. Collectors never emit HTML or component names.
 
 Aggregate `preview` shows all matching items, folding identical assertions only.
-RuntimeDeps shows mismatches, plus changes when selected; conditions stay in detail.
+RuntimeDeps shows mismatches, plus changes when selected. Conditions stay in detail.
 Build reasons appear beneath their target statuses. The backend supplies filter links and counts. Astro submits GET queries and renders the returned document.

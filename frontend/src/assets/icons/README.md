@@ -8,4 +8,4 @@ Notice: `LICENSES/LicenseRef-Octicons-MIT.txt`.
 Source: https://github.com/FortAwesome/Font-Awesome/tree/6.7.2/svgs/solid
 Credit: Fonticons, Inc. Notice: `LICENSES/LicenseRef-FontAwesome-Free.txt`.
 Build meanings follow OBS `Webui::BuildresultHelper::STATUS_ICON`.
-Only selected local SVGs ship; no icon font, CDN or runtime asset requests.
+Only selected local SVGs ship. The interface uses no icon font, CDN or runtime asset requests.

@@ -8,13 +8,13 @@ The web port binds to loopback. A separate proxy handles HTTPS, authentication a
 
 | Requirement | Check or responsibility |
 |---|---|
-| Linux x86_64, cgroup v2, Landlock ABI 6+ and seccomp | The published image targets linux/amd64. Installation probes the native RPM sandbox; unsupported isolation stops startup. |
+| Linux x86_64, cgroup v2, Landlock ABI 6+ and seccomp | The published image targets linux/amd64. Installation probes the native RPM sandbox. Unsupported isolation stops startup. |
 | Rootless Podman, Skopeo, Quadlet, a user systemd manager and Python 3.11+ | The service account needs subordinate UID/GID ranges and linger. The image supplies application dependencies. |
-| Writable local persistent storage | Keep the same data directory across updates. It contains SQLite, the SPEC repository and provider caches; do not use tmpfs or a network filesystem. |
+| Writable local persistent storage | Keep the same data directory across updates. It contains SQLite, the SPEC repository and provider caches. Do not use tmpfs or a network filesystem. |
 | A trusted image and reachable providers | Public GHCR, GitHub, OBS, Git and upstream providers must be reachable. |
 | Private configuration and backups | Maintain free space, backup retention and an independent backup copy. Local backups do not protect against host loss. |
 
-Only one application may write a data directory. The image runs as UID/GID 10001;
+Only one application may write a data directory. The image runs as UID/GID 10001.
 Rootless keep-id maps the service account to that identity. Configuration and the
 container root are read-only. Do not add privileged mode, unconfined seccomp,
 world-writable permissions or a container-engine socket mount.
@@ -100,12 +100,12 @@ image. No new revision means no GHCR requests, pulls or restarts. If GitHub retu
 It retries at the next scheduled check. Unattended GHCR `main`/`latest` updates require public GitHub access.
 The backup timer runs daily. The application schedules its collectors.
 
-To adopt existing state, stop its writer and back it up first. Add
-`--data /absolute/existing/data --config /absolute/reviewed/config` to installation;
-that data is reused rather than copied. Use image upgrades, not installation,
+To adopt existing state, stop its writer. Back up the data. Add
+`--data /absolute/existing/data --config /absolute/reviewed/config` to installation.
+The installer reuses that data without copying it. Use image upgrades, not installation,
 for subsequent releases.
 
-### 4. Verify and take the first backup
+### 4. Check the service and take the first backup
 
 ```sh
 systemctl --user status "$NAME.service" "$NAME-update.timer" "$NAME-backup.timer" --no-pager
@@ -126,11 +126,11 @@ The service and both timers must be active. The backup status must report
 | `/api/v2/status` | Collection timestamps, coverage and failures. |
 
 Initial collection is asynchronous. The installer waits a limited time for readiness to change from 503.
-On the target host, verify provider access and service recovery after logout and reboot.
+On the target host, check provider access and service recovery after logout and reboot.
 
 ## Operations
 
-Use the instance variables from installation. If host tools were replaced, set
+Use the instance variables from installation. If an upgrade replaced the host tools, set
 `TOOLS` to the active script directory in the update/backup units, not the old copy.
 
 ### Configuration and ports
@@ -149,9 +149,9 @@ It then migrates the data. If the storage-format change is unsupported, the upgr
 
 | Setting | Entry point |
 |---|---|
-| Port | `install.py --port`; later change `PublishPort=127.0.0.1:PORT:8080` in `$UNIT` |
-| Resource limits | `--memory 8g --cpus 4 --pids-limit 512`; later edit the Quadlet |
-| GitHub activity token (optional) | `LOOKOUT_GITHUB_TOKEN` in the container environment; read-only repository access |
+| Port | `install.py --port`. Later, change `PublishPort=127.0.0.1:PORT:8080` in `$UNIT` |
+| Resource limits | `--memory 8g --cpus 4 --pids-limit 512`. Later, edit the Quadlet |
+| GitHub activity token (optional) | `LOOKOUT_GITHUB_TOKEN` in the container environment, with read-only repository access |
 | Monitor proxy | `--env TRACKER_MONITOR_PROXY=URL` |
 | Host-local proxy | `--network pasta:-T,7890 --env TRACKER_MONITOR_PROXY=http://127.0.0.1:7890` |
 | OBS, Git and monitor schedules | `tracker.toml` in the active `/config` mount |
@@ -171,13 +171,13 @@ systemctl --user restart "$NAME.service"
 curl --fail "http://127.0.0.1:$PORT/readyz"
 ```
 
-Resume only the timers that were active before the change; leave the update timer
+Resume only the timers that were active before the change. Leave the update timer
 stopped if the image is deliberately pinned.
 
 Resource limits are defaults, not measured minimums. Directory paths cannot
-contain colons; installer unit values cannot contain whitespace, quotes or
+contain colons. Installer unit values cannot contain whitespace, quotes or
 systemd `%` specifiers. Colons are valid in proxy URLs and network parameters.
-No `.env` file is loaded implicitly.
+The installer does not load `.env` files implicitly.
 
 `TRACKER_MONITOR_PROXY` does not configure Git, OBS or host-side registry pulls.
 Configure each proxy at its boundary. For a host-local registry proxy, run:
@@ -197,13 +197,13 @@ Environment=HTTPS_PROXY=http://127.0.0.1:7890
 Then run `systemctl --user daemon-reload`. Keep credentials in private files,
 not shell history or public environment values.
 
-Only web port 8080 is published, on host loopback; API 18731 stays internal. The
+The container publishes only web port 8080 on host loopback. API port 18731 stays internal. The
 [Caddy example](../deploy/Caddyfile.example) is for a host proxy. Port or ingress
 changes do not require a frontend rebuild.
 
-Security queries public OSV and NVD APIs. No scanner or local vulnerability database is required. Reviewed CPE identities are in `packages.toml`.
+Security queries public OSV and NVD APIs. It needs no scanner or local vulnerability database. Reviewed CPE identities are in `packages.toml`.
 Provider errors remain errors, not a claim of no advisories. The existing monitor
-heartbeat refreshes unchanged versions too; operators can override refresh timing
+heartbeat refreshes unchanged versions too. Operators can override refresh timing
 in `[monitors.refresh.security]` without changing query identities.
 
 ### Copied catalog migration
@@ -216,19 +216,18 @@ If the original image is unavailable, keep the local catalog until its ownership
 can be reviewed. Do not supply a guessed baseline.
 
 The stopped-state transaction backs up SQLite, prepares a new private config,
-validates it, then selects the new image **and** config together. Local rule/identity
-edits become explicit overrides; deleted tracks remain excluded. Credentials,
-schedules and data are preserved. Ambiguous deletions reject migration. Failure
+checks it, then selects the new image **and** config together. Local rule/identity
+edits become explicit overrides. Deleted tracks remain excluded. Migration preserves credentials, schedules and data. Ambiguous deletions reject migration. Failure
 reselects the old config/image pair after checking database compatibility.
 
-The prior config stays untouched. `catalogs.json` records both paths; the container mount identifies the active one.
+The prior config stays untouched. `catalogs.json` records both paths. The container mount identifies the active one.
 Keep active config and rollback copies when cleaning backups. Resume paused timers after acceptance.
 
 ### Image upgrades
 
 `main` and `latest` name the same successful CI build. Registry transport failures
 (EOF/reset/timeout) receive at most three attempts within the original request
-budget; authorization failures are not retried. A release tag `vX.Y.Z`, a
+budget. Authorization failures stop retries. A release tag `vX.Y.Z`, a
 `sha-<full-commit>` tag, or `@sha256:<registry-digest>` selects a published build.
 Unchanged images do not restart the application. A changed image requires a short **service interruption**.
 
@@ -244,14 +243,12 @@ python3 "$TOOLS/upgrade.py" --image "$SELECTED_IMAGE" \
 If a backup or update holds the lock, the command fails. Retry after that job finishes.
 The upgrade preserves the data mount, port, environment and resource limits.
 The updater pins each successful GHCR `main`/`latest` publication to its commit tag and checks the image revision.
-Retries reuse the cached candidate. Other explicit image
-references are compared through registry metadata for that manual invocation.
+Retries reuse the cached candidate. For other explicit image references, the upgrader compares registry metadata during that manual invocation.
 Discovery errors abort without changing the service.
 Catalog migration selects a new config mount. Other updates retain it.
 Upgrade records under `$ROOT/backups/upgrade-*` contain the prior image, unit and backup.
 If the new image fails, the old image resumes only when it can read the resulting
-data. Otherwise the instance stays stopped. Arbitrary downgrade compatibility is
-not guaranteed; restoring an older database is a separate data-loss decision.
+data. Otherwise the instance stays stopped. An arbitrary downgrade may be incompatible. Restoring an older database requires a separate decision because it loses newer data.
 
 To resume the configured registry channel:
 
@@ -261,7 +258,7 @@ systemctl --user start "$NAME-update.timer"
 
 ### Backups and failures
 
-Repeat the backup and status commands from [installation verification](#4-verify-and-take-the-first-backup)
+Repeat the backup and status commands from [installation verification](#4-check-the-service-and-take-the-first-backup)
 for an on-demand backup. Copy the database backups, private configuration and
 image references to independent storage. Set retention and monitor free space.
 Do not use `cp` to back up a running SQLite database. API export is not a database backup.
@@ -277,14 +274,14 @@ systemctl --user status "$NAME-update.timer" "$NAME-backup.timer" --no-pager
 | Observed failure | Administrator action |
 |---|---|
 | Image changes, but copied catalogs still stay under `/config` | Check whether the installed launcher delegates to the release. See [Copied catalog migration](#copied-catalog-migration). Do not replace catalogs without a recorded original installation image. |
-| Pull, lock or provider/network failure | Read the job journal. Correct the reported problem. Retry after any active job finishes. Do not reinitialize data. |
+| Pull, lock or provider/network failure | Read the job journal. Fix the reported problem. Retry after any active job finishes. Do not reinitialize data. |
 | Upgrade record says `failed`, rollback `ready` | The old image/config pair resumed. Resolve the configuration conflict or missing original image before retrying. |
 | Upgrade record says `stopped`, rollback `failed` | Keep the instance stopped. Check storage compatibility or restore into a separate instance. Do not force an old reader onto new data. |
 
 ### Pause scheduled jobs
 
 Before replacing host tools or cutting over a recovery instance, stop new jobs
-and require existing ones to have finished:
+and check that existing jobs finished:
 
 ```sh
 UPDATE_WAS_ACTIVE=$(systemctl --user is-active "$NAME-update.timer" || true)
@@ -310,7 +307,7 @@ done
 
 Scheduled updates and backups execute `$ROOT/automation/current`, an atomic
 pointer to a complete versioned tool directory. A successful image upgrade
-selects that image's tools; failed upgrades keep the previous pointer. Previous tool directories remain available for review.
+selects that image's tools. Failed upgrades keep the previous pointer. Previous tool directories remain available for review.
 
 Trusting the image channel authorizes its host-side upgrade code. No container
 receives the engine socket. Changing the tool pointer does not change application configuration, data, port or proxy settings.
@@ -358,9 +355,9 @@ curl --fail "http://127.0.0.1:$RESTORE_PORT/readyz"
 ```
 
 The installer checks storage compatibility and the native runtime before startup.
-Verify the recovered observations, not just HTTP status. Supply the same required
+Check the recovered observations, not just HTTP status. Supply the same required
 proxy/network options as the original installation. Recovery jobs use the resolved
-image digest and their own backup directory; changing their channel is a separate
+image digest and their own backup directory. Changing their channel is a separate
 operator choice.
 
 For a production cutover, [pause the original scheduled jobs](#pause-scheduled-jobs),
@@ -382,7 +379,7 @@ curl --fail "http://127.0.0.1:$PORT/readyz"
 ```
 
 Record the recovery instance's new name, paths and backup directory. Preserve the
-stopped original until acceptance; restoring this older snapshot loses observations
+stopped original until acceptance. Restoring this older snapshot loses observations
 made after the backup. Do not overwrite the original database or start its timers.
 
 ## Docker
@@ -410,8 +407,8 @@ python3 "$TOOLS/upgrade.py" --image "$IMAGE" \
 
 For configuration or a port change, use `maintain.py --container "$NAME"` with
 `--config /absolute/reviewed/config` or `--port PORT`. The application runs as UID
-10001; only new-volume initialization uses a constrained root helper. Preserve
-`$NAME-config`, `$NAME-data` and `$NAME-backups`; do not delete volumes or substitute
+10001. Only new-volume initialization uses a constrained root helper. Preserve
+`$NAME-config`, `$NAME-data` and `$NAME-backups`. Do not delete volumes or substitute
 anonymous ones during upgrades.
 
 Docker does not install the Podman timers. Schedule `upgrade.py` and `maintain.py`

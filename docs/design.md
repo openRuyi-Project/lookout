@@ -15,12 +15,12 @@ configured identities → collectors → SQLite → readmodel → fact API
 | Responsibility | Owner | Contract |
 |---|---|---|
 | Settings and catalogs | `config.py`, `catalog.py` | Explicit references, unit-level overrides, no observation-dependent loading |
-| Version discovery | `monitors/version/` | Proposes candidates; reviewed native rules execute |
+| Version discovery | `monitors/version/` | Proposes candidates. Only reviewed native rules execute |
 | External protocols | `monitors/`, `providers/` | Attributed facts, not maintainer decisions |
 | Writes | `collector.py`, `state.py`, `storage.py` | Phase-owned fields, one serialized transaction |
-| Derived facts and selection | `readmodel/` | Saved input only; no collection |
+| Derived facts and selection | `readmodel/` | Saved input only, without collection |
 | Reading order and grouping | `presentation/` | Pure fields, tables, entries and links |
-| Layout and interaction | `frontend/` | Renders documents, submits queries; no monitor inference |
+| Layout and interaction | `frontend/` | Renders documents and submits queries, without monitor inference |
 
 Adapters register in `monitors/registry.py`. Readers use the saved catalog. Package
 initializers do not run collection or registration. `scripts/check-architecture.py` and
@@ -50,7 +50,7 @@ SQLite stores source, track, SPEC, build and monitor observations as keyed rows.
 GitHub collection separately owns `github_items`, `github_links` and repository checkpoints.
 Its records do not use version-monitor invalidation.
 Transactions write changed rows, deletions and the snapshot header. Equal rows retain
-their storage revision without JSON re-encoding. Incremental commits are rejected unless their base database revision and heartbeat still match. `state.read_cached` captures header, clock and row revisions in one transaction,
+their storage revision without JSON re-encoding. Storage rejects incremental commits unless their base database revision and heartbeat still match. `state.read_cached` captures header, clock and row revisions in one transaction,
 then decodes changed JSON outside the lock. Borrowed unchanged data is read-only.
 
 A complete successful OBS poll with identical facts updates `snapshot_clock`, not
@@ -65,7 +65,7 @@ and compares observations. It rejects unknown formats. Compatible image upgrades
 
 Writes use rollback journals and `synchronous=FULL`. API connections are read-only.
 Startup recovery holds the writer lock while SQLite recovers a hot journal. It never
-deletes journals or replaces corrupt data. Standalone preflight does not write an
+removes journals or replaces corrupt data. Standalone preflight does not write an
 existing database.
 
 ### Prepared reads
@@ -76,14 +76,13 @@ clock-only updates reuse unchanged facets and monitor search text. Changed build
 timestamps remain searchable. The task prepares status aggregates once per publication.
 Refresh-failure notices remain live. Publication atomically replaces the model while existing readers retain the previous model.
 
-Readiness fails until the first model is published. If a refresh fails or is overdue,
+Readiness fails until the background task publishes the first model. If a refresh fails or is overdue,
 Lookout retains the last model, shows a notice and reports degraded readiness. Liveness
 tests only the Node → FastAPI chain. Neither endpoint proves provider coverage.
 
 The fact API borrows one projection per request. List, detail and batch requests share
 typed monitor responses. `include` changes representation, not selection. Pagination,
-full-list and batch limits bound response work. OpenAPI is generated from request and
-response models. The site's `/api` page provides usage examples.
+full-list and batch limits bound response work. Request and response models generate OpenAPI. The site's `/api` page provides usage examples.
 
 ## Selection and presentation
 
@@ -109,9 +108,9 @@ Prefix/suffix intersections compute alternative scopes once per request.
 
 `MAX_QUERY_NODES` limits queries to 128 conditions and group nodes, including implicit union groups.
 Repeated conditions count before deduplication. There is no per-group limit.
-Dimension/value identifiers are limited to 100 characters.
+Dimension/value identifiers cannot exceed 100 characters.
 Invalid operators, unknown dimensions, empty group operations and excess nodes return 422.
-Responses expose the limit. At the limit, removal remains available but additions are disabled.
+Responses expose the limit. At the limit, users can remove nodes but cannot add them.
 
 Run `python scripts/benchmark-filters.py` before raising the limit.
 It measures parsing, selection and counting on synthetic packages.
@@ -120,7 +119,7 @@ Account for deployment CPU, package count and reverse-proxy URL limits.
 ### Display contracts
 
 Presenters supply typed display primitives and links. Astro renders them without evaluating monitor facts or queries.
-Issue styles come from `presentation/labels.toml`; BuildSystem styles come from operator config.
+Issue styles come from `presentation/labels.toml`. BuildSystem styles come from operator config.
 
 | Classification | Meaning |
 |---|---|
@@ -145,7 +144,7 @@ ETag validates rendered HTML. Document fingerprints prevent replacement of uncha
 The process-local HTML cache uses document content, URL and cookies as its key.
 It stores at most 64 pages and 8 MiB of body/key/header bytes. Errors cannot reuse cached success.
 Restarting clears the cache. Changed application assets require full navigation.
-Response scripts and dynamic evaluation are disabled.
+The browser disables response scripts and dynamic evaluation.
 Activity pages read counts and cursor pages from one snapshot, initially showing 20 records per kind.
 Loading more pauses replacement until navigation resumes. Provider bodies and diffs are never rendered as HTML.
 
@@ -158,8 +157,7 @@ Current-version security checks do not.
 
 The runner schedules and stores checks. Adapters define inputs and interpretation.
 Query identity excludes file paths and image revisions, so unrelated catalog changes preserve evidence. Changed fingerprints queue work. Unchanged inputs wait for their refresh
-interval. Failure retries are bounded, and HTTP cache age cannot exceed the effective
-policy. A heartbeat does not write unchanged observations or settings. It can still
+interval. The refresh policy limits failure retries and HTTP cache age. A heartbeat does not write unchanged observations or settings. It can still
 publish changes to input eligibility or catalog information.
 
 A failed replacement retains one `last_result`, not a history chain. Only evidence for
@@ -171,8 +169,8 @@ path. The [adapter contract](monitor-porting.md#module-contract) defines scope.
 | Field | Meaning |
 |---|---|
 | `attempted_at` | Last attempt, including failure |
-| `checked_at` | Oldest HTTP input time; cached bytes retain their age. Without HTTP, execution time. |
-| Scope `checked_at` | Last successful check for that scope; a combined result uses the latest successful scope time |
+| `checked_at` | Oldest HTTP input time, or execution time without HTTP. Cached bytes retain their age. |
+| Scope `checked_at` | Last successful check for that scope. A combined result uses the latest successful scope time |
 | `evidence_revision`, `changed_at` | Query-input or normalized-fact changes, not poll time/order |
 
 Packaging-only revision changes need not invalidate upstream queries. EPSS changes
@@ -188,12 +186,12 @@ revise evidence, not advisory identity. Identical error messages do not establis
 | Upstream EOL | Distribution support commitment |
 | Same-project SPDX difference | Legal assessment or a comparison with RPM's aggregate License |
 
-Security aliases are deduplicated. Failed enrichment preserves base advisories, not
+Security merges advisory aliases. Failed enrichment preserves base advisories, not
 invented KEV/EPSS values. Missing comparable license metadata is unsupported, not
 unchanged. ABI comparison is absent. Reviewed CPE part/vendor/product mappings query
 NVD's CVE API with the current source version. NVD matches version ranges. Git archive
 tags come only from confined Source0 evidence consistent with RPM Version. Floating
-branches and unresolved versions do not become release identities. NVD requests are paced at 6.5 seconds per host. Failure retries back off from 15 minutes to one hour.
+branches and unresolved versions do not become release identities. Lookout spaces NVD requests 6.5 seconds apart per host. Failure retries back off from 15 minutes to one hour.
 
 ## Native and network boundaries
 
@@ -218,7 +216,7 @@ metadata. The kernel and runtime remain trusted dependencies. Enforcement is in
 context before parsing the SPEC. Macros can still redefine it. Expanded metadata is not
 an OBS build or binary validation.
 
-Adapter HTTP is confined to declared HTTPS hosts. Shared IO owns caching, pacing and
+Adapters can send HTTP requests only to declared HTTPS hosts. Shared IO owns caching, pacing and
 exclusive reusable connections. A transport failure closes only the affected connection.
 Caller-injected clients remain caller-owned. The operator proxy applies only to monitor
 HTTP. Browser CSP permits same-origin styles and list-page scripts, not inline or

@@ -15,7 +15,7 @@ monitor, follow [Monitor porting](docs/monitor-porting.md).
 | Derive package state, filters and counts | `backend/tracker/readmodel/` |
 | Select and group visible facts | `backend/tracker/presentation/` |
 | Render documents and controls | `frontend/src/components/document/`, `pages/`, `styles/` |
-| Local brand assets and provenance | `frontend/src/assets/logos/catalog.json`; BuildSystem mapping in `config/distribution.toml` |
+| Local brand assets and provenance | `frontend/src/assets/logos/catalog.json`, with BuildSystem mappings in `config/distribution.toml` |
 | Persist state or change HTTP contracts | `backend/tracker/state.py`, `api.py` |
 
 Tests follow these responsibilities under `backend/tests/`. Shared fixtures belong
@@ -45,7 +45,7 @@ Then run [Image checks](#image-checks).
 
 After changing response models, run `python3 scripts/api-types.py` and review the
 resulting `frontend/src/lib/api.generated.ts`. `openapi-typescript` compiles the
-reachable UI schemas; `src/lib/document.ts` selects display primitives. Do not
+reachable UI schemas. `src/lib/document.ts` selects display primitives. Do not
 hand-edit generated types or copy provider models into components.
 
 Keep generated schema exports and the built SSR entry out of dead-code removal.
@@ -55,14 +55,13 @@ lower-confidence dead-code reports as investigation input, not deletion approval
 
 Run `(cd frontend && npm run duplicates)` for copy/paste candidates, or
 `npm run duplicates:similar` in the same directory to include renamed blocks.
-The root `.jscpd.json` scopes hand-written production code; tests and generated
-API types are excluded. Duplication percentages are advisory. Extract shared rules only when both copies must change together.
+The root `.jscpd.json` selects hand-written production code. It excludes tests and generated API types. Duplication percentages are advisory. Extract shared rules only when both copies must change together.
 Imports, provider policies and independent upgrade entrypoints may stay separate.
 Keep release behavior and project-owned contract regressions in the suite.
 Third-party tool evaluations, refactor comparisons and one-off audit experiments
 belong outside the source tree, not in permanent regression tests.
 
-Dependencies are declared in `backend/pyproject.toml`. Update the runtime and test
+Declare dependencies in `backend/pyproject.toml`. Update the runtime and test
 locks together when changing them (`uv` is a development tool):
 
 ```sh
@@ -72,7 +71,7 @@ uv pip compile backend/pyproject.toml --extra test --extra quality --python-vers
 
 Regression tests fix their inputs, not today's upstream versions or package
 counts. Test shipped configuration against schema and policy. Freeze semantic
-clocks; synchronize concurrent tests with events rather than elapsed sleeps.
+clocks. Synchronize concurrent tests with events rather than elapsed sleeps.
 
 ### Image checks
 
@@ -89,20 +88,20 @@ python3 deploy/smoke-release.py "$IMAGE"
 ```
 
 The container build pins the official Node image by digest and copies the same
-Node/npm into the Fedora runtime; the test image inherits them. Update that pin
+Node/npm into the Fedora runtime. The test image inherits them. Update that pin
 in `Containerfile` when upgrading Node.
 
 The native gate runs without provider network access and rejects skipped tests.
-Building its disposable test layer requires the package index; the runtime image
+Building its disposable test layer requires the package index. The runtime image
 omits test tools. The entrypoint and release tests cover persistent mounts,
 installation, migration, failed-upgrade rollback and an independent restore.
 
 CI publishes the same tested image after these gates pass. Trusted main/tag runs
-can publish; pull-request jobs cannot. Publication targets linux/amd64; additional
+can publish. Pull-request jobs cannot. Publication targets linux/amd64. Additional
 architectures require their own native and entrypoint checks. Package owners must
 make the GHCR package Public for anonymous pulls. Target-host isolation, real
 providers, HTTPS, reboot recovery and off-host restore drills require separate
-operator acceptance; see [Deployment](docs/deployment.md).
+operator acceptance. See [Deployment](docs/deployment.md).
 
 ## Documentation and comments
 
@@ -117,14 +116,14 @@ Keep technical names, command syntax and safety conditions exact.
 Put required actions in steps, not notes.
 
 Comments explain protocol exceptions, ownership or why a simpler implementation
-would be wrong; they do not narrate code. Docstrings document a caller's non-obvious
+would be wrong. Do not narrate code. Docstrings document a caller's non-obvious
 contract, side effects and failures. Use synthetic examples rather than assertions
 about today's provider versions or package counts.
 
 ## Request review
 
-Submit one focused change. Review all code and text, including generated content;
-briefly identify substantial tool-generated material without attaching chat logs.
+Submit one focused change. Review all code and text, including generated content.
+Briefly identify substantial tool-generated material without attaching chat logs.
 Keep required lock files, fixtures and license copies. Automated agents need
 human approval before publishing issues, review comments or batches of PRs.
 
@@ -132,6 +131,6 @@ Describe the problem and reproduction, why this fix is sufficient, checks actual
 run, and anything unverified or requiring a maintainer's decision. Do not retell
 the diff or report someone else's test results as your own.
 
-`http-cache-semantics` is pinned with an install/build-time security patch for
+The frontend pins `http-cache-semantics` with an install/build-time security patch for
 GHSA-ch52-4w7c-c8xp. Its source checksum rejects unreviewed upgrades. Remove the
 patch only when `frontend/tests/http-cache.cjs` passes against unmodified upstream.

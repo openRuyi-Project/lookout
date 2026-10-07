@@ -13,12 +13,10 @@ Page and API requests read these snapshots. They do not query providers.
 | Add a monitor or provider backend | [Monitor porting](docs/monitor-porting.md) |
 | Understand consistency and security boundaries | [Design](docs/design.md) |
 
-A Linux container with native RPM bindings and Landlock ABI 6+ is required for
-confined SPEC parsing. Keep configuration and persistent data on separate mounts.
+Confined SPEC parsing requires a Linux container with native RPM bindings and Landlock ABI 6+. Keep configuration and persistent data on separate mounts.
 
-The running site's `/api` page provides query examples; `/openapi.json` defines
+The running site's `/api` page provides query examples. `/openapi.json` defines
 parameters and responses. Failed checks retain previous evidence and its observation time.
-Upstream security
-matches do not evaluate local patches or the exploitability of distributed RPMs.
+Upstream security matches do not evaluate local patches or the exploitability of distributed RPMs.
 
 [MulanPSL-2.0](LICENSE).

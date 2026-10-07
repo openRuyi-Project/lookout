@@ -11,7 +11,7 @@
 | Dependency → source-package mappings | `distribution.toml`, `[dependencies]` |
 | Dependency target environments | `distribution.toml`, `[dependency_environments]` |
 
-Catalog references resolve relative to `tracker.toml`; absolute paths are allowed.
+Catalog references accept absolute paths or paths relative to `tracker.toml`.
 Installation references the image's `/app/config/` catalogs, rather than copying
 them into `/config`. Release updates therefore supply new identities, rules and
 distribution mappings without replacing operator settings.
@@ -30,7 +30,7 @@ exclude_tracks = ["intentionally-disabled-track"]
 ```
 
 `version-overrides.toml` uses the same nvchecker syntax: a track replaces its whole
-default rule; `__config__` overrides individual checker options. A relative
+default rule. `__config__` overrides individual checker options. A relative
 `keyfile` resolves beside the file that declares it. `package-overrides.toml`
 overrides individual policy fields and complete monitor identities:
 
@@ -98,35 +98,35 @@ nvchecker. Their rules require that backend, not a bare nvchecker installation.
 
 `crates_index` and `anitya_stable` accept a custom `url` **instead of** their identity
 field. Common nvchecker filters/normalization still apply. To filter an Anitya
-maintenance line **before** taking the first result, use native `jq`; filtering
+maintenance line **before** taking the first result, use native `jq`. Filtering
 after `anitya_stable` would discard the provider's other candidates.
 
 ```toml
 "widget@3" = { source = "jq", url = "https://release-monitoring.org/api/v2/versions/?project_id=PROJECT_ID", filter = 'first(.stable_versions[] | select(test("^v?3[.]")))', prefix = "v" }
 ```
 
-Replace `PROJECT_ID` with a verified identity. Keep the provider's ordering;
-do not sort Anitya history with nvchecker's generic comparator.
+Replace `PROJECT_ID` with a verified identity. Keep the provider's ordering.
+Do not sort Anitya history with nvchecker's generic comparator.
 
 ### Git snapshots
 
-A complete Source0 commit must agree with the RPM `+gitDATE.shortsha` identity;
-a name or prefix alone is insufficient. Confirm the branch from repository refs:
+A complete Source0 commit must agree with the RPM `+gitDATE.shortsha` identity.
+A name or prefix alone is insufficient. Check the branch from repository refs:
 
 | `versions/nvchecker.toml` | `packages.toml` |
 |---|---|
 | `"widget@commits" = { source = "git", git = "https://github.com/example/widget", use_commit = true, branch = "main" }` | `widget = { compare = "widget@commits", watch = ["widget"] }` |
 
 The old release rule stays as a watch. Different commits mean `changed`, not a
-proven newer release. The list uses `YYYYMMDD.xxxxxx`; target dates come only from
+proven newer release. The list uses `YYYYMMDD.xxxxxx`. Target dates come only from
 provider `revision_creation_time`, so plain Git without that field shows a short
-hash. Colliding prefixes are extended. Detail/API retain full identities.
+hash. The formatter extends colliding prefixes. Detail/API retain full identities.
 Commits do not become License/Requires upgrade-version inputs.
 
 ## Other monitor identities
 
-Registry-backed monitors reuse saved Source0 identity, then native-rule identity;
-explicit settings take precedence. EOL needs a product and cycle policy:
+Registry-backed monitors reuse saved Source0 identity, then native-rule identity.
+Explicit settings take precedence. EOL needs a product and cycle policy:
 
 ```toml
 openssl = { monitors = { eol = { product = "openssl", cycle_parts = 2 } } }
@@ -136,12 +136,12 @@ widget = { monitors = { license = { pypi = "upstream-widget" } } }
 | Identity | Reused by |
 |---|---|
 | PyPI | Security, License, runtime requirements, Yanked |
-| crates.io | Security, License, Yanked; toolchain requirements are not runtime dependencies |
-| Go module | Security, deps.dev license, proxy withdrawal; the build graph is not runtime requirements |
-| CPAN distribution | License and static runtime prerequisites; module and distribution versions differ |
-| Complete Source0 commit | OSV commit query; repository matches do not establish subpackage applicability |
+| crates.io | Security, License, Yanked. Toolchain requirements are not runtime dependencies |
+| Go module | Security, deps.dev license, proxy withdrawal. The build graph is not runtime requirements |
+| CPAN distribution | License and static runtime prerequisites. Module and distribution versions differ |
+| Complete Source0 commit | OSV commit query. Repository matches do not establish subpackage applicability |
 | Version-matched Source0 archive tag | OSV GIT repository/tag query |
-| Reviewed CPE part/vendor/product | NVD CVE API; the provider matches current-version ranges |
+| Reviewed CPE part/vendor/product | NVD CVE API. The provider matches current-version ranges |
 
 For traditional software without a registry identity, configure the CPE explicitly:
 
@@ -149,10 +149,10 @@ For traditional software without a registry identity, configure the CPE explicit
 widget = { monitors = { security = { vendor = "verified_vendor", product = "verified_product" } } }
 ```
 
-The default CPE part is `a` (application); use `part = "o"` for an OS kernel.
-Verify identity against upstream sources and the NVD CPE dictionary. Matching package names alone do not establish identity. NVD rejects unresolved/snapshot versions instead of
-stripping them to a release. Public API requests are paced at 6.5 seconds;
-checks use the shared dated cache and retry automatically after errors.
+The default CPE part is `a` (application). Use `part = "o"` for an OS kernel.
+Check identity against upstream sources and the NVD CPE dictionary. Matching package names alone do not establish identity. NVD rejects unresolved/snapshot versions instead of
+stripping them to a release. Lookout spaces public API requests 6.5 seconds apart.
+Checks use the shared dated cache and retry automatically after errors.
 
 Missing mappings remain unknown. `NotPackaged` requires a reviewed mapping absent
 from a fresh inventory. PEP 508 conditions use the configured target, never the
@@ -161,7 +161,7 @@ Adapter-specific fields and new backends are in [Monitor porting](../docs/monito
 
 ## Add a package
 
-The SPEC catalogue supplies package rows; OBS supplies build observations. Offline `setup`
+The SPEC catalogue supplies package rows. OBS supplies build observations. Offline `setup`
 currently proposes rules only from crates.io Source0 evidence:
 
 ```sh
@@ -170,12 +170,11 @@ PYTHONPATH=backend python -m tracker.package setup PACKAGE \
   --output /tmp/package-proposal.json
 ```
 
-Review identity and release policy before adding the entry. `entry=null` means no
-candidate was generated. Inspect `reason`, not just the count. Aliases belong in
+Review identity and release policy before adding the entry. `entry=null` means that setup found no candidate. Inspect `reason`, not just the count. Aliases belong in
 identity data. A SPEC Name/directory mismatch is a packaging defect: an exception
 must state its `TODO(drop)` removal condition.
 
-Broader discovery may contact Anitya; `--verify` additionally runs nvchecker.
+Broader discovery may contact Anitya. `--verify` additionally runs nvchecker.
 Neither operation changes running configuration:
 
 ```sh
@@ -203,7 +202,7 @@ PYTHONPATH=backend python -m tracker.package apply \
 ```
 
 Conflicts or input drift reject promotion. It handles version rules, package
-policy, BuildSystem styles and monitor settings; other operator settings, including
+policy, BuildSystem styles and monitor settings. Other operator settings, including
 dependency mappings, need explicit edits in the new config directory. Apply creates
 a new directory. It does not change the service's mounted configuration. Follow
 [Configuration changes](../docs/deployment.md#configuration-and-ports) to switch to
@@ -216,14 +215,14 @@ All three inputs must reference the same release catalog. Catalog drift requires
 
 `[spec].extra_macro_packages` selects macro packages in the managed Git tree.
 `[spec.local_sources]` maps files needed for native `%include`, such as a patch
-series. Their hashes invalidate parse caches; missing inputs fail the parse.
+series. Their hashes invalidate parse caches. Missing inputs fail the parse.
 The parser does not download Source archives or replace RPM expansion with text guessing.
 
 ## GitHub activity
 
 Repository defaults are in `distribution.toml` and follow release updates.
-To replace them, configure `[github]` in `tracker.toml`; `repositories = {}`
-disables collection. Explicit settings are never merged with default repositories:
+To replace them, configure `[github]` in `tracker.toml`. Set `repositories = {}` to
+disable collection. Explicit settings are never merged with default repositories:
 
 ```toml
 [github]
@@ -243,24 +242,21 @@ PR changed paths (including renamed paths), exact title/body names and
 names and `ambiguous_names` require a code span, title prefix or package label.
 Aliases must identify one existing package.
 
-Open and closed records are retained in SQLite, independently of package
-versions. Incremental polls use `updated_at`, a two-minute overlap and ETags;
-weekly reconciliation detects missing records. Unchanged records and PR paths
-are reused. Weekly reconciliation rechecks open PR revisions.
+SQLite retains open and closed records independently of package versions. Incremental polls use `updated_at`, a two-minute overlap and ETags.
+Weekly reconciliation detects missing records. Polls reuse unchanged records and PR paths. Weekly reconciliation rechecks open PR revisions.
 Each list page processes issues before PRs. Association checks use PR file paths first, then bounded package-name matching in text.
 
 Without `LOOKOUT_GITHUB_TOKEN`, each batch makes at most six requests, at least
 ten minutes apart. A completed poll with no changes adds one interval to the
-next delay; changes reset it. Errors and incomplete batches never count as an
+next delay. Changes reset it. Errors and incomplete batches never count as an
 empty poll. Authenticated polls retain the configured fixed interval. The next due time, list page and PR file-page progress survive
-restarts. File lists are published only after confirming the same base/head
-revisions. A growing idle delay also extends the freshness deadline.
+restarts. The collector publishes file lists only after checking that the base/head revisions did not change. A growing idle delay also extends the freshness deadline.
 
 With a read-only token, polls use the configured budget and interval.
 Requests run serially. Quota headers reserve capacity, and GitHub cooldowns override the schedule. Anonymous access shares the host
 IP quota, so initial history may take days. GitHub returns at most 3,000 files
-per PR; incomplete paths remain explicit rather than becoming an empty match.
+per PR. Incomplete paths remain explicit rather than becoming an empty match.
 
 Credentials are not written to observations. Homepage counts show packages.
 Package badges count linked records across all states. `/api/v2/packages/NAME/activity?kind=pr` (or `issue`) returns
-20 records, newest updated first, with `next_cursor`; `per_page` is at most 50.
+20 records, newest updated first, with `next_cursor`. `per_page` is at most 50.
