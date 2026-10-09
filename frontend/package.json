@@ -20,23 +20,23 @@
     "prebuild": "node scripts/harden-http-cache.cjs"
   },
   "dependencies": {
-    "@astrojs/node": "11.1.6",
-    "astro": "7.3.5",
+    "@astrojs/node": "11.1.7",
+    "astro": "7.3.8",
     "compression": "1.8.2",
     "htmx.org": "2.0.11",
     "http-cache-semantics": "4.3.0"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.4",
+    "@astrojs/check": "0.9.10",
     "@types/node": "26.6.4",
     "typescript": "^5.9.3",
-    "eslint": "10.11.0",
+    "eslint": "10.12.0",
     "eslint-plugin-astro": "3.2.1",
-    "typescript-eslint": "8.71.0",
-    "knip": "6.39.0",
+    "typescript-eslint": "8.71.1",
+    "knip": "6.41.0",
     "dependency-cruiser": "18.5.0",
     "openapi-typescript": "7.13.0",
-    "jscpd": "5.4.0"
+    "jscpd": "5.4.1"
   },
   "engines": {
     "node": "^22.22.3 || ^24.16.0 || >=26.3.0"

@@ -13,13 +13,14 @@
 
 # ---- frontend build stage -------------------------------------------------
 ARG FEDORA_IMAGE=registry.fedoraproject.org/fedora:43@sha256:7bc1df1ba612dfd63f1eae89b6a91a7d75b2df994f4c35287e4165375c5ce1fd
-ARG NODE_IMAGE=docker.io/library/node:22.22.3-bookworm-slim@sha256:e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752
+ARG NODE_IMAGE=docker.io/library/node:26.11.1-bookworm-slim@sha256:86f07bc9c5dce4578cf37e5a418b7bfc7f817cda25cde66e2b66e95ed86c4567
 ARG CHECK_RUNTIME_IMAGE=application
 FROM ${NODE_IMAGE} AS frontend-dependencies
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/scripts/harden-http-cache.cjs ./scripts/
-RUN node --version && npm --version && npm ci
+RUN npm install --global npm@12.2.0 \
+    && node --version && npm --version && npm ci
 FROM frontend-dependencies AS frontend
 COPY frontend/ ./
 COPY LICENSES/ /build/LICENSES/
@@ -51,7 +52,7 @@ ARG SYSTEM_REFRESH=manual
 RUN echo "System dependency refresh: $SYSTEM_REFRESH" && dnf install -y \
         python3 python3-rpm rpm-build systemd-rpm-macros \
         python-rpm-macros python3-rpm-macros pyproject-rpm-macros python3-rpm-generators \
-        git libstdc++ libcurl openssl-libs libseccomp catatonit \
+        git libstdc++ libatomic libcurl openssl-libs libseccomp catatonit \
     && dnf clean all
 FROM runtime-system AS application
 # Build, test and runtime use the same Node/npm, independent of Fedora updates.
