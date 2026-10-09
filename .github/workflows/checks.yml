@@ -1,12 +1,17 @@
 name: Release
-run-name: Release v${{ inputs.version }}
+run-name: Release (${{ inputs.bump }})
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: 'Release version (MAJOR.MINOR.PATCH, for example 0.2.1)'
+      bump:
+        description: 'Version increment'
         required: true
-        type: string
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
 permissions:
   contents: read
 concurrency:
@@ -16,24 +21,30 @@ jobs:
   prepare:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-      - name: Validate the release
+      - name: Select the release version
+        id: version
         env:
-          VERSION: ${{ inputs.version }}
+          BUMP: ${{ inputs.bump }}
         run: |
+          set -eu
           test "$GITHUB_REF" = refs/heads/main
-          python3 scripts/release-version.py "$VERSION"
+          VERSION=$(python3 scripts/release-version.py "$BUMP")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          printf '### Release v%s\n' "$VERSION" >> "$GITHUB_STEP_SUMMARY"
   verify:
     needs: prepare
     uses: ./.github/workflows/ci.yml
     with:
-      version: ${{ inputs.version }}
+      version: ${{ needs.prepare.outputs.version }}
       release: true
   publish:
-    needs: verify
+    needs: [prepare, verify]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -48,7 +59,7 @@ jobs:
       - name: Publish the tested image and release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -eu
           docker load --input tested-image.tar

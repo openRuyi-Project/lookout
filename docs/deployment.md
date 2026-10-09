@@ -505,13 +505,16 @@ Reboot and different-image upgrade acceptance remain separate operator checks.
 
 ## Publish a release
 
-In GitHub Actions, select **Release → Run workflow**, choose `main`, and enter
-an unused `MAJOR.MINOR.PATCH` version greater than the existing release tags.
+In GitHub Actions, select **Release → Run workflow**, choose `main`, and select
+`patch` (default), `minor`, or `major`. Use `patch` for compatible fixes,
+`minor` for features, and `major` for a new major version.
+The workflow increments the highest version from the project declaration and
+stable release tags. It shows the selected version in the run summary.
 The workflow pins the selected commit, runs the complete image checks, and
 publishes that same image as `v<VERSION>` and `sha-<commit>`. The container's OCI
 version label records the release version. A commit can be released only once.
 
-The workflow creates the tag and release; do not create them in advance.
+The workflow creates the tag and release. Do not create them in advance.
 Production consumers follow successful Release runs. The `main` and `latest`
 image tags advance only during releases, not on ordinary pushes.
 Configuration and persistent data remain on the host.
