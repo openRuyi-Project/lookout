@@ -1,3 +1,4 @@
+# Review policy: ../CONTRIBUTING.md#dependency-updates
 version: 2
 updates:
   - package-ecosystem: npm

@@ -93,7 +93,7 @@ in `Containerfile` when upgrading Node.
 
 CI reuses build layers, but runs tests on every code change. Only the document
 paths listed in `scripts/ci-scope.py` skip image checks. Release always runs them.
-Use `CI result` as the required branch check. PRs read shared caches; only trusted
+Use `CI result` as the required branch check. PRs read shared caches. Only trusted
 `main` runs write them. Weekly builds refresh system dependency layers.
 
 The native gate runs without provider network access and rejects skipped tests.
@@ -107,6 +107,26 @@ architectures require their own native and entrypoint checks. Package owners mus
 make the GHCR package Public for anonymous pulls. Target-host isolation, real
 providers, HTTPS, reboot recovery and off-host restore drills require separate
 operator acceptance. See [Deployment](docs/deployment.md).
+
+## Dependency updates
+
+Use the newest stable versions compatible with the tools that consume them.
+Update the controlling tools first, then select dependencies within their combined
+supported ranges. Update unrelated dependencies independently.
+
+For the frontend, Astro and its Node adapter must work together. TypeScript must
+satisfy `@astrojs/check`, TypeScript ESLint and `openapi-typescript`. Use declared peer dependencies
+and runtime requirements as constraints. CI must also pass.
+
+Keep compatibility ranges in manifests and resolved versions in lock files.
+Review these ranges when a controlling tool gains support for a newer dependency.
+Do not bypass conflicts with `--force`, `--legacy-peer-deps`, or disabled checks.
+
+[Dependabot](.github/dependabot.yml) proposes npm and GitHub Actions updates.
+Its groups batch changes. They do not prove compatibility or apply this policy automatically.
+Review related updates together. Keep incompatible updates unmerged until their
+consumers support them. Do not block all major updates to avoid one conflict.
+For security fixes, upgrade the affected toolchain or use a reviewed mitigation.
 
 ## Documentation and comments
 
