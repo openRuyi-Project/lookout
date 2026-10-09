@@ -10,6 +10,10 @@ from tracker.providers.client import IO
 from tracker.providers.http import USER_AGENT, read_response
 
 
+class AuthenticationRejected(Exception):
+    pass
+
+
 class BudgetExhausted(Exception):
     pass
 
@@ -57,7 +61,7 @@ class Client:
     def close(self):
         self.io.close()
 
-    def get(self, path, *, etag=None):
+    def get(self, path, *, etag=None, auth_only=False):
         for _ in range(2):
             if self.retry_at:
                 raise RateLimited(self.retry_at, rejected=self.rejected)
@@ -95,6 +99,8 @@ class Client:
                     self.auth_retry_at = time.time() + 3600
                     self.interval_floor = 600
                     self.remaining = min(self.remaining, 60)
+                    if auth_only:
+                        raise AuthenticationRejected
                     continue
                 try:
                     remaining = int(response.headers.get('X-RateLimit-Remaining', ''))
@@ -103,6 +109,8 @@ class Client:
                 reserve = 50 if self.token else 2
                 if 0 <= remaining <= reserve and response.headers.get('X-RateLimit-Reset'):
                     self.retry_at = retry_at(response.headers, time.time())
+                if self.token and (response.status_code == 304 or 200 <= response.status_code < 300):
+                    self.auth_retry_at = 0
                 if response.status_code == 304:
                     return None, etag
                 response.raise_for_status()

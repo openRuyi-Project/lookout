@@ -1,4 +1,5 @@
 """Resumable repository sync; only changed activity records are written to SQLite."""
+import time
 from copy import deepcopy
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
@@ -7,7 +8,7 @@ from tracker import config as cfg
 from tracker import state
 from tracker.monitors.github.model import Matcher, settings
 from tracker.monitors.model import fingerprint
-from tracker.providers.github import BudgetExhausted, Client, RateLimited
+from tracker.providers.github import AuthenticationRejected, BudgetExhausted, Client, RateLimited
 
 PAGE_SIZE = 100
 
@@ -178,12 +179,37 @@ def collect(config, db, *, client=None, now=None):
                              if key.startswith('github:')), default=0)
         owner = client or Client(options.request_budget, auth_retry_at=auth_retry_at)
         try:
+            recovered = False
+            probe_error = False
+            if auth_retry_at and auth_retry_at <= time.time() and getattr(owner, 'token', '') and options.repositories:
+                repo = next(iter(options.repositories))
+                try:
+                    owner.get(f'/repos/{repo}/issues?state=all&per_page=1', auth_only=True)
+                    recovered = True
+                except AuthenticationRejected:
+                    pass
+                except RateLimited as error:
+                    owner.auth_retry_at = max(time.time() + 3600, datetime.fromisoformat(error.retry_at).timestamp())
+                    probe_error = True
+                except Exception:
+                    # A failed probe does not rewrite the public workflow's deadlines.
+                    owner.auth_retry_at = time.time() + 3600
+                    probe_error = True
             ordered = sorted(options.repositories, key=lambda repo: old['components'].get('github:' + repo, {}).get('attempted_at', ''))
             for repo in ordered:
-                if getattr(owner, 'remaining', None) == 0 or getattr(owner, 'retry_at', None):
-                    break
                 key = 'github:' + repo
                 checkpoint = old['components'].get(key, {})
+                if auth_retry_at:
+                    checkpoint = {**checkpoint, 'auth_retry_at': getattr(owner, 'auth_retry_at', auth_retry_at)}
+                if recovered:
+                    checkpoint = {**checkpoint, 'retry_at': getattr(owner, 'retry_at', None), 'next_poll_at': None}
+                if probe_error:
+                    components[key] = checkpoint
+                    continue
+                if getattr(owner, 'remaining', None) == 0 or getattr(owner, 'retry_at', None):
+                    if checkpoint:
+                        components[key] = checkpoint
+                    continue
                 if checkpoint.get('next_poll_at') and datetime.fromisoformat(now) < datetime.fromisoformat(checkpoint['next_poll_at']):
                     components[key] = checkpoint
                     continue

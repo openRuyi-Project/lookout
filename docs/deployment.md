@@ -146,7 +146,10 @@ For organization-managed credentials, evaluate a GitHub App instead of a person'
 App installation-token renewal is not implemented by these tools.
 
 A rejected GitHub token falls back to the public API for one hour. The updater
-and activity collector retain this cooldown across restarts. Rate-limit responses
+and activity collector retain this cooldown across restarts. At the next heartbeat
+after it expires, they try the token without advancing the anonymous schedule.
+A successful probe resumes authenticated requests; a rejected probe leaves the
+anonymous delay and cursor unchanged. Rate-limit responses
 do not switch credentials: each client waits until GitHub permits another request.
 Anonymous access uses the server IP quota, which other applications can also consume.
 

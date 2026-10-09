@@ -614,3 +614,36 @@ def test_authenticated_rate_limit_never_retries_anonymously(monkeypatch):
         with pytest.raises(RateLimited):
             client.get('/repos/owner/public/issues')
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize('accepted', [False, True])
+def test_auth_probe_preserves_public_schedule_until_recovery(config, snapshot, tmp_path, monkeypatch, accepted):
+    import httpx
+    from tracker.providers.client import IO
+    from tracker.providers.github import Client as HTTPClient
+    monkeypatch.setenv('LOOKOUT_GITHUB_TOKEN', 'fixture_only')
+    monkeypatch.setattr('tracker.providers.github.time.time', lambda: 1000)
+    monkeypatch.setattr('tracker.config.require_unchanged', lambda _: None)
+    config['github'] = {'repositories': {REPO: {}}}
+    checkpoint = {'auth_retry_at': 900, 'next_poll_at': '2026-01-02T12:00:00+00:00',
+                  'retry_at': '2026-01-02T12:00:00+00:00', 'poll_delay': 7200}
+    snapshot['components']['github:' + REPO] = checkpoint
+    db = tmp_path / 'state.db'
+    state.commit(db, snapshot)
+    calls = []
+    def respond(request):
+        calls.append(bool(request.headers.get('Authorization')))
+        return httpx.Response(200, json=[]) if accepted else httpx.Response(401, json={})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
+        io = IO(client=transport, workers=1)
+        monkeypatch.setattr(io, 'wait_for_host', lambda *_: None)
+        owner = HTTPClient(120, io=io, auth_retry_at=900)
+        result = collect(config, db, client=owner, now=NOW)
+    observed = result['components']['github:' + REPO]
+    if accepted:
+        assert observed['auth_retry_at'] == 0
+        assert observed['next_poll_at'] < checkpoint['next_poll_at']
+        assert len(calls) == 3
+    else:
+        assert observed == {**checkpoint, 'auth_retry_at': 4600}
+        assert calls == [True]

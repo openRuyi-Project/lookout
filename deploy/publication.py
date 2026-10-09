@@ -83,10 +83,11 @@ def published_image(reference, current_image, current_revision, workflow, *, sta
         previous = json.loads(cached)
         if previous.get('key') != key:
             previous = {}
-        if previous.get('next_attempt_at', 0) > now:
-            raise Deferred(previous['reason'], previous['next_attempt_at'])
     token = github_token(credential_file) if credential_file else os.environ.get('LOOKOUT_GITHUB_TOKEN')
     auth_retry_at = previous.get('auth_retry_at', 0)
+    auth_probe = bool(token and auth_retry_at and auth_retry_at <= now)
+    if previous.get('next_attempt_at', 0) > now and not auth_probe:
+        raise Deferred(previous['reason'], previous['next_attempt_at'])
     if auth_retry_at > now:
         token = None
 
@@ -128,18 +129,31 @@ def published_image(reference, current_image, current_revision, workflow, *, sta
                     token = None
                     request.remove_header('Authorization')
                     if state_path:
-                        save_checkpoint({'key': key, 'checked_at': now})
+                        save_checkpoint({**previous, 'key': key, 'checked_at': now})
                     error.close()
+                    if previous.get('next_attempt_at', 0) > now:
+                        raise Deferred(previous['reason'], previous['next_attempt_at']) from None
+                    auth_probe = False
                     continue
+                if auth_probe:
+                    auth_retry_at = max(now + 3600, cooldown(error.headers, now))
+                    if state_path:
+                        save_checkpoint({**previous, 'key': key})
+                    raise Deferred('GitHub authentication probe deferred', auth_retry_at) from None
                 reason = 'GitHub rate limit' if limited else ('GitHub authentication failed' if error.code == 401 else 'GitHub publication access failed')
                 retry = cooldown(error.headers, now) if limited else now + (3600 if error.code in (401, 403) else 300)
                 if state_path:
                     save_checkpoint({'key': key, 'reason': reason, 'next_attempt_at': retry})
                 raise Deferred(reason, retry) from None
         except (URLError, TimeoutError) as error:
+            if auth_probe and state_path:
+                auth_retry_at = now + 3600
+                save_checkpoint({**previous, 'key': key})
             # Discovery failure must never turn into a speculative registry pull.
             raise RuntimeError('GitHub publication check failed; service unchanged') from error
         break
+    if token:
+        auth_retry_at = 0
     if len(body) > _MAX_RESPONSE:
         raise ValueError('GitHub publication response exceeds the size budget')
     runs = json.loads(body)['workflow_runs']

@@ -402,3 +402,48 @@ def test_authenticated_quota_never_falls_back(tmp_path, monkeypatch):
     with pytest.raises(publication.Deferred):
         publication.published_image(REFERENCE, OLD, REVISION, 'checks.yml', state_path=tmp_path / 'checkpoint.json')
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize('accepted', [False, True])
+def test_auth_probe_does_not_reset_public_wait(tmp_path, monkeypatch, accepted):
+    monkeypatch.setenv('LOOKOUT_GITHUB_TOKEN', 'fixture_only')
+    monkeypatch.setattr(publication.time, 'time', lambda: 1000)
+    path = tmp_path / 'checkpoint.json'
+    original = {'key': REFERENCE + '/checks.yml', 'auth_retry_at': 900,
+                'next_attempt_at': 8000, 'reason': 'GitHub rate limit'}
+    path.write_text(json.dumps(original))
+    calls = []
+    def open(request, timeout):
+        calls.append(bool(request.get_header('Authorization')))
+        if not accepted:
+            raise HTTPError(request.full_url, 401, 'Unauthorized', {}, io.BytesIO(b'{}'))
+        return io.BytesIO(json.dumps(result()).encode())
+    monkeypatch.setattr(publication, 'urlopen', open)
+    if accepted:
+        assert publication.published_image(REFERENCE, OLD, REVISION, 'checks.yml', state_path=path) == (OLD, REVISION)
+        assert json.loads(path.read_text())['auth_retry_at'] == 0
+    else:
+        with pytest.raises(publication.Deferred):
+            publication.published_image(REFERENCE, OLD, REVISION, 'checks.yml', state_path=path)
+        saved = json.loads(path.read_text())
+        assert saved['next_attempt_at'] == 8000
+        assert saved['auth_retry_at'] == 4600
+    assert calls == [True]
+
+
+def test_public_quota_after_failed_auth_probe_retains_its_own_deadline(tmp_path, monkeypatch):
+    monkeypatch.setenv('LOOKOUT_GITHUB_TOKEN', 'fixture_only')
+    monkeypatch.setattr(publication.time, 'time', lambda: 1000)
+    path = tmp_path / 'checkpoint.json'
+    path.write_text(json.dumps({'key': REFERENCE + '/checks.yml', 'auth_retry_at': 900}))
+    def open(request, timeout):
+        if request.get_header('Authorization'):
+            raise HTTPError(request.full_url, 401, 'Unauthorized', {}, io.BytesIO(b'{}'))
+        raise HTTPError(request.full_url, 403, 'Limited', {'X-RateLimit-Remaining': '0',
+                                                       'X-RateLimit-Reset': '8000'}, None)
+    monkeypatch.setattr(publication, 'urlopen', open)
+    with pytest.raises(publication.Deferred):
+        publication.published_image(REFERENCE, OLD, REVISION, 'checks.yml', state_path=path)
+    saved = json.loads(path.read_text())
+    assert saved['auth_retry_at'] == 4600
+    assert saved['next_attempt_at'] == 8000

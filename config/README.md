@@ -246,7 +246,7 @@ SQLite retains open and closed records independently of package versions. Increm
 Weekly reconciliation detects missing records. Polls reuse unchanged records and PR paths. Weekly reconciliation rechecks open PR revisions.
 Each list page processes issues before PRs. Association checks use PR file paths first, then bounded package-name matching in text.
 
-Each batch uses at most `request_budget` requests and 120 seconds. Requests run
+Each batch starts at most `request_budget` requests within a 120-second window. Requests run
 serially, at least one second apart. Anonymous batches start at most every ten
 minutes and cannot exceed 60 requests; response quota headers can stop them earlier. A completed poll with no changes adds one interval to the
 next delay. Changes reset it. Errors and incomplete batches never count as an
@@ -259,6 +259,8 @@ Quota headers reserve 50 authenticated or two anonymous requests for other consu
 GitHub cooldowns override the schedule. A rejected token (401 or explicit token
 permission failure) retries the public endpoint once without credentials. The
 collector records a one-hour authentication cooldown; restarts retain it.
+An authentication probe does not reset the anonymous poll delay, quota wait or cursor.
+Only a successful authenticated request resumes authenticated collection immediately.
 Rate limits and network failures do not trigger anonymous retries. Anonymous access shares the host
 IP quota, so initial history may take days. GitHub returns at most 3,000 files
 per PR. Incomplete paths remain explicit rather than becoming an empty match.
