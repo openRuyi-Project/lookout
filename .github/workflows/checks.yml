@@ -1,52 +1,41 @@
-name: Checks
-on: [push, pull_request, workflow_dispatch]
+name: Release
+run-name: Release v${{ inputs.version }}
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (MAJOR.MINOR.PATCH, for example 0.2.1)'
+        required: true
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: true
+  group: production-release
+  cancel-in-progress: false
 jobs:
-  static:
+  prepare:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - run: python3 scripts/check-architecture.py
-      - run: git show --format= --check HEAD
-  native:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Build frontend and native runtime
-        run: |
-          VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"])')
-          docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --build-arg RELEASE_VERSION="$VERSION" -t openruyi-lookout:test -f Containerfile .
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-lookout:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-      - name: Native RPM, confinement, backend, API contract and SSR
-        env:
-          CONTAINER_ENGINE: docker
-        run: deploy/check-image.sh openruyi-lookout:test
-      - name: Smoke-test the production entrypoint
-        env:
-          CONTAINER_ENGINE: docker
-        run: python3 deploy/smoke-image.py openruyi-lookout:test
-      - name: Installation, configuration, upgrade and restore
-        run: python3 deploy/smoke-release.py openruyi-lookout:test
-      - name: Save the tested image
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
-        run: docker save --output /tmp/tested-image.tar openruyi-lookout:test
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         with:
-          path: /tmp/tested-image.tar
-          archive: false
-          if-no-files-found: error
-          retention-days: 1
+          fetch-depth: 0
+      - name: Validate the release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          test "$GITHUB_REF" = refs/heads/main
+          python3 scripts/release-version.py "$VERSION"
+  verify:
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ inputs.version }}
+      release: true
   publish:
-    needs: [static, native]
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: verify
     runs-on: ubuntu-24.04
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
@@ -54,29 +43,25 @@ jobs:
           name: tested-image.tar
           skip-decompress: true
           digest-mismatch: error
-      - name: Publish the same tested image
+      - name: Publish the tested image and release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -eu
           docker load --input tested-image.tar
           test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' openruyi-lookout:test)" = "$GITHUB_SHA"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' openruyi-lookout:test)" = "$VERSION"
           test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-lookout:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
           IMAGE="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "v$VERSION" --generate-notes
           docker tag openruyi-lookout:test "$IMAGE:sha-$GITHUB_SHA"
           docker push "$IMAGE:sha-$GITHUB_SHA"
-          if [ "$GITHUB_REF" = refs/heads/main ]; then
-            HEAD=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
-            if [ "$HEAD" = "$GITHUB_SHA" ]; then
-              docker tag openruyi-lookout:test "$IMAGE:main"
-              docker push "$IMAGE:main"
-              docker tag openruyi-lookout:test "$IMAGE:latest"
-              docker push "$IMAGE:latest"
-            fi
-          else
-            VERSION=$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' openruyi-lookout:test)
-            test "$GITHUB_REF_NAME" = "v$VERSION"
-            docker tag openruyi-lookout:test "$IMAGE:$GITHUB_REF_NAME"
-            docker push "$IMAGE:$GITHUB_REF_NAME"
-          fi
+          docker tag openruyi-lookout:test "$IMAGE:v$VERSION"
+          docker push "$IMAGE:v$VERSION"
+          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          for CHANNEL in main latest; do
+            docker tag openruyi-lookout:test "$IMAGE:$CHANNEL"
+            docker push "$IMAGE:$CHANNEL"
+          done

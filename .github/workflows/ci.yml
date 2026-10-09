@@ -1,0 +1,56 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        default: ''
+      release:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: python3 scripts/check-architecture.py
+      - run: git show --format= --check HEAD
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Build frontend and native runtime
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"])')
+          VERSION=${RELEASE_VERSION:-$VERSION}
+          docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --build-arg RELEASE_VERSION="$VERSION" -t openruyi-lookout:test -f Containerfile .
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-lookout:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+      - name: Native RPM, confinement, backend, API contract and SSR
+        env:
+          CONTAINER_ENGINE: docker
+        run: deploy/check-image.sh openruyi-lookout:test
+      - name: Smoke-test the production entrypoint
+        env:
+          CONTAINER_ENGINE: docker
+        run: python3 deploy/smoke-image.py openruyi-lookout:test
+      - name: Installation, configuration, upgrade and restore
+        run: python3 deploy/smoke-release.py openruyi-lookout:test
+      - name: Save the tested image
+        if: inputs.release
+        run: docker save --output /tmp/tested-image.tar openruyi-lookout:test
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: inputs.release
+        with:
+          path: /tmp/tested-image.tar
+          archive: false
+          if-no-files-found: error
+          retention-days: 1

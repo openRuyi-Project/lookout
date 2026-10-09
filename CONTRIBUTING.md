@@ -96,8 +96,8 @@ Building its disposable test layer requires the package index. The runtime image
 omits test tools. The entrypoint and release tests cover persistent mounts,
 installation, migration, failed-upgrade rollback and an independent restore.
 
-CI publishes the same tested image after these gates pass. Trusted main/tag runs
-can publish. Pull-request jobs cannot. Publication targets linux/amd64. Additional
+The manual Release workflow publishes the same tested image after these gates pass.
+Ordinary pushes and pull requests only run CI. See [release instructions](docs/deployment.md#publish-a-release). Publication targets linux/amd64. Additional
 architectures require their own native and entrypoint checks. Package owners must
 make the GHCR package Public for anonymous pulls. Target-host isolation, real
 providers, HTTPS, reboot recovery and off-host restore drills require separate

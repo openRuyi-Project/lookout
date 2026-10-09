@@ -101,8 +101,8 @@ $UNIT                   application Quadlet
 
 The image update timer checks GitHub every five minutes, with jitter: about
 12 requests/hour, below the 60/hour anonymous limit for an unshared address.
-Only a successful `checks.yml` run on `main` selects its published `sha-<commit>`
-image. No new revision means no GHCR requests, pulls or restarts. If GitHub returns an error or rate limit, the updater leaves the service unchanged.
+Only a successful manual **Release** (`checks.yml`) run on `main` selects its
+published `sha-<commit>` image. Ordinary pushes run CI without publishing images. No new revision means no GHCR requests, pulls or restarts. If GitHub returns an error or rate limit, the updater leaves the service unchanged.
 The updater saves the retry deadline in `backups/publication.json`. Timer events before that deadline make no GitHub request.
 Authentication failures remain distinct from quota waits. A successful response clears the wait.
 Unattended GHCR `main`/`latest` updates require access to the publication workflow.
@@ -502,3 +502,20 @@ Each runner needs the labels `linux`, `lookout-disposable` and either `fedora` o
 plus the prerequisites above. Use disposable machines, not production servers.
 Supply a GHCR digest. An unconfigured or queued runner is not a passing host check.
 Reboot and different-image upgrade acceptance remain separate operator checks.
+
+## Publish a release
+
+In GitHub Actions, select **Release → Run workflow**, choose `main`, and enter
+an unused `MAJOR.MINOR.PATCH` version greater than the existing release tags.
+The workflow pins the selected commit, runs the complete image checks, and
+publishes that same image as `v<VERSION>` and `sha-<commit>`. The container's OCI
+version label records the release version. A commit can be released only once.
+
+The workflow creates the tag and release; do not create them in advance.
+Production consumers follow successful Release runs. The `main` and `latest`
+image tags advance only during releases, not on ordinary pushes.
+Configuration and persistent data remain on the host.
+
+A failed run does not authorize an automatic upgrade. Inspect its logs and any
+draft release before retrying. Do not move a published version tag or reuse its
+version. Use a new version and commit for corrections.
