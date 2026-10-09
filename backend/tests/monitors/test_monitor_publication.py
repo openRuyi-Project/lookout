@@ -200,3 +200,17 @@ def test_completed_result_revalidates_source_scope_and_inputs(collection, change
         assert result['monitors']['binutils']['fixture']['subject']['version'] == '9.0'
     assert result['monitors']['binutils']['fixture']['status'] == 'pending'
     assert not result['monitors']['binutils']['fixture'].get('checked_at')
+
+
+def test_recovered_input_waits_as_pending(collection):
+    collection.config['monitors']['batch_size'] = 1
+    for name in collection.snapshot['sources']:
+        proposed = monitor.plan(collection.config, collection.snapshot, name, 'fixture')
+        collection.snapshot.setdefault('monitors', {})[name] = {'fixture': {
+            **proposed, 'status': 'unsupported', 'input_status': 'unsupported',
+            'note': 'Current source version/revision is not established.'}}
+    state.commit(collection.db, collection.snapshot)
+    result = monitor.collect(collection.config, collection.path, collection.db, io=collection.io)
+    facts = [providers['fixture'] for providers in result['monitors'].values()]
+    assert sorted(fact['status'] for fact in facts) == ['ok', 'pending']
+    assert all(fact.get('note') != 'Current source version/revision is not established.' for fact in facts)

@@ -332,7 +332,8 @@ def collect(config, config_path, db, *, io=None):
                         pending = previous.get('status') == 'pending'
                         observations[name][provider] = ({**previous, 'subject': proposed['subject'],
                                                          'input_status': 'pending', 'input_note': None}
-                                                        if same else retain_current(proposed, previous))
+                                                        if same and (previous.get('attempted_at') or previous.get('checked_at'))
+                                                        else retain_current(proposed, previous))
                         if (policy.due(previous, proposed['fingerprint'], now)
                                 or pending):
                             jobs.append((previous.get('attempted_at', '') if same else '', provider, name, proposed, previous, policy))
