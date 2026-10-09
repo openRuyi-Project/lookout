@@ -10,6 +10,7 @@ from tracker import api, state
 from tracker.monitors import model as monitor_model
 from tracker.readmodel import monitors as monitor_views, snapshot as view
 from tracker.readmodel.packages import PackageList
+from tracker.readmodel.cache import failure_groups
 
 
 def test_new_monitors_share_coverage_counts_with_their_filters():
@@ -47,6 +48,7 @@ def test_indexed_coverage_and_status_preserve_the_published_response(snapshot, t
         'source_versions': sum(bool(row['monitors']['source']['data']['version']) for row in index.rows),
         'tracked_packages': sum(bool(row['monitors']['version']['data']['track']) for row in index.rows),
         'components': snap['components'], 'monitor_coverage': expected_coverage,
+        'failure_groups': failure_groups(index.rows),
         'upstream_failures': [{'provider': 'forge.example', 'error': 'fixture timeout', 'count': 1, 'packages': ['binutils']}],
     }
     original = deepcopy(index.rows)
@@ -85,3 +87,24 @@ def test_status_and_facets_switch_to_the_same_new_generation(snapshot, tmp_path)
     assert listing['total'] == updated['monitor_coverage']['version']['error']
     assert [row['name'] for row in listing['items']] == ['binutils']
     assert old_index.monitor_coverage() == old['monitor_coverage']
+
+
+def test_initial_component_snapshot_serves_empty_data_without_claiming_ready(tmp_path):
+    db = tmp_path / 'initial.db'
+    snapshot = state.empty()
+    snapshot['generation'] = 1
+    state.commit(db, snapshot)
+    app = api.create_app(db)
+    app.state.projection.refresh()
+    client = TestClient(app)
+    assert client.get('/readyz').json()['status'] == 'degraded'
+    for path in ['/api/v2/packages', '/api/v2/export']:
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.json()['targets'] == []
+
+
+def test_shared_errors_count_packages_once():
+    rows = [{'monitors': {'github': {'check': {'error': 'cooldown', 'failures': ['cooldown']}}}}
+            for _ in range(3)]
+    assert failure_groups(rows) == [{'monitor': 'github', 'error': 'cooldown', 'packages': 3}]

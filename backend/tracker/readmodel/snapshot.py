@@ -72,6 +72,8 @@ def collection(snapshot, rows, now):
     if snapshot.get('last_attempt') and any(state.stale(v, now, component_ttl(snapshot, k))
                                           for k, v in snapshot['components'].items()):
         errors.append('collection observations are stale')
+    if 'targets' not in snapshot:
+        errors.append('Initial package collection is pending')
     components = snapshot['components']
     return dict(obs_updated_at=observed_at([components.get(k, {}) for k in
                                                 ('targets', 'inventory', 'source_index', 'builds')]),
@@ -157,7 +159,7 @@ def upstream_failures(observations):
 def component_status(components):
     """Expose collection health, not resumable provider payloads or cursors."""
     fields = ('attempted_at', 'fetched_at', 'checked_at', 'error', 'next_poll_at',
-              'stale_after_seconds', 'page', 'round_started', 'reconciled_at',
+              'stale_after_seconds', 'retry_at', 'page', 'round_started', 'reconciled_at',
               'selected_track_count', 'selected_packages', 'head', 'mode')
     return {name: {key: value[key] for key in fields if key in value}
             for name, value in components.items()}

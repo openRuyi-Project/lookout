@@ -6,6 +6,7 @@ own freshness deadline, and never modifies the database or invokes collectors.
 import logging
 import threading
 import time
+from collections import Counter
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +17,20 @@ from tracker.readmodel import snapshot as view
 from tracker.storage import Revision
 
 LOG = logging.getLogger(__name__)
+
+
+def failure_groups(rows):
+    counts = Counter()
+    for row in rows:
+        for name, observation in row['monitors'].items():
+            check = observation['check']
+            reasons = set(check.get('failures') or [])
+            if check.get('error'):
+                reasons.add(check['error'])
+            for reason in reasons:
+                counts[name, reason] += 1
+    return [{'monitor': name, 'error': reason, 'packages': count}
+            for (name, reason), count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))]
 
 
 @dataclass(frozen=True)
@@ -94,6 +109,7 @@ class ProjectionCache:
                 'source_versions': sum(bool(row['monitors']['source']['data']['version']) for row in rows),
                 'components': view.component_status(snapshot['components']),
                 'monitor_coverage': index.monitor_coverage(),
+                'failure_groups': failure_groups(rows),
                 'upstream_failures': view.upstream_failures(
                     (row['name'], row['monitors']['version']['data']['upstream']) for row in rows),
             }

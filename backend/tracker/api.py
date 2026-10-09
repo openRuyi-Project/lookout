@@ -539,7 +539,7 @@ def create_app(db=None):
             result['query']['filters'] = filters.filters.model_dump()
         return {**result,
                 'section': section,
-                'monitors': catalog, 'targets': snap['targets'], 'collection': collection,
+                'monitors': catalog, 'targets': snap.get('targets', []), 'collection': collection,
                 'presentation': snap.get('presentation', {})}
 
     @app.get('/api/v2/packages', response_model=MonitoredList, openapi_extra=query_schema(PackageQuery))
@@ -617,7 +617,7 @@ def create_app(db=None):
     @app.get('/api/v2/targets', response_model=list[Target])
     def targets():
         snap, _, _ = data()
-        return snap['targets']
+        return snap.get('targets', [])
     @app.get('/api/v2/status')
     def status():
         try:
@@ -628,7 +628,7 @@ def create_app(db=None):
     def export(response: Response):
         snap, index, collection = data()
         response.headers['Content-Disposition'] = 'attachment; filename="openruyi-packages.json"'
-        return {'schema': 2, 'collection': collection, 'targets': snap['targets'], 'packages': index.rows}
+        return {'schema': 2, 'collection': collection, 'targets': snap.get('targets', []), 'packages': index.rows}
     @app.middleware('http')
     async def headers(request, call_next):
         response = await call_next(request)
