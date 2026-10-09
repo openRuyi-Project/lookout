@@ -14,11 +14,13 @@
 # ---- frontend build stage -------------------------------------------------
 ARG FEDORA_IMAGE=registry.fedoraproject.org/fedora:43@sha256:7bc1df1ba612dfd63f1eae89b6a91a7d75b2df994f4c35287e4165375c5ce1fd
 ARG NODE_IMAGE=docker.io/library/node:22.22.3-bookworm-slim@sha256:e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752
-FROM ${NODE_IMAGE} AS frontend
+ARG CHECK_RUNTIME_IMAGE=application
+FROM ${NODE_IMAGE} AS frontend-dependencies
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/scripts/harden-http-cache.cjs ./scripts/
 RUN node --version && npm --version && npm ci
+FROM frontend-dependencies AS frontend
 COPY frontend/ ./
 COPY LICENSES/ /build/LICENSES/
 ENV ASTRO_TELEMETRY_DISABLED=1
@@ -26,9 +28,10 @@ RUN npm run quality && npm run check && npm run build && npm prune --omit=dev
 
 # ---- Python dependency build stage ----------------------------------------
 FROM ${FEDORA_IMAGE} AS python-builder
+ARG SYSTEM_REFRESH=manual
 # Build native pip extensions on the same Fedora/Python ABI as the runtime.
 # Compilers and development headers never enter the final image.
-RUN dnf install -y \
+RUN echo "System dependency refresh: $SYSTEM_REFRESH" && dnf install -y \
         python3 python3-pip python3-devel \
         gcc gcc-c++ make libcurl-devel openssl-devel autoconf automake libtool \
     && dnf clean all
@@ -41,14 +44,16 @@ RUN python3 -m venv --system-site-packages /opt/venv \
     && /opt/venv/bin/python -m pip uninstall --yes pip
 
 # ---- runtime stage --------------------------------------------------------
-FROM ${FEDORA_IMAGE}
+FROM ${FEDORA_IMAGE} AS runtime-system
+ARG SYSTEM_REFRESH=manual
 # Keep native rpm and the existing Python RPM macro surface for SPEC parsing.
 # pycurl needs the shared curl/OpenSSL libraries, not their development headers.
-RUN dnf install -y \
+RUN echo "System dependency refresh: $SYSTEM_REFRESH" && dnf install -y \
         python3 python3-rpm rpm-build systemd-rpm-macros \
         python-rpm-macros python3-rpm-macros pyproject-rpm-macros python3-rpm-generators \
         git libstdc++ libcurl openssl-libs libseccomp catatonit \
     && dnf clean all
+FROM runtime-system AS application
 # Build, test and runtime use the same Node/npm, independent of Fedora updates.
 COPY --from=frontend /usr/local/bin/node /usr/local/bin/node
 COPY --from=frontend /usr/local/lib/node_modules/npm/ /usr/local/lib/node_modules/npm/
@@ -107,3 +112,20 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
 
 # Reap orphaned Git/RPM helpers without stealing the supervisor's child statuses.
 ENTRYPOINT ["/usr/libexec/catatonit/catatonit", "--", "/opt/venv/bin/python", "/app/deploy/container-entrypoint.py"]
+
+# Independent dependency stages survive application source and label changes.
+FROM python-builder AS test-dependencies
+COPY backend/requirements-test.lock /tmp/requirements-test.lock
+RUN /opt/venv/bin/python -m ensurepip \
+    && /opt/venv/bin/python -m pip install --no-cache-dir --upgrade pip==26.2.1 \
+    && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements-test.lock \
+    && rm /tmp/requirements-test.lock
+
+FROM ${CHECK_RUNTIME_IMAGE} AS check
+USER 0
+COPY --from=test-dependencies /opt/venv/ /opt/venv/
+COPY --from=frontend-dependencies /build/frontend/ /app/frontend/
+USER 10001:10001
+
+# A build without --target must produce the application, not its test tools.
+FROM application AS runtime

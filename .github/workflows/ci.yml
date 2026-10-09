@@ -1,7 +1,10 @@
 name: CI
 on:
   push:
+    branches: [main]
   pull_request:
+  schedule:
+    - cron: '23 4 * * 1'
   workflow_call:
     inputs:
       version:
@@ -13,31 +16,94 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ !inputs.release }}
 jobs:
   static:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - run: python3 scripts/check-architecture.py
-      - run: git show --format= --check HEAD
+      - id: scope
+        env:
+          RELEASE: ${{ inputs.release }}
+        run: |
+          if [ "$RELEASE" = true ]; then
+            python3 scripts/ci-scope.py --release
+          else
+            python3 scripts/ci-scope.py
+          fi
   native:
+    needs: static
+    if: needs.static.outputs.full == 'true'
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: Build frontend and native runtime
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+      - name: Build inputs
+        id: build
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
           VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("backend/pyproject.toml", "rb"))["project"]["version"])')
-          VERSION=${RELEASE_VERSION:-$VERSION}
-          docker build --build-arg SOURCE_REVISION="$GITHUB_SHA" --build-arg SOURCE_URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --build-arg RELEASE_VERSION="$VERSION" -t openruyi-lookout:test -f Containerfile .
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-lookout:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          echo "version=${RELEASE_VERSION:-$VERSION}" >> "$GITHUB_OUTPUT"
+          echo "system-refresh=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+      - name: Build frontend and native runtime
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: Containerfile
+          target: runtime
+          load: true
+          push: false
+          tags: openruyi-lookout:test
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
+            RELEASE_VERSION=${{ steps.build.outputs.version }}
+            SYSTEM_REFRESH=${{ steps.build.outputs.system-refresh }}
+          cache-from: type=gha,scope=lookout-runtime
+          cache-to: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'type=gha,scope=lookout-runtime,mode=max' || '' }}
+      - name: Build native test environment
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
+        with:
+          context: .
+          file: Containerfile
+          target: check
+          load: true
+          push: false
+          tags: openruyi-lookout:check
+          build-args: |
+            SOURCE_REVISION=${{ github.sha }}
+            SOURCE_URL=${{ github.server_url }}/${{ github.repository }}
+            RELEASE_VERSION=${{ steps.build.outputs.version }}
+            SYSTEM_REFRESH=${{ steps.build.outputs.system-refresh }}
+          cache-from: |
+            type=gha,scope=lookout-runtime
+            type=gha,scope=lookout-check
+          cache-to: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'type=gha,scope=lookout-check,mode=max' || '' }}
+      - name: Verify image identity
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          for IMAGE in openruyi-lookout:test openruyi-lookout:check; do
+            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$IMAGE")" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE")" = "$GITHUB_SHA"
+            test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$IMAGE")" = "$VERSION"
+          done
       - name: Native RPM, confinement, backend, API contract and SSR
         env:
           CONTAINER_ENGINE: docker
-        run: deploy/check-image.sh openruyi-lookout:test
+        run: deploy/check-image.sh openruyi-lookout:test openruyi-lookout:check
       - name: Smoke-test the production entrypoint
         env:
           CONTAINER_ENGINE: docker
@@ -54,3 +120,22 @@ jobs:
           archive: false
           if-no-files-found: error
           retention-days: 1
+  result:
+    name: CI result
+    if: always()
+    needs: [static, native]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - env:
+          STATIC: ${{ needs.static.result }}
+          FULL: ${{ needs.static.outputs.full }}
+          NATIVE: ${{ needs.native.result }}
+        run: |
+          test "$STATIC" = success
+          if [ "$FULL" = true ]; then
+            test "$NATIVE" = success
+          else
+            test "$FULL" = false
+            test "$NATIVE" = skipped
+          fi

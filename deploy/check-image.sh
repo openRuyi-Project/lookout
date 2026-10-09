@@ -2,7 +2,8 @@
 # SPDX-FileCopyrightText: (C) 2026 openRuyi Project Contributors
 # SPDX-License-Identifier: MulanPSL-2.0
 set -eu
-IMAGE=${1:?usage: deploy/check-image.sh IMAGE}
+IMAGE=${1:?usage: deploy/check-image.sh IMAGE [TEST_IMAGE]}
+TEST_IMAGE=${2:-}
 ENGINE=${CONTAINER_ENGINE:-podman}
 case "$ENGINE" in docker|podman) ;; *) echo "CONTAINER_ENGINE must be docker or podman" >&2; exit 2;; esac
 set --
@@ -11,12 +12,15 @@ if [ "$ENGINE" = podman ] && [ "$(podman info --format '{{.Host.Security.Rootles
 fi
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 # A disposable test layer leaves the application image free of test tooling.
-TEST_IMAGE="localhost/openruyi-lookout-check:$$"
-trap '"$ENGINE" image rm "$TEST_IMAGE" >/dev/null 2>&1 || true' EXIT
-if [ "$ENGINE" = podman ]; then
-  "$ENGINE" build --format docker --build-arg "RUNTIME_IMAGE=$IMAGE" -t "$TEST_IMAGE" -f "$ROOT/deploy/Containerfile.check" "$ROOT"
-else
-  "$ENGINE" build --build-arg "RUNTIME_IMAGE=$IMAGE" -t "$TEST_IMAGE" -f "$ROOT/deploy/Containerfile.check" "$ROOT"
+if [ -z "$TEST_IMAGE" ]; then
+  TEST_IMAGE="localhost/openruyi-lookout-check:$$"
+  trap '"$ENGINE" image rm "$TEST_IMAGE" >/dev/null 2>&1 || true' EXIT
+  BASE=$("$ENGINE" image inspect --format '{{ index .Config.Labels "org.opencontainers.image.base.name" }}' "$IMAGE")
+  if [ "$ENGINE" = podman ]; then
+    "$ENGINE" build --format docker --target check --build-arg "CHECK_RUNTIME_IMAGE=$IMAGE" --build-arg "FEDORA_IMAGE=$BASE" -t "$TEST_IMAGE" -f "$ROOT/Containerfile" "$ROOT"
+  else
+    "$ENGINE" build --target check --build-arg "CHECK_RUNTIME_IMAGE=$IMAGE" --build-arg "FEDORA_IMAGE=$BASE" -t "$TEST_IMAGE" -f "$ROOT/Containerfile" "$ROOT"
+  fi
 fi
 # Native tests execute temporary command shims. This offline harness needs exec;
 # production mounts and worker confinement stay unchanged.

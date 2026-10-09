@@ -91,6 +91,11 @@ The container build pins the official Node image by digest and copies the same
 Node/npm into the Fedora runtime. The test image inherits them. Update that pin
 in `Containerfile` when upgrading Node.
 
+CI reuses build layers, but runs tests on every code change. Only the document
+paths listed in `scripts/ci-scope.py` skip image checks. Release always runs them.
+Use `CI result` as the required branch check. PRs read shared caches; only trusted
+`main` runs write them. Weekly builds refresh system dependency layers.
+
 The native gate runs without provider network access and rejects skipped tests.
 Building its disposable test layer requires the package index. The runtime image
 omits test tools. The entrypoint and release tests cover persistent mounts,

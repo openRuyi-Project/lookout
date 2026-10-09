@@ -42,8 +42,10 @@ class ContainerTests(unittest.TestCase):
         containerfile = (ROOT / 'Containerfile').read_text()
         stages = containerfile.split('\nFROM ')
         builder = next(stage for stage in stages if stage.splitlines()[0].endswith(' AS python-builder'))
-        runtime = stages[-1]
-        self.assertEqual(builder.splitlines()[0].split()[0], runtime.splitlines()[0])
+        runtime_system = next(stage for stage in stages if stage.splitlines()[0].endswith(' AS runtime-system'))
+        application = next(stage for stage in stages if stage.splitlines()[0].endswith(' AS application'))
+        runtime = runtime_system + application
+        self.assertEqual(builder.splitlines()[0].split()[0], runtime_system.splitlines()[0].split()[0])
         for package in ('gcc', 'gcc-c++', 'make', 'python3-devel', 'libcurl-devel',
                         'openssl-devel', 'autoconf', 'automake', 'libtool'):
             self.assertIn(package, builder.split())
@@ -55,6 +57,7 @@ class ContainerTests(unittest.TestCase):
         self.assertIn('venv --system-site-packages /opt/venv', builder)
         self.assertIn('COPY --from=python-builder /opt/venv/ /opt/venv/', runtime)
         self.assertNotIn('pip install', runtime)
+        self.assertEqual(stages[-1].strip(), 'application AS runtime')
 
     def test_service_commands_have_importable_working_directories_and_start_before_clone(self):
         jobs = []
