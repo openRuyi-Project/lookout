@@ -162,13 +162,13 @@ def test_helper_can_read_its_own_process_group():
 
 
 def test_spec_cannot_read_or_overwrite_external_file(tmp_path):
-    secret = tmp_path / 'operator-secret'
-    secret.write_text('fixture-private')
+    canary_path = tmp_path / 'outside-worker'
+    canary_path.write_text('fixture-private')
     for mode in ('r', 'w'):
-        body = "%{lua: local f=io.open('" + str(secret) + "','" + mode + "'); if f then f:close(); print('escaped') else print('blocked') end}"
+        body = "%{lua: local f=io.open('" + str(canary_path) + "','" + mode + "'); if f then f:close(); print('escaped') else print('blocked') end}"
         result = native_spec.query(expression(body))
         assert result['version'] == 'blocked', result
-        assert secret.read_text() == 'fixture-private'
+        assert canary_path.read_text() == 'fixture-private'
 
 
 def test_spec_cannot_read_parent_environment(monkeypatch):

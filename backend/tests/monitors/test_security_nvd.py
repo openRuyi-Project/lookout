@@ -28,14 +28,14 @@ class IO:
 
     def json(self, method, url, body=None, *, min_interval=0):
         self.requests.append((method, url, min_interval))
-        if 'nvd.nist.gov' in url:
-            index = len([r for r in self.requests if 'nvd.nist.gov' in r[1]]) - 1
+        if urlsplit(url).hostname == 'services.nvd.nist.gov':
+            index = len([r for r in self.requests if urlsplit(r[1]).hostname == 'services.nvd.nist.gov']) - 1
             return {'totalResults': sum(map(len, self.pages)),
                     'startIndex': sum(map(len, self.pages[:index])),
                     'vulnerabilities': [{'cve': deepcopy(r)} for r in self.pages[index]]}
-        if 'cisa.gov' in url:
+        if urlsplit(url).hostname == 'www.cisa.gov':
             return {'vulnerabilities': []}
-        if 'first.org' in url:
+        if urlsplit(url).hostname == 'api.first.org':
             return {'data': []}
         pytest.fail('Unexpected provider: ' + url)
 
@@ -119,3 +119,15 @@ def test_nvd_failure_retries_more_slowly_than_osv_without_disabling_the_heartbea
     assert policy.interval_seconds == 21600
     assert policy.retry_seconds == 900 and policy.delay(2) == 1800
     assert monitor.refresh(SUBJECT, {'ecosystem': 'PyPI', 'name': 'fixture'}, {}).retry_seconds == 300
+
+
+@pytest.mark.parametrize('url', [
+    'https://services.nvd.nist.gov.invalid/api',
+    'https://www.cisa.gov.invalid/feed',
+    'https://api.first.org.invalid/data',
+    'https://example.org/cisa.gov/first.org/nvd.nist.gov',
+])
+def test_fixture_rejects_lookalike_provider_urls(url):
+    io = IO()
+    with pytest.raises(pytest.fail.Exception):
+        io.json("GET", url)

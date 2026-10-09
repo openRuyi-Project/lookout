@@ -1,5 +1,6 @@
 """Provider context is evidence, never generated remediation or priority."""
 from copy import deepcopy
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -30,9 +31,9 @@ class FixtureIO:
             if self.error:
                 raise self.error
             return {'vulns': deepcopy(self.entries)}
-        if 'cisa.gov' in url:
+        if urlsplit(url).hostname == 'www.cisa.gov':
             return {'vulnerabilities': deepcopy(self.kev)}
-        if 'first.org' in url:
+        if urlsplit(url).hostname == 'api.first.org':
             return {'data': [{'cve': CVE, 'epss': '0.004', 'date': '2026-09-25'}]}
         pytest.fail('Unexpected request: ' + url)
 
@@ -177,3 +178,15 @@ def test_fetch_failure_retains_context_only_for_same_fingerprint(monkeypatch):
     changed = monitor.execute('security', {**proposed, 'fingerprint': 'different'},
                               FixtureIO([], error=TimeoutError()), previous)
     assert changed['status'] == 'error' and changed['findings'] == []
+
+
+@pytest.mark.parametrize('url', [
+    'https://services.nvd.nist.gov.invalid/api',
+    'https://www.cisa.gov.invalid/feed',
+    'https://api.first.org.invalid/data',
+    'https://example.org/cisa.gov/first.org/nvd.nist.gov',
+])
+def test_fixture_rejects_lookalike_provider_urls(url):
+    io = FixtureIO([])
+    with pytest.raises(pytest.fail.Exception):
+        io.json("GET", url)

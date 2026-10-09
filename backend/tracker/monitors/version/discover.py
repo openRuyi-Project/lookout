@@ -153,7 +153,7 @@ def match(candidate, response):
         if not (source_matches or (same_homepage and (not candidate.get('shared_homepage') or component_matches))):
             continue
         # A shared forge root cannot identify which compatibility release line.
-        if (candidate.get('shared_homepage') or candidate.get('shared_repository')) and (identity_url(source_repository) or candidate_identity or '').startswith('github.com/'):
+        if (candidate.get('shared_homepage') or candidate.get('shared_repository')) and (identity_url(source_repository) or candidate_identity or '').partition('/')[0] == 'github.com':
             continue
         if not isinstance(item.get('versions'), list) or not isinstance(item.get('stable_versions'), list):
             continue
@@ -312,7 +312,7 @@ def main(argv=None):
             continue
         repo = row.get('source_repository') or row['homepage']
         identity = identity_url(repo)
-        if identity and identity.startswith('github.com/') and github_count < args.github_limit:
+        if identity and identity.partition('/')[0] == 'github.com' and github_count < args.github_limit:
             github_count += 1
             row.update(reason=None, entry={'source':'github', 'github':identity[len('github.com/'):],
                        'use_latest_release':True, 'prefix':'v'}, expected_version=None,

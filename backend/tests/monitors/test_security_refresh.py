@@ -64,12 +64,12 @@ def test_nvd_cache_heartbeat_failure_and_new_version_keep_distinct_evidence(monk
 
     def respond(request):
         requests.append(request)
-        if 'nvd.nist.gov' in request.url.host:
+        if request.url.host == 'services.nvd.nist.gov':
             if failing[0]:
                 return httpx.Response(503, headers={'Retry-After': '900'})
             return httpx.Response(200, json={'totalResults': 1, 'startIndex': 0,
                                              'vulnerabilities': [{'cve': record()}]})
-        if 'cisa.gov' in request.url.host:
+        if request.url.host == 'www.cisa.gov':
             return httpx.Response(200, json={'vulnerabilities': []})
         return httpx.Response(200, json={'data': []})
 
@@ -104,7 +104,7 @@ def test_nvd_cache_heartbeat_failure_and_new_version_keep_distinct_evidence(monk
         new_failure = runner.execute('security', next_version, owner, failed)
         assert new_failure['status'] == 'error' and new_failure['findings'] == []
         assert new_failure['checked_at'] is None
-        nvd_requests = [r for r in requests if 'nvd.nist.gov' in r.url.host]
+        nvd_requests = [r for r in requests if r.url.host == 'services.nvd.nist.gov']
         assert nvd_requests[-1].url.params['cpeName'].split(':')[5] == '1.2.4'
         assert nvd_requests[0].url != nvd_requests[-1].url
 

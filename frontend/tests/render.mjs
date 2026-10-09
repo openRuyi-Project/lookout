@@ -299,8 +299,11 @@ const mock = createServer((req, res) => {
   const document = project(url.pathname === '/api/ui/theme' ? 'theme' : selected ? 'detail' : 'list', payload, query);
   const response = JSON.stringify(url.pathname.startsWith('/api/ui/') ? document : payload);
   const send = () => { res.writeHead(200, {'Content-Type': 'application/json'}); res.end(response); };
-  if (delays[url.searchParams.get('q')]) setTimeout(send, delays[url.searchParams.get('q')]);
-  else send();
+  const delay = delays[url.searchParams.get('q')];
+  if (Number.isInteger(delay) && delay > 0 && delay <= 2000) {
+    const timer = setTimeout(send, delay);
+    res.once('close', () => clearTimeout(timer));
+  } else send();
 });
 mock.listen(serving ? 8099 : 0, serving ? '0.0.0.0' : '127.0.0.1'); await once(mock, 'listening');
 const reserve = createServer(); reserve.listen(0, '127.0.0.1'); await once(reserve, 'listening');
@@ -827,10 +830,15 @@ try {
   const detailResponse = await wire('/packages/success');
   assert.match(detailResponse.headers['content-security-policy'], /script-src 'self'/);
   assert.doesNotMatch(detailResponse.headers['content-security-policy'], /unsafe-inline|unsafe-eval/);
-  const scripts = [...detailResponse.body.toString().matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)];
+  const parsedScripts = spawnSync(process.env.PYTHON || 'python3',
+    [fileURLToPath(new URL('./html-scripts.py', import.meta.url))],
+    {input: detailResponse.body, encoding: 'utf8', timeout: 5000});
+  assert.equal(parsedScripts.status, 0, parsedScripts.stderr);
+  const scripts = JSON.parse(parsedScripts.stdout);
   assert.equal(scripts.length, 1);
-  const scriptPath = scripts[0][1].match(/src="(\/_astro\/[^"]+\.js)"/)[1];
-  assert.equal(scripts[0][2].trim(), '');
+  const scriptPath = scripts[0].attributes.src;
+  assert.match(scriptPath, /^\/_astro\/[^/]+\.js$/);
+  assert.equal(scripts[0].text.trim(), '');
   assert.match(identity.body.toString(), new RegExp(`src="${scriptPath.replaceAll('.', '\\.')}"`));
   const script = await wire(scriptPath, {'Accept-Encoding': 'gzip'});
   assert.equal(script.status, 200);

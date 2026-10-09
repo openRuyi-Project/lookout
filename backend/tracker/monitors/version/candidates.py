@@ -128,7 +128,7 @@ def go_source_check(candidate):
     repo_path = repo.removeprefix('https://').removeprefix('http://')
     prefix = repo_path + '/'
     same_repository = module.startswith(prefix) or (
-        repo_path.startswith('github.com/') and module[:len(prefix)].casefold() == prefix.casefold()
+        urlsplit(repo).hostname == 'github.com' and module[:len(prefix)].casefold() == prefix.casefold()
     )
     if repo_path and same_repository:
         relative = module[len(repo_path) + 1:]
