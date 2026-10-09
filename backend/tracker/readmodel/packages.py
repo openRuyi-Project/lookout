@@ -50,12 +50,14 @@ class PackageList:
             return
         index = defaultdict(lambda: defaultdict(set))
         for key in ('view', 'buildsystem', 'maintenance', 'requires', 'version_signal', *(f'build:{t["id"]}' for t in targets)):
-            index[key]
+            index.setdefault(key, defaultdict(set))
         for number, row in enumerate(self.rows):
             index['view']['all'].add(number)
             for mid, module in row['monitors'].items():
                 for family in ('check', 'retained', 'findings'):
-                    index[family + ':' + mid]
+                    dimension = family + ':' + mid
+                    if dimension not in index:
+                        index[dimension] = defaultdict(set)
                 for dimension, values in module['dimensions'].items():
                     for value in values:
                         index[dimension][value].add(number)

@@ -192,6 +192,7 @@ def collect(config, db, *, client=None, now=None):
                     owner.get(f'/repos/{repo}/issues?state=all&per_page=1', auth_only=True)
                     recovered = True
                 except AuthenticationRejected:
+                    # Keep the anonymous polling deadline when the token is still rejected.
                     pass
                 except RateLimited as error:
                     owner.auth_retry_at = max(time.time() + 3600, datetime.fromisoformat(error.retry_at).timestamp())

@@ -212,6 +212,7 @@ class Resolver:
                         environment['python_version'] = '.'.join(map(str, version.release[:2]))
                         environment['python_full_version'] = str(version)
                 except (ValueError, TypeError):
+                    # An invalid observed version must not become a marker environment fact.
                     pass
         return environment
 

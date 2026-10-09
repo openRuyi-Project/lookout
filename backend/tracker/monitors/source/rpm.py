@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+from contextlib import suppress
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import quote
@@ -35,10 +36,8 @@ def macro_paths(settings, project, index):
 
 
 def _kill_group(process):
-    try:
+    with suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
     process.wait()
 
 

@@ -62,6 +62,7 @@ def cooldown(headers, now):
         if math.isfinite(value):
             return max(now + 60, value)
     except (ValueError, TypeError, OverflowError):
+        # Malformed rate-limit headers use the bounded fallback below.
         pass
     return now + 300
 

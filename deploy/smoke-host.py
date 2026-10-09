@@ -55,8 +55,8 @@ def check(image):
             run(['podman', 'run', '--rm', '--network', 'none', *PROTECTION,
                  '--userns=keep-id:uid=10001,gid=10001', '-v', f'{restore}:/restore:ro,Z',
                  '--entrypoint', PYTHON, manifest['image'], '-c',
-                 "from tracker import state; s=state.read('/restore/snapshot.sqlite3'); "
-                 "assert s['sources']['smoke-fixture']['version']=='1.2.3'"])
+                 ("from tracker import state; s=state.read('/restore/snapshot.sqlite3'); "
+                 "assert s['sources']['smoke-fixture']['version']=='1.2.3'")])
             print(json.dumps({'status': 'passed', 'checks': ['install', 'native-preflight', 'HTTP',
                              'stop-start', 'persistent-version', 'backup-read'],
                               'host': dict(line.split('=', 1) for line in Path('/etc/os-release').read_text().splitlines()

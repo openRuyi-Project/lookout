@@ -213,6 +213,7 @@ def public_source(entry):
             result['project_id'] = int(ids[0])
             result['project_url'] = 'https://release-monitoring.org/project/' + ids[0] + '/'
     except (ValueError, TypeError):
+        # Keep the rule without optional Anitya provenance when its URL is invalid.
         pass
     return result
 

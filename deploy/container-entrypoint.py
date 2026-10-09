@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: (C) 2026 Institute of Software, Chinese Academy of Sciences (ISCAS)
 # SPDX-FileCopyrightText: (C) 2026 openRuyi Project Contributors
 # SPDX-License-Identifier: MulanPSL-2.0
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
 import os
 import signal
 import subprocess
@@ -47,19 +47,16 @@ def run_child(name, cmd, *, cwd, env=None, timeout=None):
             return proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             log(f"{name}: timeout after {timeout}s; terminating process group")
-            try:
+            with suppress(ProcessLookupError):
                 os.killpg(proc.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
             try:
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
+                # The grace period expired; kill the process group below.
                 pass
             # Also remove descendants if their parent exited before they did.
-            try:
+            with suppress(ProcessLookupError):
                 os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
             proc.wait()
             return 124
     finally:
@@ -132,19 +129,15 @@ def terminate_children():
     with _procs_lock:
         processes = list(_procs.values())
     for proc in processes:
-        try:
+        with suppress(ProcessLookupError):
             os.killpg(proc.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
     deadline = time.monotonic() + 10
     for proc in processes:
         try:
             proc.wait(timeout=max(0, deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
-            try:
+            with suppress(ProcessLookupError):
                 os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
             proc.wait()
 
 

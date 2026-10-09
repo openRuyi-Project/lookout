@@ -47,7 +47,10 @@ def collect(config, old, client, now, source_limit=None):
             # Persist a category, never URLs with auth, raw stderr, headers, or local paths.
             components[key] = state.failure(components.get(key, {}), f'{key}: {type(e).__name__}', now)
             return None
-    verified = stage('targets', lambda: (obs.validate_targets(client.get(f'/source/{project}/_meta'), config['obs']['project'], config['targets']), True)[1])
+    def validate_targets():
+        obs.validate_targets(client.get(f'/source/{project}/_meta'), config['obs']['project'], config['targets'])
+        return True
+    verified = stage('targets', validate_targets)
     inv = stage('inventory', lambda: obs.inventory(client.get(f'/source/{project}')))
     if inv is not None:
         new['inventory'] = inv

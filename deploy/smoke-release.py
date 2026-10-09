@@ -5,12 +5,10 @@ import importlib.util
 import json
 from pathlib import Path
 import shlex
-import shutil
 import socket
 import subprocess
 import sys
 import tempfile
-import uuid
 
 from deployment import Docker, PROTECTION, PYTHON, healthy, image_command, resolve_image, run
 from install import install

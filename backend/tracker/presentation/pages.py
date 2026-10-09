@@ -55,6 +55,7 @@ def collection_meta(collection):
                 branch_url = base + '/' + routes[0] + '/' + quote(source['branch'], safe='')
                 commit_url = base + '/' + routes[1] + '/' + quote(source['revision'], safe='')
     except ValueError:
+        # Keep the source identity visible without a link when its URL is invalid.
         pass
     result.append(Field(label=source['branch'], href=branch_url,
         values=[text(source['revision'][:6], kind='code', href=commit_url, title=source['revision'])]))

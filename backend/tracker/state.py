@@ -160,6 +160,7 @@ def next_stale_change(observation, now, ttl):
         if age <= ttl:
             return observed + timedelta(seconds=ttl, microseconds=1)
     except (ValueError, TypeError, OverflowError):
+        # Invalid timestamps have no usable expiry boundary.
         pass
     return None
 

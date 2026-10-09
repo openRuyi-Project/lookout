@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 import tomllib
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 import tomlkit
@@ -261,10 +261,8 @@ def stream_command(command, timeout, native, previous, now, on_results=None):
                 error = 'nvchecker timeout'
     finally:
         # A timeout or rejected publication must not leave native helper children.
-        try:
+        with suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
         process.wait()
         if process.stdout is not None:
             process.stdout.close()

@@ -131,6 +131,7 @@ class IO:
                                 and math.isfinite(stored['time']) and stored['time'] >= 0):
                             cached = stored
                 except (OSError, ValueError, OverflowError):
+                    # Ignore an unreadable cache entry and fetch from the provider.
                     pass
             ttl = self.ttl if max_age is None else min(self.ttl, max_age)
             if cached and 0 <= now - cached.get('time', 0) < ttl:

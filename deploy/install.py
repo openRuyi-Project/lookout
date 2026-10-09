@@ -169,10 +169,10 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
              '--userns=keep-id:uid=10001,gid=10001', '-v', f'{root / "config"}:/bootstrap:Z',
              *[arg for value in environment for arg in ('-e', value)],
              '--entrypoint', PYTHON, manifest['image'], '-c',
-             'import runpy,shutil,tempfile; from pathlib import Path; '
+             ('import runpy,shutil,tempfile; from pathlib import Path; '
              'd=tempfile.TemporaryDirectory(); p=Path(d.name)/"config"; '
              'runpy.run_path("/app/deploy/init-config.py")["initialize"]("/app/config",p); '
-             'shutil.copytree(p,"/bootstrap",dirs_exist_ok=True)'])
+             'shutil.copytree(p,"/bootstrap",dirs_exist_ok=True)')])
     for path in (root / 'config').rglob('*'):
         path.chmod(0o700 if path.is_dir() else 0o600)
     template = Path(__file__).parent / 'quadlet/openruyi-lookout.container.in'
