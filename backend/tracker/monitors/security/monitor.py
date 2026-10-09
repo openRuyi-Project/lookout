@@ -13,7 +13,7 @@ from tracker.monitors.schedule import Schedule
 from tracker.monitors.security import nvd
 from tracker.monitors.source.release import commit_hash, tag_matches_version
 
-__all__ = ['query_subject']
+__all__ = ['TITLE', 'VERSION', 'HOSTS', 'inputs', 'check', 'refresh', 'query_subject']
 
 
 TITLE = Issue.ADVISORY
@@ -335,6 +335,7 @@ def check(subject, settings, io):
                     if isinstance(day, str) and date.fromisoformat(day).isoformat() == day:
                         facts.append(evidence('KEV added · ' + cve, day, 'CISA', kev_url, code='kev_added'))
                 except ValueError:
+                    # An invalid optional date does not discard the KEV membership evidence.
                     pass
                 ransomware = record.get('knownRansomwareCampaignUse')
                 if ransomware in ('Known', 'Unknown'):

@@ -20,11 +20,15 @@ class Adapter(Protocol):
     __file__: str
 
     @property
-    def VERSION(self) -> int: ...
+    def VERSION(self) -> int:
+        raise NotImplementedError
 
     @property
-    def HOSTS(self) -> set[str]: ...
+    def HOSTS(self) -> set[str]:
+        raise NotImplementedError
 
-    def inputs(self, package: dict, configured: dict | None) -> dict | None: ...
+    def inputs(self, package: dict, configured: dict | None) -> dict | None:
+        raise NotImplementedError
 
-    def check(self, subject: dict, settings: dict, io: ProviderIO, /) -> dict: ...
+    def check(self, subject: dict, settings: dict, io: ProviderIO, /) -> dict:
+        raise NotImplementedError

@@ -7,7 +7,7 @@ from tracker.monitors.schedule import Schedule
 from tracker.providers import release
 from tracker.providers.model import UnsupportedRelease
 
-__all__ = ['query_subject']
+__all__ = ['TITLE', 'VERSION', 'SCOPE', 'HOSTS', 'inputs', 'check', 'refresh', 'query_subject']
 
 
 TITLE = Issue.YANKED

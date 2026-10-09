@@ -12,7 +12,7 @@ from tracker.providers.release import HOSTS as HOSTS
 from tracker.providers.release import inputs as inputs
 from tracker.providers.release import read
 
-__all__ = ['query_subject']
+__all__ = ['TITLE', 'VERSION', 'SCOPE', 'HOSTS', 'inputs', 'check', 'refresh', 'query_subject']
 
 
 TITLE = Issue.LICENSE_DIFF

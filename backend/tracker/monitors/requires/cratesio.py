@@ -5,6 +5,8 @@ from tracker.providers.cratesio import HOSTS as HOSTS
 from tracker.providers.cratesio import inputs as inputs
 from tracker.providers.cratesio import project, release
 
+__all__ = ['HOSTS', 'inputs', 'read']
+
 
 def read(version, settings, io):
     info, url = release(project(settings), version, io)

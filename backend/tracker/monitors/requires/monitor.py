@@ -10,11 +10,12 @@ from tracker.monitors.requires.model import Requirement, UnsupportedRequirements
 from tracker.monitors.schedule import Schedule
 from tracker.providers.model import IdentityProvider, UnsupportedRelease, resolve_inputs
 
-__all__ = ['query_subject']
+__all__ = ['TITLE', 'VERSION', 'SCOPE', 'HOSTS', 'inputs', 'check', 'refresh', 'query_subject']
 
 
 class Backend(IdentityProvider, Protocol):
-    def read(self, version: str, settings: dict, io, /) -> list[Requirement]: ...
+    def read(self, version: str, settings: dict, io, /) -> list[Requirement]:
+        raise NotImplementedError
 
 
 TITLE = 'Dependencies'

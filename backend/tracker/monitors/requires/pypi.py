@@ -13,6 +13,8 @@ from tracker.providers.pypi import HOSTS as HOSTS
 from tracker.providers.pypi import inputs as inputs
 from tracker.providers.pypi import project, release
 
+__all__ = ['HOSTS', 'inputs', 'read']
+
 MAX_DECLARATION = 1024
 MAX_DEPENDENCIES = 256
 MAX_SPECIFIERS = 64

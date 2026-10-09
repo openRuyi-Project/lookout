@@ -6,9 +6,11 @@ from typing import Protocol
 
 class IdentityProvider(Protocol):
     @property
-    def HOSTS(self) -> set[str]: ...
+    def HOSTS(self) -> set[str]:
+        raise NotImplementedError
 
-    def inputs(self, package: dict, configured: dict | None, /) -> dict | None: ...
+    def inputs(self, package: dict, configured: dict | None, /) -> dict | None:
+        raise NotImplementedError
 
 
 def resolve_inputs(providers: Mapping[str, IdentityProvider], package: dict, configured: dict | None) -> dict | None:

@@ -6,7 +6,8 @@ from tracker.providers.model import IdentityProvider, Release, resolve_inputs
 
 
 class Backend(IdentityProvider, Protocol):
-    def metadata(self, settings: dict, version: str, io, /) -> Release: ...
+    def metadata(self, settings: dict, version: str, io, /) -> Release:
+        raise NotImplementedError
 
 
 BACKENDS: dict[str, Backend] = {"pypi": pypi, "cratesio": cratesio, "cpan": cpan, "go": go}

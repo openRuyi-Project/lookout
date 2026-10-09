@@ -6,6 +6,8 @@ from tracker.providers.cpan import HOSTS as HOSTS
 from tracker.providers.cpan import inputs as inputs
 from tracker.providers.cpan import project, release
 
+__all__ = ['HOSTS', 'inputs', 'read']
+
 
 def read(version, settings, io):
     info, url = release(project(settings), version, io)
