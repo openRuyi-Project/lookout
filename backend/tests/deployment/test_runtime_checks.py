@@ -194,12 +194,19 @@ def test_ephemeral_or_unsafe_mounts_fail_before_writing(tmp_path, change, messag
         runtime_checks.check_mounts('/config/tracker.toml', '/data/state/tracker.sqlite3', mountinfo=info)
 
 
-def test_instance_lease_refuses_second_owner_and_releases_after_failure(tmp_path):
-    with pytest.raises(ValueError):
+def test_instance_lease_refuses_second_owner(tmp_path):
+    with runtime_checks.instance_lease(tmp_path):
+        with pytest.raises(RuntimeError, match='another Lookout'):
+            with runtime_checks.instance_lease(tmp_path):
+                pass
+
+
+def test_instance_lease_releases_after_failure(tmp_path):
+    def fail_startup():
         with runtime_checks.instance_lease(tmp_path):
-            with pytest.raises(RuntimeError, match='another Lookout'):
-                with runtime_checks.instance_lease(tmp_path):
-                    pass
             raise ValueError('startup failure')
+
+    error = pytest.raises(ValueError, fail_startup)
+    assert str(error.value) == 'startup failure'
     with runtime_checks.instance_lease(tmp_path):
         assert (tmp_path / '.instance.lock').stat().st_mode & 0o777 == 0o600
