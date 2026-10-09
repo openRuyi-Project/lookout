@@ -11,6 +11,7 @@ from tests.helpers.listing import facet_destination
 from tracker import state
 from tracker.api import create_app
 from tracker.monitors import model as monitor_model
+from tracker.monitors.requires import model as requirements
 from tracker.monitors.version import compare as version_status
 from tracker.readmodel import monitors as monitor_views, snapshot as view
 from tracker.readmodel.packages import PackageList
@@ -204,3 +205,18 @@ def test_current_security_reaches_version_even_when_latest_and_disappears_on_sub
     rows, _ = view.project_monitors(snapshot, now)
     row = next(row for row in rows if row['name'] == 'binutils')
     assert row['monitors']['version']['data']['annotations'] == []
+
+
+@pytest.mark.parametrize('target,count', [('>=3.8', 0), ('>=3.9', 1)])
+def test_dependency_annotations_use_range_semantics(version, target, count):
+    declaration = dict(dependency='python', name='Python', kind='runtime', scheme='pep440',
+        current=dict(expression='>=3.8,>=3.7', source='PyPI', url='https://example.org/current'),
+        target=dict(expression=target, source='PyPI', url='https://example.org/target'))
+    item = requirements.assess(declaration, {}, datetime.now(timezone.utc))
+    facts = [dict(**finding('requires'), requirement=declaration)]
+    projected = results()
+    projected['requires'] = dict(data=dict(kind='requires', requirements=[item], findings=facts))
+    monitor_views.compose_version(projected, version)
+    annotations = projected['version']['data']['annotations']
+    assert sum(entry['count'] for entry in annotations if entry['label'] == 'DepChanges') == count
+    assert projected['requires']['data']['findings'] == facts

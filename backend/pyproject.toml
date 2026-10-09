@@ -17,7 +17,7 @@ dependencies = [
   "defusedxml==0.7.1",
   "nvchecker==2.22",
   "jq>=1.8,<2",
-  "packaging>=24.2",
+  "packaging>=26.3",
   "pydantic>=2.12,<3",
   "tomlkit>=0.15.1,<1",
   "license-expression>=30.4.4,<31",

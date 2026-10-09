@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from functools import cached_property
 from typing import Annotated, Literal
 
-from packaging.specifiers import SpecifierSet
 from packaging.utils import canonicalize_name
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -139,7 +138,7 @@ def key(item):
 def equivalent(scheme, before, after):
     try:
         if scheme == 'pep440':
-            return SpecifierSet(before) == SpecifierSet(after)
+            return requirement_versions.pep440_equivalent(before, after)
         if scheme == 'numeric_minimum':
             return requirement_versions.numeric_release(before) == requirement_versions.numeric_release(after)
     except ValueError:
