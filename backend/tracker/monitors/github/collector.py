@@ -174,7 +174,9 @@ def collect(config, db, *, client=None, now=None):
             return old
         records = dict(old.get('github_items', {}))
         components = {}
-        owner = client or Client(options.request_budget)
+        auth_retry_at = max((component.get('auth_retry_at', 0) for key, component in old['components'].items()
+                             if key.startswith('github:')), default=0)
+        owner = client or Client(options.request_budget, auth_retry_at=auth_retry_at)
         try:
             ordered = sorted(options.repositories, key=lambda repo: old['components'].get('github:' + repo, {}).get('attempted_at', ''))
             for repo in ordered:
@@ -191,6 +193,7 @@ def collect(config, db, *, client=None, now=None):
                     component['next_poll_at'] = (datetime.fromisoformat(now) + timedelta(seconds=interval)).isoformat()
                 if getattr(owner, 'retry_at', None):
                     component['retry_at'] = owner.retry_at
+                component['auth_retry_at'] = getattr(owner, 'auth_retry_at', 0)
                 components[key] = component
         finally:
             if client is None:

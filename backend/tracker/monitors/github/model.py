@@ -19,7 +19,7 @@ class Settings(BaseModel):
     repositories: dict[str, Repository] = Field(default_factory=dict)
     interval_seconds: int = Field(600, ge=60, le=86400)
     stale_after_seconds: int = Field(1800, ge=120, le=604800)
-    request_budget: int = Field(60, ge=1, le=1000)
+    request_budget: int = Field(120, ge=1, le=1000)
     reconcile_seconds: int = Field(604800, ge=3600, le=2592000)
 
 

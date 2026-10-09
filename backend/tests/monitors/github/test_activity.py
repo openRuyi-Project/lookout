@@ -335,12 +335,12 @@ def test_anonymous_budget_and_successful_quota_reserve(monkeypatch):
     calls = []
     def respond(request):
         calls.append(request)
-        return httpx.Response(200, json=[], headers={'X-RateLimit-Remaining': '6', 'X-RateLimit-Reset': '2000000000'})
+        return httpx.Response(200, json=[], headers={'X-RateLimit-Remaining': '2', 'X-RateLimit-Reset': '2000000000'})
     with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
         io = IO(client=transport, workers=1)
         monkeypatch.setattr(io, 'wait_for_host', lambda *_: None)
         client = HTTPClient(60, io=io)
-        assert client.remaining == 6 and client.interval_floor == 600
+        assert client.remaining == 60 and client.interval_floor == 600
         assert client.get('/repos/owner/repo/issues')[0] == []
         with pytest.raises(RateLimited):
             client.get('/repos/owner/repo/issues')
@@ -562,7 +562,7 @@ def test_successful_github_quota_pause_is_not_a_failed_check(monkeypatch):
     def respond(request):
         calls.append(request)
         return httpx.Response(200, json=[], headers={
-            'X-RateLimit-Remaining': '6', 'X-RateLimit-Reset': '2000000000'})
+            'X-RateLimit-Remaining': '2', 'X-RateLimit-Reset': '2000000000'})
     with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
         io = IO(client=transport, workers=1)
         monkeypatch.setattr(io, 'wait_for_host', lambda *_: None)
@@ -574,3 +574,43 @@ def test_successful_github_quota_pause_is_not_a_failed_check(monkeypatch):
     assert checkpoint['retry_at']
     assert len(calls) == 1
     assert items == {}
+
+
+@pytest.mark.parametrize('code,body', [(401, {}), (403, {'message': 'Resource not accessible by personal access token'})])
+def test_invalid_credentials_retry_public_once_and_persist_cooldown(monkeypatch, code, body):
+    import httpx
+    from tracker.providers.client import IO
+    from tracker.providers.github import Client as HTTPClient
+    monkeypatch.setenv('LOOKOUT_GITHUB_TOKEN', 'fixture_only')
+    calls = []
+    def respond(request):
+        calls.append(bool(request.headers.get('Authorization')))
+        return httpx.Response(code, json=body) if calls[-1] else httpx.Response(200, json=[])
+    with httpx.Client(transport=httpx.MockTransport(respond), follow_redirects=False) as transport:
+        io = IO(client=transport, workers=1)
+        monkeypatch.setattr(io, 'wait_for_host', lambda *_: None)
+        client = HTTPClient(120, io=io)
+        assert client.get('/repos/owner/public/issues')[0] == []
+        assert client.auth_retry_at > 0
+        resumed = HTTPClient(120, io=io, auth_retry_at=client.auth_retry_at)
+        assert resumed.get('/repos/owner/public/issues')[0] == []
+        assert resumed.interval_floor == 600
+    assert calls == [True, False, False]
+
+
+def test_authenticated_rate_limit_never_retries_anonymously(monkeypatch):
+    import httpx
+    from tracker.providers.client import IO
+    from tracker.providers.github import Client as HTTPClient
+    monkeypatch.setenv('LOOKOUT_GITHUB_TOKEN', 'fixture_only')
+    calls = []
+    def respond(request):
+        calls.append(request)
+        return httpx.Response(403, headers={'Retry-After': '300'})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
+        io = IO(client=transport, workers=1)
+        monkeypatch.setattr(io, 'wait_for_host', lambda *_: None)
+        client = HTTPClient(120, io=io)
+        with pytest.raises(RateLimited):
+            client.get('/repos/owner/public/issues')
+    assert len(calls) == 1
