@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    groups:
+      astro:
+        applies-to: version-updates
+        patterns: ["astro", "@astrojs/*"]
+        update-types: [minor, patch]
+      runtime:
+        applies-to: version-updates
+        dependency-type: production
+        exclude-patterns: ["astro", "@astrojs/*"]
+        update-types: [minor, patch]
+      development:
+        applies-to: version-updates
+        dependency-type: development
+        exclude-patterns: ["astro", "@astrojs/*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: chore
+      include: scope
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: ci
+      include: scope
