@@ -283,3 +283,14 @@ def test_query_index_is_shared_without_sharing_selections(tmp_path, config, monk
     state.commit(db, snap)
     assert get(client)['monitors']['source']['data']['version'] == 'replacement'
     assert len(builds) == 3
+
+
+def test_component_only_snapshot_projects_without_targets(tmp_path):
+    db = tmp_path / 'snapshot.db'
+    snapshot = state.empty()
+    snapshot['generation'] = 1
+    state.commit(db, snapshot)
+    from tracker.readmodel.cache import ProjectionCache
+    cache = ProjectionCache(db)
+    cache._refresh()
+    assert not cache.read()[1].rows
