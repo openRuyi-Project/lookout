@@ -6,6 +6,8 @@ This module validates those inputs; it does not invent another service format.
 from contextlib import contextmanager
 import fcntl
 import hashlib
+import ipaddress
+import pwd
 import json
 import os
 from pathlib import Path
@@ -15,6 +17,8 @@ import tempfile
 import time
 import uuid
 
+from credentials import github_token
+
 PYTHON = '/opt/venv/bin/python'
 LABEL = 'org.openruyi.instance'
 LIMITS = ['--memory', '8g', '--cpus', '4', '--pids-limit', '512']
@@ -22,12 +26,37 @@ PROTECTION = ['--read-only', '--cap-drop=all', '--security-opt=no-new-privileges
               '--tmpfs', '/tmp:rw,nosuid,nodev,size=128m,mode=1777']
 
 
+def bind_address(value):
+    address = ipaddress.ip_address(value)
+    if address.is_multicast:
+        raise ValueError('listener must be a unicast or wildcard IP address')
+    return str(address)
+
+
+def published_port(address, port):
+    address = bind_address(address)
+    if not 1 <= int(port) <= 65535:
+        raise ValueError('invalid published port')
+    return f'{"[" + address + "]" if ":" in address else address}:{port}:8080'
+
+
+def user_environment(environment=None):
+    result = dict(os.environ if environment is None else environment)
+    uid = os.geteuid()
+    runtime = Path('/run/user') / str(uid)
+    if uid and runtime.is_dir():
+        result.update(HOME=pwd.getpwuid(uid).pw_dir, XDG_RUNTIME_DIR=str(runtime),
+                      DBUS_SESSION_BUS_ADDRESS='unix:path=' + str(runtime / 'bus'))
+    return result
+
+
 def run(argv, *, timeout=120, input=None, env=None, retry_transport=False):
     deadline = time.monotonic() + timeout
     for attempt in range(3 if retry_transport else 1):
         budget = max(0.001, deadline - time.monotonic()) if retry_transport else timeout
         result = subprocess.run(argv, input=input, text=not isinstance(input, bytes),
-                                capture_output=True, timeout=budget, env=env)
+                                capture_output=True, timeout=budget, env=user_environment(env),
+                                cwd=pwd.getpwuid(os.geteuid()).pw_dir if os.geteuid() and (Path("/run/user") / str(os.geteuid())).is_dir() else None)
         if not result.returncode:
             output = result.stdout
             return (output.decode() if isinstance(output, bytes) else output).strip()
@@ -233,6 +262,9 @@ def image_command(service, image, script, *args, backup_dir=None):
             command += ['--mount', f'type=volume,src={service.backup_volume},dst=/backup,volume-nocopy']
         else:
             command += ['-v', f'{backup_dir}:/backup:Z']
+    if credential := service.settings.get('github_env_file'):
+        github_token(credential)
+        command += ['--env-file', str(credential)]
     for value in service.settings.get('environment', []):
         command += ['-e', value]
     return command + ['--entrypoint', PYTHON, image, script, *args]
@@ -280,13 +312,20 @@ class Docker:
         if any(e.split('=', 1)[0] in {'TRACKER_DB', 'TRACKER_CONFIG', 'PORT', 'API_PORT', 'HOST'}
                and e not in {'HOST=0.0.0.0', 'PORT=8080', 'API_PORT=18731'} for e in self.settings['environment']):
             raise ValueError('custom database or listener requires operator review')
+        credential = config['Labels'].get('org.openruyi.github-env-file')
+        if credential:
+            github_token(credential)
+            self.settings['github_env_file'] = credential
+            self.settings['environment'] = [v for v in self.settings['environment'] if not v.startswith('LOOKOUT_GITHUB_TOKEN=')]
         self.settings['catalog_image'] = config['Labels'].get('org.openruyi.catalog-image')
         self.previous = None
         if not host.get('Memory') or not host.get('NanoCpus') or not host.get('PidsLimit'):
             raise ValueError('installed container is missing resource limits')
         for port, bindings in (host.get('PortBindings') or {}).items():
-            if port != '8080/tcp' or any(b['HostIp'] != '127.0.0.1' for b in bindings):
-                raise ValueError('application ports must stay on host loopback')
+            if port != '8080/tcp':
+                raise ValueError('publish only the web port 8080')
+            for binding in bindings:
+                published_port(binding['HostIp'], binding['HostPort'])
 
     def stop(self):
         if run(['docker', 'ps', '-aq', '--filter', 'name=^/' + self.name + '$']):
@@ -305,9 +344,9 @@ class Docker:
             command += ['--log-opt', f'{key}={value}']
         for container_port, bindings in (h.get('PortBindings') or {}).items():
             for binding in bindings:
-                if binding['HostIp'] != '127.0.0.1' or container_port != '8080/tcp':
-                    raise ValueError('application ports must stay on host loopback')
-                command += ['-p', f'127.0.0.1:{port or binding["HostPort"]}:8080']
+                if container_port != '8080/tcp':
+                    raise ValueError('publish only the web port 8080')
+                command += ['-p', published_port(binding['HostIp'], port or binding['HostPort'])]
         for key, value in self.info['Config']['Labels'].items():
             if key == 'org.openruyi.catalog-image' and not self.settings.get('catalog_image'):
                 continue
@@ -316,6 +355,9 @@ class Docker:
         for role in ('config', 'data'):
             command += ['--mount', f'type=volume,src={self.settings[role]},dst=/{role},volume-nocopy'
                         + (',readonly' if role == 'config' else '')]
+        if credential := self.settings.get('github_env_file'):
+            github_token(credential)
+            command += ['--env-file', str(credential)]
         for value in self.settings['environment']:
             command += ['-e', value]
         run(command + [image])
@@ -332,7 +374,10 @@ class Docker:
         self.start()
 
     def save(self, directory):
-        write_exclusive(directory / 'previous.json', json.dumps(self.info, indent=2).encode())
+        saved = {**self.info, 'Config': {**self.info['Config'],
+                 'Env': [v for v in self.info['Config'].get('Env', [])
+                         if not v.startswith('LOOKOUT_GITHUB_TOKEN=')]}}
+        write_exclusive(directory / 'previous.json', json.dumps(saved, indent=2).encode())
 
     def export_backup(self, image, filename, destination):
         helper = 'openruyi-backup-' + uuid.uuid4().hex[:12]
@@ -398,22 +443,32 @@ def quadlet(text):
             raise ValueError('custom data/config/internal API requires operator review')
         if key in {'HOST', 'PORT'} and value not in {'HOST=0.0.0.0', 'PORT=8080'}:
             raise ValueError('use the default internal listener; configure PublishPort instead')
-    if any(fields.get(key) for key in ('EnvironmentFile', 'PodmanArgs', 'Exec', 'Entrypoint',
+    credential_files = fields.get('EnvironmentFile', [])
+    if len(credential_files) > 1:
+        raise ValueError('use one GitHub credential file')
+    credential = credential_files[0] if credential_files else None
+    if credential:
+        if not Path(credential).is_absolute() or any(c.isspace() or c in '\"\'%:' for c in credential):
+            raise ValueError('credential path must be absolute without whitespace or unit specifiers')
+        github_token(credential)
+    if any(fields.get(key) for key in ('PodmanArgs', 'Exec', 'Entrypoint',
                                       'AddCapability', 'Device', 'SecurityLabelDisable')):
         raise ValueError('custom runtime overrides require an operator-reviewed upgrade')
     if any(v == 'host' for v in fields.get('Network', [])):
         raise ValueError('use a private container network')
     for value in fields.get('PublishPort', []):
-        match = re.fullmatch(r'127\.0\.0\.1:(\d+):8080', value)
-        if not match or not 1 <= int(match[1]) <= 65535:
-            raise ValueError('publish a valid port on host loopback only')
+        match = re.fullmatch(r'(\[[0-9a-fA-F:]+\]|[0-9.]+):(\d+):8080', value)
+        if not match:
+            raise ValueError('publish a numeric IP and port for web port 8080')
+        published_port(match[1].strip('[]'), match[2])
     catalog_images = [value.split('=', 1)[1] for value in fields.get('Label', [])
                       if value.startswith('org.openruyi.catalog-image=')]
     if len(catalog_images) > 1:
         raise ValueError('catalog initialization identity must be unique')
     catalog_image = catalog_images[0] if catalog_images else None
     return dict(image=one('Image'), name=name, config=volumes['/config'], data=volumes['/data'],
-                environment=fields.get('Environment', []), catalog_image=catalog_image)
+                environment=fields.get('Environment', []), catalog_image=catalog_image, github_env_file=credential,
+                ports=fields.get('PublishPort', []))
 
 
 def replace_image(text, image):
@@ -478,6 +533,7 @@ class Quadlet:
             raise ValueError('run as the rootless service owner, not root')
         if unit.suffix != '.container' or unit.is_symlink():
             raise ValueError('use the installed Quadlet .container file')
+        os.environ.update(user_environment())
         self.unit, self.original = unit, unit.read_text()
         self.settings = quadlet(self.original)
         self.name = self.settings['name']

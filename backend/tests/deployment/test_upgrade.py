@@ -192,16 +192,15 @@ def test_quadlet_accepts_operator_loopback_port_and_keeps_it_on_upgrade(deployme
 @pytest.mark.parametrize('port', ['0', '65536', 'foo', '-1'])
 def test_quadlet_rejects_invalid_ports(deployment, port):
     _, unit, _, _ = deployment
-    with pytest.raises(ValueError, match='loopback'):
+    with pytest.raises(ValueError, match='port'):
         operations.quadlet(unit.read_text().replace(':18730:', ':' + port + ':'))
 
 
-def test_quadlet_rejects_public_listener_and_host_network(deployment):
+def test_quadlet_accepts_explicit_listener_but_rejects_host_network(deployment):
     _, unit, _, _ = deployment
-    for text in (unit.read_text().replace('127.0.0.1', '0.0.0.0'),
-                 unit.read_text().replace('[Container]', '[Container]\nNetwork=host')):
-        with pytest.raises(ValueError):
-            operations.quadlet(text)
+    assert operations.quadlet(unit.read_text().replace('127.0.0.1', '0.0.0.0'))['ports'] == ['0.0.0.0:18730:8080']
+    with pytest.raises(ValueError):
+        operations.quadlet(unit.read_text().replace('[Container]', '[Container]\nNetwork=host'))
 
 
 def test_installer_rejects_conflicting_environment_before_engine_call(tmp_path, monkeypatch):
@@ -640,3 +639,42 @@ def test_failed_pull_waits_for_next_scheduler_attempt(monkeypatch, engine):
     assert len(calls) == 1
     assert calls[0][1] == 'pull'
     assert ('--retry=0' in calls[0]) == (engine == 'podman')
+
+
+@pytest.mark.parametrize('address', ['10.230.50.181', '127.0.0.1', '0.0.0.0', '::1'])
+def test_listener_survives_image_replacement(deployment, address):
+    _, unit, _, _ = deployment
+    mapping = operations.published_port(address, 18730)
+    text = unit.read_text().replace('127.0.0.1:18730:8080', mapping)
+    assert operations.quadlet(operations.replace_image(text, NEW))['ports'] == [mapping]
+
+
+def test_quadlet_credentials_reach_preflight_without_token_in_argv(deployment, tmp_path, monkeypatch):
+    _, unit, _, _ = deployment
+    path = tmp_path / 'github.env'
+    path.write_text('LOOKOUT_GITHUB_TOKEN=fixture_secret\n')
+    path.chmod(0o600)
+    unit.write_text(unit.read_text().replace('[Container]', '[Container]\nEnvironmentFile=' + str(path)))
+    # The fixture models a service owner distinct from the test process UID.
+    original = operations.os.fstat
+    def owned(fd):
+        values = list(original(fd)); values[4] = 10001
+        return operations.os.stat_result(values)
+    monkeypatch.setattr(operations.os, 'fstat', owned)
+    service = operations.Quadlet(unit)
+    command = operations.image_command(service, NEW, '-m', 'tracker.runtime_checks')
+    assert command[command.index('--env-file') + 1] == str(path)
+    assert 'fixture_secret' not in ' '.join(command)
+
+
+def test_rootless_subprocess_does_not_inherit_root_bus(monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(operations.os, 'geteuid', lambda: 1001)
+    monkeypatch.setattr(operations.Path, 'is_dir', lambda path: str(path) == '/run/user/1001')
+    monkeypatch.setattr(operations.pwd, 'getpwuid', lambda uid: SimpleNamespace(pw_dir='/home/service'))
+    environment = operations.user_environment({'HOME': '/root', 'XDG_RUNTIME_DIR': '/run/user/0',
+        'DBUS_SESSION_BUS_ADDRESS': 'unix:path=/run/user/0/bus', 'PATH': '/usr/bin', 'HTTPS_PROXY': 'proxy'})
+    assert environment['HOME'] == '/home/service'
+    assert environment['XDG_RUNTIME_DIR'] == '/run/user/1001'
+    assert environment['DBUS_SESSION_BUS_ADDRESS'] == 'unix:path=/run/user/1001/bus'
+    assert environment['HTTPS_PROXY'] == 'proxy'

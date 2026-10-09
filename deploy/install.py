@@ -15,8 +15,10 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from automation_tools import refresh_tools
 from deployment import (LABEL, PROTECTION, PYTHON, Docker, Quadlet, healthy, image_command,
-                        image_reference, manager, no_data_users, resolve_image, run, service_action, write_exclusive)
+                        manager, no_data_users, resolve_image, run, service_action, write_exclusive)
 from publication import channel_repository
+from credentials import github_token
+from deployment import bind_address, published_port, user_environment
 
 PREPARE = '''import os, runpy, shutil, sys, tarfile, tempfile
 from pathlib import Path
@@ -52,11 +54,17 @@ def config_archive(directory):
 
 
 def install(reference, name, *, config=None, port=18730, network='bridge', environment=(), memory='8g', cpus=4.0, pids=512,
-            engine='docker', directory=None, data=None, auto_update=None):
+            engine='docker', directory=None, data=None, auto_update=None, bind='127.0.0.1', github_env_file=None):
+    bind = bind_address(bind)
+    if github_env_file:
+        github_env_file = Path(github_env_file).absolute()
+        github_token(github_env_file)
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', name):
         raise ValueError('invalid container name')
     for value in environment:
         key, sep, _ = value.partition('=')
+        if github_env_file and key == 'LOOKOUT_GITHUB_TOKEN':
+            raise ValueError('choose the GitHub credential file or environment value, not both')
         if (not sep or not re.fullmatch(r'[A-Z_][A-Z0-9_]*', key)
                 or key in {'HOST', 'PORT', 'API_PORT', 'TRACKER_DB', 'TRACKER_CONFIG'}):
             raise ValueError('environment cannot replace data/config/listener identities')
@@ -67,7 +75,7 @@ def install(reference, name, *, config=None, port=18730, network='bridge', envir
     if engine == 'podman':
         return install_podman(reference, name, directory, config=config, data=data, port=port,
                               network=network, environment=environment, memory=memory, cpus=cpus,
-                              pids=pids, auto_update=auto_update)
+                              pids=pids, auto_update=auto_update, bind=bind, github_env_file=github_env_file)
     if engine != 'docker' or network not in ('bridge', 'none') or data or directory or auto_update:
         raise ValueError('Docker uses named volumes; automation/directory options are for rootless Podman')
     manifest = resolve_image('docker', reference)
@@ -102,7 +110,9 @@ def install(reference, name, *, config=None, port=18730, network='bridge', envir
     if config is None:
         command += ['--label', 'org.openruyi.catalog-image=' + manifest['image']]
     if network != 'none':
-        command += ['-p', f'127.0.0.1:{port}:8080']
+        command += ['-p', published_port(bind, port)]
+    if github_env_file:
+        command += ['--env-file', str(github_env_file), '--label', 'org.openruyi.github-env-file=' + str(github_env_file)]
     for value in environment:
         command += ['-e', value]
     run(command + [manifest['image']])
@@ -115,10 +125,10 @@ def install(reference, name, *, config=None, port=18730, network='bridge', envir
     except BaseException:
         service.stop()
         raise
-    return dict(container=name, image=manifest['image'], volumes=volumes, status='ready')
+    return dict(container=name, image=manifest['image'], volumes=volumes, status='ready', listener=published_port(bind, port))
 
 
-def install_podman(reference, name, directory, *, config, data, port, network, environment, memory, cpus, pids, auto_update):
+def install_podman(reference, name, directory, *, config, data, port, network, environment, memory, cpus, pids, auto_update, bind='127.0.0.1', github_env_file=None):
     if os.geteuid() == 0 or run(['podman', 'info', '--format', '{{.Host.Security.Rootless}}']) != 'true':
         raise ValueError('use the non-root Rootless Podman service owner')
     if auto_update:
@@ -126,6 +136,7 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
             raise ValueError('automatic updates require a GHCR main/latest channel with a successful Checks publication workflow')
         if run(['loginctl', 'show-user', str(os.geteuid()), '--property=Linger', '--value']) != 'yes':
             raise ValueError('enable user linger before unattended installation: loginctl enable-linger USER')
+    os.environ.update(user_environment())
     root = directory.resolve() if directory else Path.home() / '.local/share/lookout'
     unit_root = Path.home() / '.config/containers/systemd'
     unit = unit_root / (name + '.container')
@@ -133,7 +144,7 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
                                  Path('/usr/libexec/podman/quadlet')) if p.is_file()), None)
     if generator is None:
         raise ValueError('install Podman with its Quadlet systemd generator')
-    values = [str(root), str(data or ''), network, *environment]
+    values = [str(root), str(data or ''), str(github_env_file or ''), network, *environment]
     if network == 'host' or any(any(c.isspace() or c in "'\"%" for c in value) for value in values):
         raise ValueError('use a private network and unit values without whitespace, quotes or % specifiers')
     if ':' in str(root) or data and (':' in str(data) or not data.is_dir()):
@@ -169,10 +180,12 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
     for key, value in {'IMAGE': manifest['image'], 'CONFIG_DIR': str(root / 'config'), 'DATA_DIR': str(data)}.items():
         text = text.replace('@' + key + '@', value)
     text = (text.replace('ContainerName=openruyi-lookout', 'ContainerName=' + name)
-            .replace('127.0.0.1:18730:8080', f'127.0.0.1:{port}:8080')
+            .replace('127.0.0.1:18730:8080', published_port(bind, port))
             .replace('Memory=8g', 'Memory=' + memory).replace('PidsLimit=512', 'PidsLimit=' + str(pids))
             .replace('CPUQuota=400%', 'CPUQuota=' + str(cpus * 100) + '%'))
     text = text.replace('StopTimeout=20', '\n'.join(['Network=' + network, *['Environment=' + v for v in environment], 'StopTimeout=20']))
+    if github_env_file:
+        text = text.replace('[Container]', '[Container]\nEnvironmentFile=' + str(github_env_file))
     if config is None:
         text = text.replace('[Container]', '[Container]\nLabel=org.openruyi.catalog-image=' + manifest['image'])
     temporary_unit = root / 'units' / unit.name
@@ -195,7 +208,7 @@ def install_podman(reference, name, directory, *, config, data, port, network, e
     if auto_update:
         install_automation(name, root, unit, auto_update, manifest['image'])
     return dict(container=name, image=manifest['image'], unit=str(unit),
-                config=str(root / 'config'), data=str(data), backups=str(root / 'backups'), status='ready')
+                config=str(root / 'config'), data=str(data), backups=str(root / 'backups'), status='ready', listener=published_port(bind, port))
 
 
 def install_automation(name, root, unit, channel, image):
@@ -225,6 +238,8 @@ def main(argv=None):
     parser.add_argument('--image', required=True)
     parser.add_argument('--name', default='lookout')
     parser.add_argument('--config', type=Path, help='copy a reviewed host config; omit to initialize image defaults')
+    parser.add_argument('--bind-address', default='127.0.0.1', help='explicit host listener IP; default loopback')
+    parser.add_argument('--github-env-file', type=Path, help='owner-only file containing LOOKOUT_GITHUB_TOKEN=TOKEN')
     parser.add_argument('--port', type=int, default=18730)
     parser.add_argument('--engine', choices=['docker', 'podman'], default='docker')
     parser.add_argument('--directory', type=Path, help='persistent instance directory (Podman)')
@@ -242,7 +257,8 @@ def main(argv=None):
         result = install(args.image, args.name, config=args.config,
                          port=args.port, network=args.network or ('pasta' if args.engine == 'podman' else 'bridge'), environment=args.env,
                          memory=args.memory, cpus=args.cpus, pids=args.pids_limit, engine=args.engine,
-                         directory=args.directory, data=args.data, auto_update=args.auto_update)
+                         directory=args.directory, data=args.data, auto_update=args.auto_update,
+                         bind=args.bind_address, github_env_file=args.github_env_file)
     except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
         print(f'installation failed: {error}; existing volumes were not deleted', file=sys.stderr)
         return 2

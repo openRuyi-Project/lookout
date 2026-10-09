@@ -81,7 +81,7 @@ def test_unchanged_heartbeat_has_no_registry_calls_or_probe_containers(tmp_path,
         assert argv == ['docker', 'image', 'inspect', OLD]
         return json.dumps([{'Config': {'Labels': {'org.opencontainers.image.revision': REVISION}}}])
     monkeypatch.setattr(launcher, 'run', run)
-    monkeypatch.setattr(launcher, 'published_image', lambda *args: (OLD, REVISION))
+    monkeypatch.setattr(launcher, 'published_image', lambda *args, **kwargs: (OLD, REVISION))
     monkeypatch.setattr(launcher, 'resolve_image', lambda *a: pytest.fail('must not pull or probe'))
     monkeypatch.setattr(launcher, 'healthy', lambda *a: None)
     for _ in range(3):
@@ -96,7 +96,7 @@ def test_tool_pointer_switches_complete_directories_and_retains_previous(tmp_pat
     def export(engine, image, source, destination):
         calls.append(image)
         destination.mkdir()
-        for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
+        for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'credentials.py', 'automation_tools.py', 'maintain.py'):
             (destination / name).write_text(image)
     monkeypatch.setattr(automation_tools, 'export_image_tree', export)
     pointer = tmp_path / 'current'
@@ -157,7 +157,7 @@ def test_new_publication_reuses_cache_and_updates_tools_only_after_success(tmp_p
             raise RuntimeError('image absent')
         return json.dumps([{'Id': NEW, 'Config': {'Labels': {'org.opencontainers.image.revision': NEXT}}}])
     monkeypatch.setattr(launcher, 'run', run)
-    monkeypatch.setattr(launcher, 'published_image', lambda *args: (pinned, NEXT))
+    monkeypatch.setattr(launcher, 'published_image', lambda *args, **kwargs: (pinned, NEXT))
     def resolve(engine, selected):
         events.append(('resolve', selected))
         return dict(image=NEW, revision=NEXT)
@@ -189,7 +189,7 @@ def test_publication_failure_cannot_trigger_registry_fallback(tmp_path, monkeypa
             return json.dumps([{'Image': OLD}])
         return json.dumps([{'Config': {'Labels': {'org.opencontainers.image.revision': REVISION}}}])
     monkeypatch.setattr(launcher, 'run', run)
-    def unavailable(*args):
+    def unavailable(*args, **kwargs):
         raise RuntimeError('GitHub unavailable')
     monkeypatch.setattr(launcher, 'published_image', unavailable)
     monkeypatch.setattr(launcher, 'resolve_image', lambda *a: pytest.fail('registry fallback'))
@@ -200,7 +200,7 @@ def test_publication_failure_cannot_trigger_registry_fallback(tmp_path, monkeypa
 def test_unchanged_tool_pointer_does_not_republish(tmp_path, monkeypatch):
     destination = tmp_path / OLD.removeprefix('sha256:')
     destination.mkdir()
-    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
+    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'credentials.py', 'automation_tools.py', 'maintain.py'):
         (destination / name).write_text('# fixture')
     pointer = tmp_path / 'current'
     pointer.symlink_to(destination.name)
@@ -217,7 +217,7 @@ def test_incomplete_export_can_retry_same_image(tmp_path, monkeypatch):
     def export(engine, image, source, destination):
         attempts.append(image)
         destination.mkdir()
-        names = ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py')
+        names = ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'credentials.py', 'automation_tools.py', 'maintain.py')
         for name in names[:1] if len(attempts) == 1 else names:
             (destination / name).write_text('# fixture')
     monkeypatch.setattr(automation_tools, 'export_image_tree', export)
@@ -239,7 +239,7 @@ def test_unchanged_release_recovers_staged_tools_without_redeploy(tmp_path, monk
     pointer.symlink_to(previous.name)
     staged = tmp_path / OLD.removeprefix('sha256:')
     staged.mkdir()
-    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
+    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'credentials.py', 'automation_tools.py', 'maintain.py'):
         (staged / name).write_text('# fixture')
     monkeypatch.setattr(launcher, 'Docker', lambda _: SimpleNamespace(engine='docker', name='fixture', settings={'data': '/data'}))
     def run(argv):
@@ -248,7 +248,7 @@ def test_unchanged_release_recovers_staged_tools_without_redeploy(tmp_path, monk
         assert argv == ['docker', 'image', 'inspect', OLD]
         return json.dumps([{'Config': {'Labels': {'org.opencontainers.image.revision': REVISION}}}])
     monkeypatch.setattr(launcher, 'run', run)
-    monkeypatch.setattr(launcher, 'published_image', lambda *a: (OLD, REVISION))
+    monkeypatch.setattr(launcher, 'published_image', lambda *a, **kw: (OLD, REVISION))
     monkeypatch.setattr(launcher, 'unchanged_image', lambda *a: True)
     monkeypatch.setattr(launcher, 'resolve_image', lambda *a: {'image': OLD, 'revision': REVISION})
     def health(*args):
@@ -282,9 +282,123 @@ def test_tool_pointer_accepts_a_symlinked_parent_directory(tmp_path, monkeypatch
     pointer.symlink_to('previous')
     def export(engine, image, source, destination):
         destination.mkdir()
-        for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
+        for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'credentials.py', 'automation_tools.py', 'maintain.py'):
             (destination / name).write_text('# fixture')
     monkeypatch.setattr(automation_tools, 'export_image_tree', export)
     automation_tools.refresh_tools('docker', NEW, pointer)
     assert pointer.resolve() == directory / NEW.removeprefix('sha256:')
     assert previous.is_dir()
+
+
+def test_limit_survives_process_restart_and_recovers(tmp_path, monkeypatch):
+    path = tmp_path / 'publication.json'
+    clock = [1000]
+    monkeypatch.setattr(publication.time, 'time', lambda: clock[0])
+    calls = []
+    def open(request, timeout):
+        calls.append(request)
+        if len(calls) == 1:
+            raise HTTPError(request.full_url, 403, 'limited',
+                            {'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '1600'}, None)
+        return io.BytesIO(json.dumps(result(NEXT)).encode())
+    monkeypatch.setattr(publication, 'urlopen', open)
+    for clock[0] in [1000, 1100, 1599]:
+        with pytest.raises(publication.Deferred) as error:
+            publication.published_image(REFERENCE, OLD, REVISION, 'checks.yml', state_path=path)
+        assert error.value.retry_at == 1600
+    assert len(calls) == 1
+    clock[0] = 1600
+    assert publication.published_image(REFERENCE, OLD, REVISION, 'checks.yml', state_path=path)[1] == NEXT
+    assert len(calls) == 2
+    assert 'next_attempt_at' not in json.loads(path.read_text())
+
+
+def test_authenticated_etag_and_no_secret_in_checkpoint(tmp_path, monkeypatch):
+    credential = tmp_path / 'github.env'
+    credential.write_text('LOOKOUT_GITHUB_TOKEN=fixture_secret\n')
+    credential.chmod(0o600)
+    checkpoint = tmp_path / 'publication.json'
+    calls = []
+    def open(request, timeout):
+        calls.append(request)
+        assert request.get_header('Authorization') == 'Bearer fixture_secret'
+        if len(calls) == 2:
+            assert request.get_header('If-none-match') == 'fixture-etag'
+            raise HTTPError(request.full_url, 304, 'unchanged', {}, None)
+        response = io.BytesIO(json.dumps(result()).encode())
+        response.headers = {'ETag': 'fixture-etag'}
+        return response
+    monkeypatch.setattr(publication, 'urlopen', open)
+    for _ in range(2):
+        assert publication.published_image(REFERENCE, OLD, REVISION, 'checks.yml',
+            state_path=checkpoint, credential_file=credential) == (OLD, REVISION)
+    assert 'fixture_secret' not in checkpoint.read_text()
+
+
+@pytest.mark.parametrize('mode,content', [(0o644, 'LOOKOUT_GITHUB_TOKEN=fixture'),
+                                         (0o600, 'LOOKOUT_GITHUB_TOKEN=fixture\nHOST=bad'),
+                                         (0o600, 'LOOKOUT_GITHUB_TOKEN=')])
+def test_credential_rejects_exposure_and_extra_environment(tmp_path, mode, content):
+    from credentials import github_token
+    path = tmp_path / 'github.env'
+    path.write_text(content)
+    path.chmod(mode)
+    with pytest.raises(ValueError):
+        github_token(path)
+
+
+def test_deferred_upgrade_never_inspects_registry(tmp_path, monkeypatch):
+    launcher = module('upgrade')
+    monkeypatch.setattr(launcher, 'Docker', lambda _: SimpleNamespace(engine='docker', name='fixture', settings={'data': '/data'}))
+    def run(argv):
+        if argv[1] == 'inspect':
+            return json.dumps([{'Image': OLD}])
+        assert argv == ['docker', 'image', 'inspect', OLD]
+        return json.dumps([{'Config': {'Labels': {'org.opencontainers.image.revision': REVISION}}}])
+    monkeypatch.setattr(launcher, 'run', run)
+    def waiting(*args, **kwargs):
+        raise publication.Deferred('GitHub rate limit', 2000)
+    monkeypatch.setattr(launcher, 'published_image', waiting)
+    monkeypatch.setattr(launcher, 'resolve_image', lambda *a: pytest.fail('must not pull'))
+    observed = launcher.upgrade(REFERENCE, None, tmp_path, container='fixture', apply=True, workflow='checks.yml')
+    assert observed['status'] == 'deferred' and observed['next_attempt_at'] == 2000
+
+
+def test_credential_symlink_is_rejected(tmp_path):
+    from credentials import github_token
+    target = tmp_path / 'real'
+    target.write_text('LOOKOUT_GITHUB_TOKEN=fixture')
+    target.chmod(0o600)
+    link = tmp_path / 'link'
+    link.symlink_to(target)
+    with pytest.raises(ValueError):
+        github_token(link)
+
+
+def test_rejected_token_uses_public_and_remembers_cooldown(tmp_path, monkeypatch):
+    monkeypatch.setenv('LOOKOUT_GITHUB_TOKEN', 'fixture_only')
+    calls = []
+    def open(request, timeout):
+        authenticated = bool(request.get_header('Authorization'))
+        calls.append(authenticated)
+        if authenticated:
+            raise HTTPError(request.full_url, 401, 'Unauthorized', {}, io.BytesIO(b'{}'))
+        return io.BytesIO(json.dumps(result()).encode())
+    monkeypatch.setattr(publication, 'urlopen', open)
+    path = tmp_path / 'checkpoint.json'
+    for _ in range(2):
+        assert publication.published_image(REFERENCE, OLD, REVISION, 'checks.yml', state_path=path) == (OLD, REVISION)
+    assert calls == [True, False, False]
+    assert 'fixture_only' not in path.read_text()
+
+
+def test_authenticated_quota_never_falls_back(tmp_path, monkeypatch):
+    monkeypatch.setenv('LOOKOUT_GITHUB_TOKEN', 'fixture_only')
+    calls = []
+    def open(request, timeout):
+        calls.append(request)
+        raise HTTPError(request.full_url, 403, 'Limited', {'Retry-After': '300'}, None)
+    monkeypatch.setattr(publication, 'urlopen', open)
+    with pytest.raises(publication.Deferred):
+        publication.published_image(REFERENCE, OLD, REVISION, 'checks.yml', state_path=tmp_path / 'checkpoint.json')
+    assert len(calls) == 1

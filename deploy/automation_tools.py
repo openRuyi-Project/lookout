@@ -10,7 +10,7 @@ from deployment import export_image_tree, image_reference
 def validate_tools(directory):
     if directory.is_symlink() or not directory.is_dir():
         raise ValueError('host tools must be a regular version directory')
-    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'automation_tools.py', 'maintain.py'):
+    for name in ('upgrade.py', 'release-upgrade.py', 'deployment.py', 'publication.py', 'credentials.py', 'automation_tools.py', 'maintain.py'):
         if not (directory / name).is_file():
             raise ValueError('image is missing the host automation protocol')
 

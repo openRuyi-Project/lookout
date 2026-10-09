@@ -10,7 +10,7 @@ import tempfile
 from automation_tools import refresh_tools, stage_tools
 from deployment import (Docker, Quadlet, export_image_tree, healthy, resolve_image,
                         run, unchanged_image, validate_catalog_baseline)
-from publication import channel_repository, published_image
+from publication import Deferred, channel_repository, published_image
 
 
 def confirm_current(service, image, tools_link):
@@ -36,7 +36,13 @@ def upgrade(reference, unit, backups, *, container=None, apply=False, catalog_ba
     if workflow:
         info = json.loads(run([service.engine, 'image', 'inspect', old_image]))[0]
         revision = (info['Config'].get('Labels') or {}).get('org.opencontainers.image.revision')
-        selected, expected_revision = published_image(reference, old_image, revision, workflow)
+        try:
+            selected, expected_revision = published_image(
+                reference, old_image, revision, workflow,
+                state_path=backups / 'publication.json', credential_file=service.settings.get('github_env_file'))
+        except Deferred as pause:
+            return {**result, 'image': old_image, 'status': 'deferred',
+                    'reason': pause.reason, 'next_attempt_at': pause.retry_at}
         if selected == old_image and not catalog_baseline:
             confirm_current(service, old_image, tools_link)
             return {**result, 'image': old_image, 'revision': revision, 'status': 'unchanged'}
