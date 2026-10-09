@@ -547,3 +547,30 @@ def test_activity_cursor_rejects_nonfinite_and_boolean_timestamps(snapshot, time
     cursor = base64.urlsafe_b64encode(json.dumps(['foo3', 'issue', timestamp, REPO, '1']).encode()).decode()
     with pytest.raises(ValueError, match='Invalid activity cursor'):
         activity.page(snapshot, 'foo3', 'issue', cursor)
+
+
+def test_successful_github_quota_pause_is_not_a_failed_check(monkeypatch):
+    import httpx
+
+    from tracker.monitors.github.collector import synchronize
+    from tracker.monitors.github.model import Settings
+    from tracker.providers.client import IO
+    from tracker.providers.github import Client
+
+    monkeypatch.delenv('LOOKOUT_GITHUB_TOKEN', raising=False)
+    calls = []
+    def respond(request):
+        calls.append(request)
+        return httpx.Response(200, json=[], headers={
+            'X-RateLimit-Remaining': '6', 'X-RateLimit-Reset': '2000000000'})
+    with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
+        io = IO(client=transport, workers=1)
+        monkeypatch.setattr(io, 'wait_for_host', lambda *_: None)
+        client = Client(60, io=io)
+        client.get('/repos/owner/repo/issues')
+        items, checkpoint = synchronize('owner/repo', {}, {}, client, Settings(),
+                                        '2026-01-01T12:00:00+00:00')
+    assert checkpoint['error'] is None
+    assert checkpoint['retry_at']
+    assert len(calls) == 1
+    assert items == {}

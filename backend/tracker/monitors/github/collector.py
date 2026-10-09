@@ -157,7 +157,7 @@ def synchronize(repo, old_items, old_checkpoint, client, options, now):
     except BudgetExhausted:
         checkpoint['error'] = None
     except RateLimited as error:
-        checkpoint.update(error=str(error), retry_at=error.retry_at)
+        checkpoint.update(error=str(error) if error.rejected else None, retry_at=error.retry_at)
     except Exception as error:
         # Exception messages can include authenticated request details. Store only
         # the error class; HTTP clients do not publish tokens or response bodies.

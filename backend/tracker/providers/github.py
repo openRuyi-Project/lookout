@@ -15,9 +15,10 @@ class BudgetExhausted(Exception):
 
 
 class RateLimited(Exception):
-    def __init__(self, retry_at):
+    def __init__(self, retry_at, *, rejected=True):
         super().__init__('GitHub requested a cooldown')
         self.retry_at = retry_at
+        self.rejected = rejected
 
 
 def retry_at(headers, now):
@@ -43,6 +44,7 @@ class Client:
         self.io = io or IO(workers=1)
         self.remaining = budget
         self.retry_at = None
+        self.rejected = False
         self.token = os.environ.get('LOOKOUT_GITHUB_TOKEN', '')
         self.interval_floor = 0 if self.token else 600
         if not self.token:
@@ -53,7 +55,7 @@ class Client:
 
     def get(self, path, *, etag=None):
         if self.retry_at:
-            raise RateLimited(self.retry_at)
+            raise RateLimited(self.retry_at, rejected=self.rejected)
         if self.remaining <= 0:
             raise BudgetExhausted
         self.remaining -= 1
@@ -70,6 +72,7 @@ class Client:
             if response.status_code == 429 or response.status_code == 403 and (
                     response.headers.get('Retry-After') or response.headers.get('X-RateLimit-Remaining') == '0'):
                 self.retry_at = retry_at(response.headers, time.time())
+                self.rejected = True
                 raise RateLimited(self.retry_at)
             try:
                 remaining = int(response.headers.get('X-RateLimit-Remaining', ''))
