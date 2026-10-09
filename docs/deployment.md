@@ -2,7 +2,7 @@
 
 Use Fedora with Rootless Podman and user-level Quadlet.
 Lookout runs the website, API and collectors in one container. The host schedules updates and backups.
-The web port binds to loopback. A separate proxy handles HTTPS, authentication and external access.
+The web port binds to loopback by default. A separate proxy handles HTTPS, authentication and external access.
 
 ## Requirements
 
@@ -19,7 +19,7 @@ Rootless keep-id maps the service account to that identity. Configuration and th
 container root are read-only. Do not add privileged mode, unconfined seccomp,
 world-writable permissions or a container-engine socket mount.
 
-## Install on Fedora
+## Install on Linux
 
 ### 1. Prepare the service account
 
@@ -27,7 +27,10 @@ The host administrator installs prerequisites and enables linger, replacing
 `SERVICE_USER` with the dedicated non-root account:
 
 ```sh
+# Fedora
 sudo dnf install skopeo podman python3 curl
+# Ubuntu
+# sudo apt install skopeo podman uidmap passt dbus-user-session python3 curl
 sudo loginctl enable-linger SERVICE_USER
 ```
 
@@ -39,6 +42,9 @@ loginctl show-user "$USER" --property=Linger --value
 ```
 
 Run the following blocks in the same Bash session as the service account.
+Do not run rootless installation as root. Use a login session for the service account.
+The tools select that account's runtime directory and user bus.
+A distribution name or kernel version does not prove sandbox support. The native worker probe must pass.
 
 ### 2. Obtain the image and host tools
 
@@ -97,13 +103,52 @@ The image update timer checks GitHub every five minutes, with jitter: about
 12 requests/hour, below the 60/hour anonymous limit for an unshared address.
 Only a successful `checks.yml` run on `main` selects its published `sha-<commit>`
 image. No new revision means no GHCR requests, pulls or restarts. If GitHub returns an error or rate limit, the updater leaves the service unchanged.
-It retries at the next scheduled check. Unattended GHCR `main`/`latest` updates require public GitHub access.
+The updater saves the retry deadline in `backups/publication.json`. Timer events before that deadline make no GitHub request.
+Authentication failures remain distinct from quota waits. A successful response clears the wait.
+Unattended GHCR `main`/`latest` updates require access to the publication workflow.
 The backup timer runs daily. The application schedules its collectors.
 
 To adopt existing state, stop its writer. Back up the data. Add
 `--data /absolute/existing/data --config /absolute/reviewed/config` to installation.
 The installer reuses that data without copying it. Use image upgrades, not installation,
 for subsequent releases.
+
+### Listener and GitHub credentials
+
+`--port` selects the host port. The container web port remains 8080.
+For direct LAN access, add `--bind-address 10.230.50.181 --port 18730` during installation,
+using the server's actual IP. Restrict inbound access with the host or network firewall.
+This option does not configure DNS, HTTPS or authentication. Avoid `0.0.0.0` unless all interfaces are intended.
+Image upgrades retain the listener. For Podman, edit `PublishPort` in the installed `.container` file,
+then run `systemctl --user daemon-reload` and restart that service.
+
+For authenticated GitHub reads, create a dedicated, public-read-only fine-grained PAT with an expiry date.
+Store it outside the source, configuration and backup directories:
+
+```sh
+CREDENTIAL="$HOME/.config/lookout/github.env"
+install -d -m 700 "$(dirname "$CREDENTIAL")"
+test ! -e "$CREDENTIAL"
+(umask 077; read -rsp 'GitHub token: ' TOKEN; printf '\n' >&2
+ printf 'LOOKOUT_GITHUB_TOKEN=%s\n' "$TOKEN" > "$CREDENTIAL")
+```
+
+Add `--github-env-file "$CREDENTIAL"` to installation. The file must contain only that assignment,
+be owned by the service account, and have mode 0600 or 0400. Symlinks are rejected.
+Both the collector and host updater use it. No additional repository write permission is needed.
+Environment credentials remain visible to the container owner and root. Do not share engine access.
+
+For an existing Podman instance, add `EnvironmentFile=/absolute/path/github.env` under `[Container]`,
+reload the user manager and restart the service. Use tools from a release that supports this option.
+When rotating the token, replace the file with the same owner and permissions, then restart the application.
+The updater reads it on its next eligible check. Never include the file in support reports.
+For organization-managed credentials, evaluate a GitHub App instead of a person's PAT.
+App installation-token renewal is not implemented by these tools.
+
+A rejected GitHub token falls back to the public API for one hour. The updater
+and activity collector retain this cooldown across restarts. Rate-limit responses
+do not switch credentials: each client waits until GitHub permits another request.
+Anonymous access uses the server IP quota, which other applications can also consume.
 
 ### 4. Check the service and take the first backup
 
@@ -114,7 +159,14 @@ curl --fail "http://127.0.0.1:$PORT/readyz"
 curl --fail "http://127.0.0.1:$PORT/api/v2/status"
 python3 "$TOOLS/maintain.py" --unit "$UNIT" --backup-dir "$ROOT/backups"
 python3 "$TOOLS/maintain.py" --unit "$UNIT" --status "$ROOT/backups"
+python3 "$TOOLS/diagnose.py" --unit "$UNIT" --backups "$ROOT/backups"
 ```
+
+`diagnose.py` reads the running image, ports, HTTP probes, collection coverage, backup status and upgrade wait.
+It does not print container environment values or change the instance.
+`monitor_coverage` separates pending, successful and failed observations.
+`failure_groups` groups repeated errors by monitor and counts affected packages.
+A finding count of zero does not establish absence while its checks remain pending or failed.
 
 The service and both timers must be active. The backup status must report
 `"ok": true`. Check provider timestamps again after their next scheduled polls.
@@ -414,3 +466,36 @@ anonymous ones during upgrades.
 Docker does not install the Podman timers. Schedule `upgrade.py` and `maintain.py`
 on the host as the same engine owner, with stable `HOME`/`XDG_STATE_HOME`. See
 [Image checks](../CONTRIBUTING.md#image-checks) for contributor validation.
+
+## Acceptance and cleanup
+
+Run `deploy/check-image.sh` and `deploy/smoke-image.py` with `CONTAINER_ENGINE=podman` on each target host.
+Use a tested image ID, not a moving tag. These commands use temporary resources.
+The Docker release test is `python3 deploy/smoke-release.py IMAGE`.
+Passing Docker tests does not establish rootless Podman, SELinux or AppArmor compatibility.
+
+On Fedora and Ubuntu, run `python3 deploy/smoke-host.py IMAGE` as the rootless service account.
+It installs a disposable Quadlet, starts the native worker, checks HTTP, restarts the service and reads a backup.
+It does not reboot the host or test a different image upgrade.
+On a disposable host of each supported distribution, install with a separate name and directories.
+Check the configured address from another machine. Log out and check again.
+Reboot, then check the service, both timers, data generation and backup readability.
+Upgrade with the same data directory. Run the documented restore procedure in an independent directory.
+Do not reboot a production host as a test without its operator's approval.
+
+To inspect unused images from this instance's successful upgrade records:
+
+```sh
+python3 "$TOOLS/cleanup.py" --unit "$UNIT" --backups "$ROOT/backups"
+# After review, repeat with --apply.
+```
+
+Cleanup keeps the running image, one rollback image, and images referenced by any container.
+It never uses force or global prune. It does not remove volumes, backups or unrecorded images.
+Set backup retention separately after a restore test. Keep an independent backup copy.
+
+The manual `Host deployment checks` workflow runs these checks on dedicated non-root runners.
+Each runner needs the labels `linux`, `lookout-disposable` and either `fedora` or `ubuntu`,
+plus the prerequisites above. Use disposable machines, not production servers.
+Supply a GHCR digest. An unconfigured or queued runner is not a passing host check.
+Reboot and different-image upgrade acceptance remain separate operator checks.
