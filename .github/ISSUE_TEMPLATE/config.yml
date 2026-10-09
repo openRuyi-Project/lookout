@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/openRuyi-Project/lookout/security/advisories/new
+    about: Report vulnerabilities privately. Do not include exploit details in public issues.

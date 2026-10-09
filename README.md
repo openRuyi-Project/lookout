@@ -12,6 +12,7 @@ Page and API requests read these snapshots. They do not query providers.
 | Change code and run checks | [Contributing](CONTRIBUTING.md) |
 | Add a monitor or provider backend | [Monitor porting](docs/monitor-porting.md) |
 | Understand consistency and security boundaries | [Design](docs/design.md) |
+| Report an accessibility barrier | [Accessibility](ACCESSIBILITY.md) |
 
 Confined SPEC parsing requires a Linux container with native RPM bindings and Landlock ABI 6+. Keep configuration and persistent data on separate mounts.
 
