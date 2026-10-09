@@ -1,0 +1,40 @@
+name: Host deployment checks
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Tested GHCR image pinned by sha256 digest
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  rootless:
+    strategy:
+      fail-fast: false
+      matrix:
+        distribution: [fedora, ubuntu]
+    runs-on: [self-hosted, linux, lookout-disposable, '${{ matrix.distribution }}']
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Verify and obtain the pinned image
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          python3 -c 'import os,re; assert re.fullmatch(r"ghcr\.io/[a-z0-9_./-]+@sha256:[0-9a-f]{64}", os.environ["IMAGE"])'
+          test "$(id -u)" != 0
+          test "$(podman info --format '{{.Host.Security.Rootless}}')" = true
+          podman pull "$IMAGE"
+          test "$(podman image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE")" = "$GITHUB_SHA"
+      - name: Native regression and production entrypoint
+        env:
+          IMAGE: ${{ inputs.image }}
+          CONTAINER_ENGINE: podman
+        run: |
+          deploy/check-image.sh "$IMAGE"
+          python3 deploy/smoke-image.py "$IMAGE"
+      - name: Quadlet installation, restart and backup
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: python3 deploy/smoke-host.py "$IMAGE"
