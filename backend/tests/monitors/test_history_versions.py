@@ -1,5 +1,4 @@
 """Bounded, build-bound RPM header fallback; successful observation dates."""
-from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path

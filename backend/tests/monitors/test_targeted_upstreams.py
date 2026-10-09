@@ -1,5 +1,4 @@
 """Targeted repairs use native nvchecker, without relabelling a full collection."""
-from copy import deepcopy
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -144,7 +143,7 @@ def test_partial_merge_preserves_unselected_full_component_and_newer_obs(config,
     snapshot['components']['nvchecker'].update(error='nvchecker timeout', attempted_at='2026-01-01T00:00:00Z', extra={'kept': True})
     db = tmp_path / 'snapshot.db'; state.commit(db, snapshot)
     monkeypatch.setattr(cfg, 'require_unchanged', lambda *_args: None)
-    def execute(c, previous, now, tracks):
+    def execute(c, previous, now, tracks=None, on_results=None):
         with state.writer_lock(db):
             latest = state.read(db)
             latest['sources']['binutils']['version'] = '4.0'
@@ -179,7 +178,7 @@ def test_partial_digest_change_before_commit_rejects_all_results(config, snapsho
     native.write_text(native.read_text() + '\n# operator changed rule\n')
     with pytest.raises(ValueError, match='configuration changed'):
         collector.check_upstreams(config, configured_path, db, tracks=['binutils'],
-            run_nv=lambda _c, old, _now, tracks: ({'binutils': old['binutils']}, None))
+            run_nv=lambda _c, old, _now, tracks=None, on_results=None: ({'binutils': old['binutils']}, None))
     assert state.read(db) == snapshot
 
 
@@ -187,7 +186,7 @@ def test_partial_unrequested_result_rejected(config, snapshot, tmp_path):
     db = tmp_path / 'snapshot.db'; state.commit(db, snapshot)
     with pytest.raises(ValueError, match='do not match'):
         collector.check_upstreams(config, 'unused', db, tracks=['binutils'],
-            run_nv=lambda _c, old, _now, tracks: (old, None))
+            run_nv=lambda _c, old, _now, tracks=None, on_results=None: (old, None))
     assert state.read(db) == snapshot
 
 

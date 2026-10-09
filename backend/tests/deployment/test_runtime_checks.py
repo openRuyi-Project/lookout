@@ -199,7 +199,7 @@ def test_instance_lease_refuses_second_owner_and_releases_after_failure(tmp_path
         with runtime_checks.instance_lease(tmp_path):
             with pytest.raises(RuntimeError, match='another Lookout'):
                 with runtime_checks.instance_lease(tmp_path):
-                    pytest.fail('two owners admitted')
+                    pass
             raise ValueError('startup failure')
     with runtime_checks.instance_lease(tmp_path):
         assert (tmp_path / '.instance.lock').stat().st_mode & 0o777 == 0o600

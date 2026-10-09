@@ -3,20 +3,16 @@ from collections import Counter
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 import json
-import sqlite3
 import subprocess
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
 import pytest
 
-from tests.helpers.obs import FakeOBS
-from tracker import api, collector, config as cfg, state
+from tracker import collector, config as cfg, state
 from tracker.monitors import registry as monitor_registry, runner as monitor
 from tracker.monitors.model import version_query
 from tracker.monitors.source import git as spec_git, rpm as native_spec
 from tracker.monitors.version import nvchecker as nv
-from tracker.readmodel import snapshot as view
 
 
 @pytest.mark.parametrize('seeded', [False, True])
@@ -53,7 +49,7 @@ def test_automatic_upstream_subset_retries_and_noop(config, snapshot, tmp_path, 
     monkeypatch.setattr(cfg, 'require_unchanged', lambda config, path: None)
     selected = []
     failure = [True]
-    def run(c, old, at, tracks, on_results):
+    def run(c, old, at, tracks=None, on_results=None):
         selected.append(tracks)
         events = '' if failure[0] else '\n'.join(json.dumps(dict(name=n, event='updated', version='4.2')) for n in tracks)
         return nv.import_events(events, {n:c['native'][n] for n in tracks}, old, at)

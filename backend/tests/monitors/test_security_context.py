@@ -35,7 +35,7 @@ class FixtureIO:
             return {'vulnerabilities': deepcopy(self.kev)}
         if urlsplit(url).hostname == 'api.first.org':
             return {'data': [{'cve': CVE, 'epss': '0.004', 'date': '2026-09-25'}]}
-        pytest.fail('Unexpected request: ' + url)
+        raise AssertionError('Unexpected request: ' + url)
 
 
 def advisory(**extra):
@@ -188,5 +188,5 @@ def test_fetch_failure_retains_context_only_for_same_fingerprint(monkeypatch):
 ])
 def test_fixture_rejects_lookalike_provider_urls(url):
     io = FixtureIO([])
-    with pytest.raises(pytest.fail.Exception):
+    with pytest.raises(AssertionError):
         io.json("GET", url)

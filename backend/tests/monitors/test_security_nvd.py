@@ -37,7 +37,7 @@ class IO:
             return {'vulnerabilities': []}
         if urlsplit(url).hostname == 'api.first.org':
             return {'data': []}
-        pytest.fail('Unexpected provider: ' + url)
+        raise AssertionError('Unexpected provider: ' + url)
 
 
 def test_exact_cpe_version_is_sent_to_nvd_without_local_version_guessing():
@@ -129,5 +129,5 @@ def test_nvd_failure_retries_more_slowly_than_osv_without_disabling_the_heartbea
 ])
 def test_fixture_rejects_lookalike_provider_urls(url):
     io = IO()
-    with pytest.raises(pytest.fail.Exception):
+    with pytest.raises(AssertionError):
         io.json("GET", url)

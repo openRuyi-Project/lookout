@@ -13,7 +13,6 @@ from tracker.readmodel import snapshot as view
 
 @pytest.mark.parametrize('a,b,result', [('3.9','3.10','outdated'),('3.10','3.9','ahead'),('3.10','3.10','current'),('1.0~rc1','1.0','outdated'),('1.0^git1','1.0','ahead'),('1.0^git1','1.0.1','outdated')])
 def test_native_rpm(a,b,result):
-    import rpm
     assert state.compare(a,b) == result
 
 @pytest.mark.parametrize('a,b', [(None,'1'),('1:3.0-2','3.1'),('%{version}','2'),('unknown version','1'),('1.0-4','2.0'),('','1')])
@@ -137,7 +136,7 @@ def test_flock_excludes_overlap(tmp_path):
             with state.writer_lock(tmp_path/'db'):pass
 
 
-def keep_nv(config,previous,now,on_results=None):return previous,None
+def keep_nv(config,previous,now,on_results=None,tracks=None):return previous,None
 
 def test_failed_inventory_never_deletes(config,snapshot):
     new=collector.collect(config,snapshot,FakeOBS(config,failed=('/source/openruyi',)),state.utcnow())
@@ -175,7 +174,7 @@ def test_slow_upstream_run_preserves_newer_obs(config,snapshot,tmp_path,monkeypa
     db=tmp_path/'snapshot.db';state.commit(db,snapshot)
     config['nv_digest']='fixed'
     monkeypatch.setattr(cfg,'require_unchanged',lambda *_args:None)
-    def concurrent_obs(config,prior,now,on_results=None):
+    def concurrent_obs(config,prior,now,on_results=None,tracks=None):
         # This write occurs while the external checker is running: no writer lock held.
         with state.writer_lock(db):
             newer=state.read(db);newer['sources']['binutils']['version']='4.0.0'

@@ -166,7 +166,6 @@ def test_selected_zero_count_menus_remain_visible_and_removable(prepared):
     for facet in selectors:
         selected = [option for option in facet.choices if option.selected]
         assert len(selected) == 1 and selected[0].count == 0
-        key = 'maintenance' if facet.label == 'Alerts' else 'build'
         assert any(len(terms_in(chip.href)) == 2 for chip in controls.editor.groups[0].conditions)
 
 

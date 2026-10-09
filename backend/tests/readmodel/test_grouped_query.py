@@ -56,9 +56,11 @@ def test_group_seals_only_pending_terms_and_keeps_operators_independent():
     assert after.query.groups == sealed.query.groups
     assert after.query.tail == (C.model_copy(update={'logic': 'not'}), A.model_copy(update={'logic': 'not'}))
     assert after.toggle(A).query.tail == (after.query.tail[0],)
-    assert after.remove(0).query.tail == after.query.tail
-    assert after.remove(0, A).query.groups[0].logic == 'and'
-    assert after.remove(0, A).query.groups[0].conditions == (before.tail[1],)
+    removed_group = after.remove(0)
+    removed_condition = after.remove(0, A)
+    assert removed_group.query.tail == after.query.tail
+    assert removed_condition.query.groups[0].logic == 'and'
+    assert removed_condition.query.groups[0].conditions == (before.tail[1],)
     with pytest.raises(ValueError):
         sealed.group()
 

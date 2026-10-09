@@ -194,7 +194,7 @@ def test_concurrent_writer_produces_one_complete_snapshot(source, tmp_path, monk
             assert started.wait(5)
             writer_ready.set()
             state.commit(source, second)
-        except BaseException as error:
+        except Exception as error:
             errors.append(error)
 
     worker = threading.Thread(target=write)

@@ -1,7 +1,6 @@
 """Maintenance choices, row cues and error links share actual projected states."""
 from tests.helpers.query import conjunction, terms_in
 from copy import deepcopy
-from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -55,7 +54,6 @@ def test_errors_aggregate_packages_and_link_to_the_failed_check(client):
     assert {row['key'] for row in page['table']['rows']} == {'binutils', 'foo3'}
     for row in page['table']['rows']:
         badge, = [v for v in values(row, 0) if v['text'] == 'CheckFailed']
-        target = urlsplit(badge['href'])
         assert terms_in(badge['href']) == []
         detail = client.get('/api/ui/packages/' + row['key']).json()
         checks = next(section for section in detail['sections'] if section['id'] == 'checks')
@@ -77,7 +75,6 @@ def test_version_issue_counts_and_row_links_have_one_authority(client):
         assert next(c for c in choices if c['label'] == label)['count'] == page['total']
         for row in page['table']['rows']:
             tag = next(v for v in values(row, column) if v['text'] == label)
-            query = parse_qs(urlsplit(tag['href']).query)
             assert terms_in(tag['href']) == []
 
 

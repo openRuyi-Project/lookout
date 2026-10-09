@@ -182,7 +182,7 @@ def test_full_streaming_uses_an_ephemeral_native_config(config,tmp_path,monkeypa
 def test_partial_publication_retains_global_failure_and_newer_other_phases(config,snapshot,tmp_path,monkeypatch):
     config['nv_digest']='same';db=tmp_path/'state.db';snapshot['components']['nvchecker']['error']='prior failure';state.commit(db,snapshot)
     monkeypatch.setattr(cfg,'require_unchanged',lambda *_args:None)
-    def execute(config,previous,now,on_results):
+    def execute(config,previous,now,on_results=None,tracks=None):
         facts,_=nv.import_events('{"name":"binutils","event":"updated","version":"9.0"}',{'binutils':config['native']['binutils']},previous,now)
         on_results(facts)
         visible=state.read(db)
@@ -197,7 +197,7 @@ def test_partial_publication_retains_global_failure_and_newer_other_phases(confi
 
 def test_config_drift_stops_publication_without_relabelling_completed_facts(config,snapshot,tmp_path,configured_path):
     db=tmp_path/'state.db';state.commit(db,snapshot)
-    def execute(config,previous,now,on_results):
+    def execute(config,previous,now,on_results=None,tracks=None):
         facts,_=nv.import_events('{"name":"binutils","event":"updated","version":"9.0"}',{'binutils':config['native']['binutils']},previous,now)
         on_results(facts)
         configured_path.write_text(configured_path.read_text() + '\n# operator changed configuration\n')

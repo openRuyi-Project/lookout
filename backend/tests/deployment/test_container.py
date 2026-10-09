@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'backend'))
@@ -92,7 +92,6 @@ class ContainerTests(unittest.TestCase):
 
     def test_monitor_heartbeat_is_automatic_and_separate_from_recheck_interval(self):
         jobs = []
-        names = []
         class Thread:
             def __init__(self, *, target, args, daemon, name): jobs.append((target, args))
             def start(self): pass
