@@ -181,7 +181,12 @@ def collect(config, db, *, client=None, now=None):
         try:
             recovered = False
             probe_error = False
-            if auth_retry_at and auth_retry_at <= time.time() and getattr(owner, 'token', '') and options.repositories:
+            checkpoints = (old['components'].get('github:' + repo, {}) for repo in options.repositories)
+            public_wait = any(item.get('authenticated') is not True and (item.get('next_poll_at') or item.get('retry_at'))
+                              for item in checkpoints)
+            probe_due = bool(getattr(owner, 'token', '') and options.repositories
+                             and (auth_retry_at and auth_retry_at <= time.time() or not auth_retry_at and public_wait))
+            if probe_due:
                 repo = next(iter(options.repositories))
                 try:
                     owner.get(f'/repos/{repo}/issues?state=all&per_page=1', auth_only=True)
@@ -199,8 +204,9 @@ def collect(config, db, *, client=None, now=None):
             for repo in ordered:
                 key = 'github:' + repo
                 checkpoint = old['components'].get(key, {})
-                if auth_retry_at:
-                    checkpoint = {**checkpoint, 'auth_retry_at': getattr(owner, 'auth_retry_at', auth_retry_at)}
+                if auth_retry_at or probe_due:
+                    checkpoint = {**checkpoint, 'auth_retry_at': getattr(owner, 'auth_retry_at', auth_retry_at),
+                                  'authenticated': recovered}
                 if recovered:
                     checkpoint = {**checkpoint, 'retry_at': getattr(owner, 'retry_at', None), 'next_poll_at': None}
                 if probe_error:
@@ -220,6 +226,7 @@ def collect(config, db, *, client=None, now=None):
                 if getattr(owner, 'retry_at', None):
                     component['retry_at'] = owner.retry_at
                 component['auth_retry_at'] = getattr(owner, 'auth_retry_at', 0)
+                component['authenticated'] = bool(getattr(owner, 'token', ''))
                 components[key] = component
         finally:
             if client is None:

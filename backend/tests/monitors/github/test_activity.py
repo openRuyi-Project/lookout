@@ -617,7 +617,8 @@ def test_authenticated_rate_limit_never_retries_anonymously(monkeypatch):
 
 
 @pytest.mark.parametrize('accepted', [False, True])
-def test_auth_probe_preserves_public_schedule_until_recovery(config, snapshot, tmp_path, monkeypatch, accepted):
+@pytest.mark.parametrize('auth_retry', [0, 900])
+def test_auth_probe_preserves_public_schedule_until_recovery(config, snapshot, tmp_path, monkeypatch, accepted, auth_retry):
     import httpx
     from tracker.providers.client import IO
     from tracker.providers.github import Client as HTTPClient
@@ -625,7 +626,7 @@ def test_auth_probe_preserves_public_schedule_until_recovery(config, snapshot, t
     monkeypatch.setattr('tracker.providers.github.time.time', lambda: 1000)
     monkeypatch.setattr('tracker.config.require_unchanged', lambda _: None)
     config['github'] = {'repositories': {REPO: {}}}
-    checkpoint = {'auth_retry_at': 900, 'next_poll_at': '2026-01-02T12:00:00+00:00',
+    checkpoint = {'auth_retry_at': auth_retry, 'next_poll_at': '2026-01-02T12:00:00+00:00',
                   'retry_at': '2026-01-02T12:00:00+00:00', 'poll_delay': 7200}
     snapshot['components']['github:' + REPO] = checkpoint
     db = tmp_path / 'state.db'
@@ -637,7 +638,7 @@ def test_auth_probe_preserves_public_schedule_until_recovery(config, snapshot, t
     with httpx.Client(transport=httpx.MockTransport(respond)) as transport:
         io = IO(client=transport, workers=1)
         monkeypatch.setattr(io, 'wait_for_host', lambda *_: None)
-        owner = HTTPClient(120, io=io, auth_retry_at=900)
+        owner = HTTPClient(120, io=io, auth_retry_at=auth_retry)
         result = collect(config, db, client=owner, now=NOW)
     observed = result['components']['github:' + REPO]
     if accepted:
@@ -645,5 +646,5 @@ def test_auth_probe_preserves_public_schedule_until_recovery(config, snapshot, t
         assert observed['next_poll_at'] < checkpoint['next_poll_at']
         assert len(calls) == 3
     else:
-        assert observed == {**checkpoint, 'auth_retry_at': 4600}
+        assert observed == {**checkpoint, 'auth_retry_at': 4600, 'authenticated': False}
         assert calls == [True]

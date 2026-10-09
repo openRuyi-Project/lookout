@@ -85,14 +85,16 @@ def published_image(reference, current_image, current_revision, workflow, *, sta
             previous = {}
     token = github_token(credential_file) if credential_file else os.environ.get('LOOKOUT_GITHUB_TOKEN')
     auth_retry_at = previous.get('auth_retry_at', 0)
-    auth_probe = bool(token and auth_retry_at and auth_retry_at <= now)
+    auth_probe = bool(token and (auth_retry_at and auth_retry_at <= now
+                                or not auth_retry_at and previous.get('next_attempt_at', 0) > now
+                                and previous.get('authenticated') is not True))
     if previous.get('next_attempt_at', 0) > now and not auth_probe:
         raise Deferred(previous['reason'], previous['next_attempt_at'])
     if auth_retry_at > now:
         token = None
 
     def save_checkpoint(value):
-        save_state(state_path, {**value, 'auth_retry_at': auth_retry_at})
+        save_state(state_path, {'authenticated': bool(token), **value, 'auth_retry_at': auth_retry_at})
 
     query = urlencode(dict(branch='main', status='success', per_page=1))
     url = f'https://api.github.com/repos/{repository}/actions/workflows/{quote(workflow, safe="")}/runs?{query}'
@@ -129,7 +131,7 @@ def published_image(reference, current_image, current_revision, workflow, *, sta
                     token = None
                     request.remove_header('Authorization')
                     if state_path:
-                        save_checkpoint({**previous, 'key': key, 'checked_at': now})
+                        save_checkpoint({**previous, 'key': key, 'checked_at': now, 'authenticated': False})
                     error.close()
                     if previous.get('next_attempt_at', 0) > now:
                         raise Deferred(previous['reason'], previous['next_attempt_at']) from None
@@ -138,7 +140,7 @@ def published_image(reference, current_image, current_revision, workflow, *, sta
                 if auth_probe:
                     auth_retry_at = max(now + 3600, cooldown(error.headers, now))
                     if state_path:
-                        save_checkpoint({**previous, 'key': key})
+                        save_checkpoint({**previous, 'key': key, 'authenticated': False})
                     raise Deferred('GitHub authentication probe deferred', auth_retry_at) from None
                 reason = 'GitHub rate limit' if limited else ('GitHub authentication failed' if error.code == 401 else 'GitHub publication access failed')
                 retry = cooldown(error.headers, now) if limited else now + (3600 if error.code in (401, 403) else 300)
@@ -148,7 +150,7 @@ def published_image(reference, current_image, current_revision, workflow, *, sta
         except (URLError, TimeoutError) as error:
             if auth_probe and state_path:
                 auth_retry_at = now + 3600
-                save_checkpoint({**previous, 'key': key})
+                save_checkpoint({**previous, 'key': key, 'authenticated': False})
             # Discovery failure must never turn into a speculative registry pull.
             raise RuntimeError('GitHub publication check failed; service unchanged') from error
         break

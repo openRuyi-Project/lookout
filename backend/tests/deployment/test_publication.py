@@ -405,11 +405,12 @@ def test_authenticated_quota_never_falls_back(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize('accepted', [False, True])
-def test_auth_probe_does_not_reset_public_wait(tmp_path, monkeypatch, accepted):
+@pytest.mark.parametrize('auth_retry', [0, 900])
+def test_auth_probe_does_not_reset_public_wait(tmp_path, monkeypatch, accepted, auth_retry):
     monkeypatch.setenv('LOOKOUT_GITHUB_TOKEN', 'fixture_only')
     monkeypatch.setattr(publication.time, 'time', lambda: 1000)
     path = tmp_path / 'checkpoint.json'
-    original = {'key': REFERENCE + '/checks.yml', 'auth_retry_at': 900,
+    original = {'key': REFERENCE + '/checks.yml', 'auth_retry_at': auth_retry,
                 'next_attempt_at': 8000, 'reason': 'GitHub rate limit'}
     path.write_text(json.dumps(original))
     calls = []
