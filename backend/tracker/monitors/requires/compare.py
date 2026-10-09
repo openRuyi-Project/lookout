@@ -11,7 +11,9 @@ from packaging.version import Version
 
 
 def pep440(expression, version):
-    return SpecifierSet(expression).contains(Version(version))
+    constraint = SpecifierSet(expression)
+    # Only an explicit prerelease constraint can accept a prerelease observation.
+    return constraint.contains(Version(version), prereleases=bool(constraint.prereleases))
 
 
 def numeric_release(version):

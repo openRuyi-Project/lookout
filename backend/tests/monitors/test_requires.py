@@ -40,6 +40,17 @@ def test_satisfaction_compares_observed_source_not_host_python(snapshot, version
     requirements.RequirementAssessment.model_validate(result)
 
 
+@pytest.mark.parametrize('expression,version,expected', [
+    ('>=3.8', '3.10rc1', False),
+    ('>=3.10rc1', '3.10rc2', True),
+    ('>=3.10rc1', '3.10rc0', False),
+    ('>=3.10', '3.10rc1', False),
+    ('>=3.8', '3.10', True),
+])
+def test_pep440_requires_explicit_prerelease_constraint(expression, version, expected):
+    assert requirement_versions.pep440(expression, version) is expected
+
+
 @pytest.mark.parametrize('case,reason', [
     ('unmapped', 'dependency_not_mapped'), ('missing', 'dependency_unavailable'),
     ('expired', 'dependency_unavailable'), ('error', 'dependency_unavailable'),
