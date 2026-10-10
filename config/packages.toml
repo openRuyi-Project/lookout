@@ -51,8 +51,8 @@ libssh = {monitors = {security = {vendor = "libssh", product = "libssh"}}}
 libssh2 = {monitors = {security = {vendor = "libssh2", product = "libssh2"}}}
 libtiff = {monitors = {security = {vendor = "libtiff", product = "libtiff"}}}
 libxml2 = {monitors = {security = {vendor = "xmlsoft",product = "libxml2"}}}
-linux = {monitors = {security = {vendor = "linux", product = "linux_kernel", part = "o"}}}
-linux-lts = {monitors = {security = {vendor = "linux", product = "linux_kernel", part = "o"}}}
+linux = {monitors = {security = {vendor = "linux", product = "linux_kernel", part = "o"}, eol = {product = "linux", cycle_parts = 2}}}
+linux-lts = {monitors = {security = {vendor = "linux", product = "linux_kernel", part = "o"}, eol = {product = "linux", cycle_parts = 2}}}
 mariadb = {monitors = {eol = {product = "mariadb",cycle_parts = 2}}}
 mkosi = {compare = "mkosi@commits", watch = ["mkosi"]}
 nginx = {monitors = {eol = {product = "nginx",cycle_parts = 2}}}
@@ -81,3 +81,111 @@ shim = {compare = "shim@commits", watch = ["shim"]}
 # TODO(drop): openRuyi SPECS/python-discord has Name=python-discord.py.
 sqlite = {monitors = {eol = {product = "sqlite",cycle_parts = 1},security = {vendor = "sqlite", product = "sqlite"}}}
 valkey = {monitors = {eol = {product = "valkey",cycle_parts = 2}}}
+bind = {monitors = {eol = {product = "bind-9", cycle_parts = 2}}}
+breeze = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+calico = {monitors = {eol = {product = "calico", cycle_parts = 2}}}
+ceph = {monitors = {eol = {product = "ceph", cycle_parts = 1}}}
+clamav = {monitors = {eol = {product = "clamav", cycle_parts = 2}}}
+containerd = {monitors = {eol = {product = "containerd", cycle_parts = 2}}}
+discover = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+"dotnet10.0" = {monitors = {eol = {product = "dotnet", cycle_parts = 1}}}
+"dotnet10.0-bin" = {monitors = {eol = {product = "dotnet", cycle_parts = 1}}}
+etcd = {monitors = {eol = {product = "etcd", cycle_parts = 2}}}
+ffmpeg = {monitors = {eol = {product = "ffmpeg", cycle_parts = 2}}}
+firefox = {monitors = {eol = {product = "firefox", cycle_parts = 1}}}
+fonts-fontawesome = {monitors = {eol = {product = "font-awesome", cycle_parts = 1}}}
+gstreamer = {monitors = {eol = {product = "gstreamer", cycle_parts = 2}}}
+gstreamer-plugins-base = {monitors = {eol = {product = "gstreamer", cycle_parts = 2}}}
+haproxy = {monitors = {eol = {product = "haproxy", cycle_parts = 2}}}
+kactivitymanagerd = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kde-cli-tools = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kde-gtk-config = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kdecoration = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kglobalacceld = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kinfocenter = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kmenuedit = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+knighttime = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kpipewire = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kscreen = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kscreenlocker = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+ksystemstats = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kwayland6 = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+kwin = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+layer-shell-qt = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+libkscreen = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+libksysguard = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+libplasma = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+linux-headers = {monitors = {eol = {product = "linux", cycle_parts = 2}}}
+linux-lts-kmhv2 = {monitors = {eol = {product = "linux", cycle_parts = 2}}}
+lua = {monitors = {eol = {product = "lua", cycle_parts = 2}}}
+memcached = {monitors = {eol = {product = "memcached", cycle_parts = 2}}}
+milou = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+moby = {monitors = {eol = {product = "docker-engine", cycle_parts = 1}}}
+oniguruma = {monitors = {eol = {product = "oniguruma", cycle_parts = 1}}}
+openvpn = {monitors = {eol = {product = "openvpn", cycle_parts = 2}}}
+plasma-activities = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-activities-stats = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-desktop = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-disks = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-integration = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-login-manager = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-nm = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-pa = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-sdk = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-systemmonitor = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma-workspace = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+plasma5support = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+podman = {monitors = {eol = {product = "podman", cycle_parts = 2}}}
+polkit-kde-agent-1 = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+postfix = {monitors = {eol = {product = "postfix", cycle_parts = 2}}}
+powerdevil = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+python-ansible-core = {monitors = {eol = {product = "ansible-core", cycle_parts = 2}}}
+python-django = {monitors = {eol = {product = "django", cycle_parts = 2}}}
+python-numpy = {monitors = {eol = {product = "numpy", cycle_parts = 2}}}
+qqc2-breeze-style = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+qt6-qt3d = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qt5compat = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtbase = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtcharts = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtcoap = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtconnectivity = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtdatavis3d = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtdeclarative = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtgraphs = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtgrpc = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qthttpserver = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtimageformats = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtlanguageserver = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtlocation = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtlottie = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtmqtt = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtmultimedia = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtnetworkauth = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtopcua = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtpositioning = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtquick3d = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtquick3dphysics = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtquickeffectmaker = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtquicktimeline = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtremoteobjects = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtscxml = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtsensors = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtserialbus = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtserialport = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtshadertools = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtspeech = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtsvg = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qttools = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qttranslations = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtvirtualkeyboard = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtwayland = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtwebchannel = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtwebengine = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtwebsockets = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+qt6-qtwebview = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
+rust = {monitors = {eol = {product = "rust", cycle_parts = 2}}}
+samba = {monitors = {eol = {product = "samba", cycle_parts = 2}}}
+sddm-kcm = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+systemsettings = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+xdg-desktop-portal-kde = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
+zfs = {monitors = {eol = {product = "openzfs", cycle_parts = 2}}}
