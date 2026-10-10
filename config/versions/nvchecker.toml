@@ -2282,7 +2282,7 @@ go-codeberg-go-fonts-xolonium = { source = "go_proxy", url = "https://proxy.gola
 go-codeberg-go-latex-latex = { source = "go_proxy", url = "https://proxy.golang.com.cn/codeberg.org/go-latex/latex/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-codeberg-go-pdf-fpdf = { source = "go_proxy", url = "https://proxy.golang.com.cn/codeberg.org/go-pdf/fpdf/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-dario-mergo = { source = "go_proxy", url = "https://proxy.golang.com.cn/dario.cat/mergo/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-etcd-io-etcd = { source = "go_proxy", url = "https://proxy.golang.com.cn/go.etcd.io/etcd/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-etcd-io-etcd = { source = "go_proxy", url = "https://proxy.golang.com.cn/go.etcd.io/etcd/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-etcd-io-gofail = { source = "go_proxy", url = "https://proxy.golang.com.cn/go.etcd.io/gofail/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-filippo-age = { source = "go_proxy", url = "https://proxy.golang.com.cn/filippo.io/age/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-filippo-edwards25519 = { source = "go_proxy", url = "https://proxy.golang.com.cn/filippo.io/edwards25519/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2294,12 +2294,12 @@ go-github-agnivade-levenshtein = { source = "go_proxy", url = "https://proxy.gol
 go-github-ajg-form = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/ajg/form/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-akamensky-argparse = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/akamensky/argparse/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-alecaivazis-survey-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/!alec!aivazis/survey/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-alecthomas-assert = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alecthomas/assert/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-alecthomas-assert = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alecthomas/assert/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-alecthomas-assert-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alecthomas/assert/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-alecthomas-kingpin-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alecthomas/kingpin/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-alecthomas-kong = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alecthomas/kong/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-alecthomas-participle = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alecthomas/participle/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-alecthomas-participle-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alecthomas/participle/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-alecthomas-participle-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alecthomas/participle/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-alecthomas-repr = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alecthomas/repr/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-alibabacloud-go-debug = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alibabacloud-go/debug/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-alibabacloud-go-tea = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/alibabacloud-go/tea/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2318,7 +2318,7 @@ go-github-apapsch-go-jsonmerge-v2 = { source = "go_proxy", url = "https://proxy.
 go-github-aperturerobotics-json-iterator-lite = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aperturerobotics/json-iterator-lite/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-aperturerobotics-protobuf-go-lite = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aperturerobotics/protobuf-go-lite/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-apparentlymart-go-cidr = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/apparentlymart/go-cidr/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-apparentlymart-go-textseg = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/apparentlymart/go-textseg/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-apparentlymart-go-textseg = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/apparentlymart/go-textseg/v16/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-apparentlymart-go-textseg-v15 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/apparentlymart/go-textseg/v15/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-apparentlymart-go-textseg-v17 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/apparentlymart/go-textseg/v17/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-armon-go-metrics = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hashicorp/go-metrics/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2329,7 +2329,7 @@ go-github-aws-aws-msk-iam-sasl-signer-go = { source = "go_proxy", url = "https:/
 go-github-aws-aws-sdk-go = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aws/aws-sdk-go/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-aws-aws-sdk-go-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aws/aws-sdk-go-v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-aws-smithy-go = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aws/smithy-go/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-aymanbagabas-go-osc52 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aymanbagabas/go-osc52/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-aymanbagabas-go-osc52 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aymanbagabas/go-osc52/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-aymanbagabas-go-osc52-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aymanbagabas/go-osc52/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-aymanbagabas-go-udiff = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aymanbagabas/go-udiff/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-aymerick-douceur = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/aymerick/douceur/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2364,7 +2364,7 @@ go-github-cactus-go-statsd-client = { source = "go_proxy", url = "https://proxy.
 go-github-campoy-embedmd-embedmd = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/campoy/embedmd/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-casbin-casbin-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/casbin/casbin/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-casbin-govaluate = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/casbin/govaluate/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-cenkalti-backoff = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/cenkalti/backoff/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-cenkalti-backoff = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/cenkalti/backoff/v5/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-cenkalti-backoff-v3 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/cenkalti/backoff/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-cenkalti-backoff-v4 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/cenkalti/backoff/v4/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-cenkalti-backoff-v5 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/cenkalti/backoff/v5/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2392,7 +2392,7 @@ go-github-chzyer-readline = { source = "go_proxy", url = "https://proxy.golang.c
 go-github-chzyer-test = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/chzyer/test/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-cilium-ebpf = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/cilium/ebpf/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-circonus-labs-circonus-gometrics = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/circonus-labs/circonus-gometrics/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-circonus-labs-circonusllhist = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/circonus-labs/circonusllhist/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-circonus-labs-circonusllhist = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/openhistogram/circonusllhist/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-clbanning-mxj = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/clbanning/mxj/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-clbanning-mxj-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/clbanning/mxj/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-cli-browser = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/cli/browser/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2403,7 +2403,7 @@ go-github-clipperhouse-displaywidth = { source = "go_proxy", url = "https://prox
 go-github-clipperhouse-stringish = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/clipperhouse/stringish/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-clipperhouse-uax29-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/clipperhouse/uax29/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-cloudflare-circl = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/cloudflare/circl/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-cloudykit-jet = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/!cloudy!kit/jet/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-cloudykit-jet = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/!cloudy!kit/jet/v6/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-cockroachdb-datadriven = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/cockroachdb/datadriven/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-code-hex-go-generics-cache = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/!code-!hex/go-generics-cache/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-coder-quartz = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/coder/quartz/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2421,14 +2421,14 @@ go-github-containerd-otelttrpc = { source = "go_proxy", url = "https://proxy.gol
 go-github-containerd-platforms = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/containerd/platforms/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-containerd-plugin = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/containerd/plugin/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-containerd-ttrpc = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/containerd/ttrpc/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-containerd-typeurl = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/containerd/typeurl/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-containerd-typeurl = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/containerd/typeurl/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-containerd-typeurl-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/containerd/typeurl/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-containernetworking-cni = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/containernetworking/cni/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-containernetworking-plugins = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/containernetworking/plugins/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-containers-ocicrypt = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/containers/ocicrypt/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-coocood-freecache = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/coocood/freecache/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-coreos-go-iptables = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/coreos/go-iptables/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-coreos-go-oidc = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/coreos/go-oidc/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-coreos-go-oidc = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/coreos/go-oidc/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-coreos-go-oidc-v3 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/coreos/go-oidc/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-coreos-go-semver = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/coreos/go-semver/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-coreos-go-systemd = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/coreos/go-systemd/v22/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2488,7 +2488,7 @@ go-github-envoyproxy-protoc-gen-validate = { source = "go_proxy", url = "https:/
 go-github-erofs-go-erofs = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/erofs/go-erofs/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-etcd-io-bbolt = { source = "go_proxy", url = "https://proxy.golang.com.cn/go.etcd.io/bbolt/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-ettle-strcase = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/ettle/strcase/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-evanphx-json-patch = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/evanphx/json-patch/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-evanphx-json-patch = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/evanphx/json-patch/v5/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-evanw-esbuild = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/evanw/esbuild/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-fatih-camelcase = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/fatih/camelcase/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-fatih-color = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/fatih/color/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2521,13 +2521,13 @@ go-github-go-asn1-ber-asn1-ber = { source = "go_proxy", url = "https://proxy.gol
 go-github-go-errors-errors = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-errors/errors/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-faster-city = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-faster/city/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-faster-errors = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-faster/errors/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-go-git-gcfg = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-git/gcfg/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-go-git-gcfg = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-git/gcfg/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-git-go-billy-v5 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-git/go-billy/v5/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-git-go-git-fixtures-v4 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-git/go-git-fixtures/v4/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-git-go-git-v5 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-git/go-git/v5/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-go-jose-go-jose-v4 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-jose/go-jose/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-go-jose-go-jose-v4 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-jose/go-jose/v4/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-kit-log = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-kit/log/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-go-ldap-ldap = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-ldap/ldap/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-go-ldap-ldap = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-ldap/ldap/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-loger-logr = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-logr/logr/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-logfmt-logfmt = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-logfmt/logfmt/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-logr-stdr = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-logr/stdr/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2549,11 +2549,11 @@ go-github-go-playground-locales = { source = "go_proxy", url = "https://proxy.go
 go-github-go-playground-universal-translator = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-playground/universal-translator/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-playground-validator-v10 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-playground/validator/v10/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-quicktest-qt = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-quicktest/qt/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-go-redis-redis = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-redis/redis/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-go-redis-redis = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/redis/go-redis/v9/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-redis-redis-v8 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-redis/redis/v8/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-resty-resty-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-resty/resty/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-sql-driver-mysql = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-sql-driver/mysql/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-go-task-slim-sprig = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-task/slim-sprig/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-go-task-slim-sprig = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-task/slim-sprig/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-task-slim-sprig-v3 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-task/slim-sprig/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-test-deep = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-test/deep/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-go-viper-mapstructure-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/go-viper/mapstructure/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2619,7 +2619,7 @@ go-github-grbit-go-json = { source = "go_proxy", url = "https://proxy.golang.com
 go-github-grpc-ecosystem-go-grpc-middleware = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/grpc-ecosystem/go-grpc-middleware/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-grpc-ecosystem-go-grpc-middleware-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/grpc-ecosystem/go-grpc-middleware/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-grpc-ecosystem-go-grpc-prometheus = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/grpc-ecosystem/go-grpc-prometheus/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-grpc-ecosystem-grpc-gateway = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/grpc-ecosystem/grpc-gateway/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-grpc-ecosystem-grpc-gateway = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/grpc-ecosystem/grpc-gateway/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-grpc-ecosystem-grpc-gateway-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/grpc-ecosystem/grpc-gateway/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-h2non-filetype = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/h2non/filetype/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-hanwen-go-fuse-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hanwen/go-fuse/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2641,7 +2641,7 @@ go-github-hashicorp-go-multierror = { source = "go_proxy", url = "https://proxy.
 go-github-hashicorp-go-retryablehttp = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hashicorp/go-retryablehttp/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-hashicorp-go-rootcerts = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hashicorp/go-rootcerts/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-hashicorp-go-secure-stdlib = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hashicorp/go-secure-stdlib/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-hashicorp-go-set = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hashicorp/go-set/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-hashicorp-go-set = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hashicorp/go-set/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-hashicorp-go-sockaddr = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hashicorp/go-sockaddr/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-hashicorp-go-syslog = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hashicorp/go-syslog/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-hashicorp-go-uuid = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/hashicorp/go-uuid/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2741,7 +2741,7 @@ go-github-lestrrat-go-option = { source = "go_proxy", url = "https://proxy.golan
 go-github-lib-pq = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/lib/pq/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-lightstep-go-expohisto = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/lightstep/go-expohisto/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-linode-linodego = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/linode/linodego/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-lithammer-shortuuid = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/lithammer/shortuuid/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-lithammer-shortuuid = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/lithammer/shortuuid/v4/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-lithammer-shortuuid-v4 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/lithammer/shortuuid/v4/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-lmittmann-tint = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/lmittmann/tint/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-lucasb-eyer-go-colorful = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/lucasb-eyer/go-colorful/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2787,7 +2787,7 @@ go-github-minio-dnscache = { source = "go_proxy", url = "https://proxy.golang.co
 go-github-minio-filepath = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/minio/filepath/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-minio-highwayhash = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/minio/highwayhash/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-minio-kes-go = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/minio/kes-go/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-minio-kms-go = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/minio/kms-go/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-minio-kms-go = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/minio/kes-go/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-minio-kms-go-kes = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/minio/kms-go/kes/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-minio-kms-go-kms = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/minio/kms-go/kms/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-minio-md5-simd = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/minio/md5-simd/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2810,7 +2810,7 @@ go-github-mitchellh-go-homedir = { source = "go_proxy", url = "https://proxy.gol
 go-github-mitchellh-go-ps = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/mitchellh/go-ps/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-mitchellh-go-testing-interface = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/mitchellh/go-testing-interface/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-mitchellh-go-wordwrap = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/mitchellh/go-wordwrap/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-mitchellh-hashstructure = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/mitchellh/hashstructure/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-mitchellh-hashstructure = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/mitchellh/hashstructure/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-mitchellh-mapstructure = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/mitchellh/mapstructure/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-mitchellh-pointerstructure = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/mitchellh/pointerstructure/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-mitchellh-reflectwalk = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/mitchellh/reflectwalk/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2872,7 +2872,7 @@ go-github-opentracing-opentracing-go = { source = "go_proxy", url = "https://pro
 go-github-orcaman-concurrent-map-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/orcaman/concurrent-map/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-oschwald-maxminddb-golang = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/oschwald/maxminddb-golang/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-outcaste-io-ristretto = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/outcaste-io/ristretto/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-outscale-osc-sdk-go = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/outscale/osc-sdk-go/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-outscale-osc-sdk-go = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/outscale/osc-sdk-go/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-ovh-go-ovh = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/ovh/go-ovh/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-pascaldekloe-goe = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/pascaldekloe/goe/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-pascaldekloe-name = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/pascaldekloe/name/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2889,7 +2889,7 @@ go-github-pborman-indent = { source = "go_proxy", url = "https://proxy.golang.co
 go-github-pelletier-go-toml-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/pelletier/go-toml/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-performancecopilot-speed-v4 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/performancecopilot/speed/v4/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-perimeterx-marshmallow = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/perimeterx/marshmallow/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-peterbourgon-diskv = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/peterbourgon/diskv/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-peterbourgon-diskv = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/peterbourgon/diskv/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-peterbourgon-ff-v3 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/peterbourgon/ff/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-philhofer-fwd = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/philhofer/fwd/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-phpdave11-gofpdi = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/phpdave11/gofpdi/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -2916,7 +2916,7 @@ go-github-prometheus-procfs = { source = "go_proxy", url = "https://proxy.golang
 go-github-prometheus-sigv4 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/prometheus/sigv4/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-protonmail-go-crypto = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/!proton!mail/go-crypto/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-puerkitobio-goquery = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/!puerkito!bio/goquery/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-puzpuzpuz-xsync = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/puzpuzpuz/xsync/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-puzpuzpuz-xsync = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/puzpuzpuz/xsync/v4/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-puzpuzpuz-xsync-v3 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/puzpuzpuz/xsync/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-rabbitmq-amqp091-go = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/rabbitmq/amqp091-go/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-ravenox-go-jsoncommentstrip = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/!rave!no!x/go-jsoncommentstrip/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -3037,7 +3037,7 @@ go-github-vjeantet-grok = { source = "go_proxy", url = "https://proxy.golang.com
 go-github-vmihailenco-msgpack-v5 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/vmihailenco/msgpack/v5/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-vmihailenco-tagparser-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/vmihailenco/tagparser/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-vultr-govultr-v3 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/vultr/govultr/v3/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-github-wcharczuk-go-chart = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/wcharczuk/go-chart/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-github-wcharczuk-go-chart = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/wcharczuk/go-chart/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-wi2l-jettison = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/w!i2!l/jettison/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-wk8-go-ordered-map-v2 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/wk8/go-ordered-map/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-github-woodsbury-decimal128 = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/woodsbury/decimal128/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -3085,7 +3085,7 @@ go-gonum-v1-gonum = { source = "go_proxy", url = "https://proxy.golang.com.cn/go
 go-gonum-v1-plot = { source = "go_proxy", url = "https://proxy.golang.com.cn/gonum.org/v1/plot/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-google-api = { source = "go_proxy", url = "https://proxy.golang.com.cn/google.golang.org/api/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-google-api-support = { source = "go_proxy", url = "https://proxy.golang.com.cn/google.golang.org/api/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-go-google-appengine = { source = "go_proxy", url = "https://proxy.golang.com.cn/google.golang.org/appengine/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+go-google-appengine = { source = "go_proxy", url = "https://proxy.golang.com.cn/google.golang.org/appengine/v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-google-grpc = { source = "go_proxy", url = "https://proxy.golang.com.cn/google.golang.org/grpc/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-google-grpc-gcp-observability = { source = "go_proxy", url = "https://proxy.golang.com.cn/google.golang.org/grpc/gcp/observability/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-google-grpc-security-advancedtls = { source = "go_proxy", url = "https://proxy.golang.com.cn/google.golang.org/grpc/security/advancedtls/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
@@ -3109,7 +3109,7 @@ go-gopkg-fsnotify-v1 = { source = "go_proxy", url = "https://proxy.golang.com.cn
 "go-gopkg-gcfg.v1" = { source = "go_proxy", url = "https://proxy.golang.com.cn/gopkg.in/gcfg.v1/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 "go-gopkg-go-jose-go-jose.v2" = { source = "go_proxy", url = "https://proxy.golang.com.cn/gopkg.in/go-jose/go-jose.v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 go-gopkg-h2non-gock-v1 = { source = "go_proxy", url = "https://proxy.golang.com.cn/gopkg.in/h2non/gock.v1/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
-"go-gopkg-h2non-gock.v1" = { source = "go_proxy", url = "https://proxy.golang.com.cn/gopkg.in/h2non/gock.v1/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
+"go-gopkg-h2non-gock.v1" = { source = "go_proxy", url = "https://proxy.golang.com.cn/github.com/h2non/gock/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 "go-gopkg-inf.v0" = { source = "go_proxy", url = "https://proxy.golang.com.cn/gopkg.in/inf.v0/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 "go-gopkg-ini.v1" = { source = "go_proxy", url = "https://proxy.golang.com.cn/gopkg.in/ini.v1/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
 "go-gopkg-natefinch-lumberjack.v2" = { source = "go_proxy", url = "https://proxy.golang.com.cn/gopkg.in/natefinch/lumberjack.v2/@latest", prefix = "v", from_pattern = "[+]incompatible$", to_pattern = "" }
