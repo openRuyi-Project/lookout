@@ -43,6 +43,34 @@ def metadata(settings, version, io):
     return Release(name, 'deps.dev', url, expression, expression, None, None, 'licenses (licensecheck)')
 
 
+def proxy_base(name):
+    escaped = re.sub('[A-Z]', lambda match: '!' + match[0].lower(), name)
+    return 'https://proxy.golang.org/' + quote(escaped, safe='/!')
+
+
+def verified_version(base, version, current, io):
+    observed = io.json('GET', base + '/@v/' + quote(version, safe='') + '.info', min_interval=0.25)
+    canonical = observed.get('Version')
+    # Accept +incompatible only when the proxy verifies the same pre-modules tag.
+    compatible = version + '+incompatible' if '+' not in version and current[0][0] >= 2 else version
+    if canonical not in (version, compatible):
+        raise ValueError('Go proxy release identity does not match the query')
+    return canonical
+
+
+def module_document(settings, version, io):
+    name = project(settings)
+    try:
+        version = 'v' + version.removeprefix('v')
+        current = version_key(version)
+    except (ValueError, AttributeError) as error:
+        raise UnsupportedRelease('Current source version does not establish an exact Go release.') from error
+    base = proxy_base(name)
+    canonical = verified_version(base, version, current, io)
+    url = base + '/@v/' + quote(canonical, safe='') + '.mod'
+    return io.text(url, min_interval=0.25), url
+
+
 def withdrawal(settings, version, io):
     name = project(settings)
     try:
@@ -50,18 +78,10 @@ def withdrawal(settings, version, io):
         current = version_key(version)
     except (ValueError, AttributeError) as error:
         raise UnsupportedRelease('Current source version does not establish an exact Go release.') from error
-    escaped = re.sub('[A-Z]', lambda match: '!' + match[0].lower(), name)
-    base = 'https://proxy.golang.org/' + quote(escaped, safe='/!')
+    base = proxy_base(name)
     versions = io.text(base + '/@v/list', min_interval=0.25).splitlines()
     if version not in versions:
-        observed = io.json('GET', base + '/@v/' + quote(version, safe='') + '.info', min_interval=0.25)
-        canonical = observed.get('Version')
-        # +incompatible is proxy notation for the same pre-modules tag, not a
-        # different release. Require the exact .info response, never append it speculatively.
-        compatible = version + '+incompatible' if '+' not in version and current[0][0] >= 2 else version
-        if canonical not in (version, compatible):
-            raise ValueError('Go proxy release identity does not match the query')
-        version = canonical
+        version = verified_version(base, version, current, io)
         current = version_key(version)
     # The list includes retracted tags. @latest alone can omit a release that
     # retracts itself, thereby hiding its other retractions (Go Modules §retract).

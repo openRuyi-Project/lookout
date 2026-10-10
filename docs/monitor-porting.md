@@ -164,6 +164,7 @@ another provider request.
 | PyPI `Requires-Python` / `Requires-Dist` | Markers/extras and target environment, not collector host. Unknown variables remain unknown |
 | Optional vs platform condition | Feature selection vs applicability. False target conditions are `not_applicable` |
 | crates.io `rust-version` | Build requirement, not runtime dependency |
+| Go `go` directive | Exact-release build minimum; `toolchain` is only a suggestion. Build facts do not enter runtime mismatch counts |
 | CPAN prerequisites | Static `dynamic_config=false`, with distinct requires/recommends/suggests clauses |
 | CPAN module versions | Distribution versions cannot substitute for component versions |
 

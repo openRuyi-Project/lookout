@@ -39,11 +39,14 @@ def version_key(version):
     return tuple(map(int, match['base'].split('.'))), not bool(prerelease), prerelease
 
 
-def retractions(document, module):
-    if len(document) > 512 * 1024 or len(document.splitlines()) > 20000:
+def directives(document, module):
+    if len(document) > 512 * 1024:
         raise ValueError('go.mod exceeds parsing budget')
-    block, names, ranges = None, [], []
-    for raw in document.splitlines():
+    lines = document.splitlines()
+    if len(lines) > 20000:
+        raise ValueError('go.mod exceeds parsing budget')
+    block, names, items = None, [], []
+    for raw in lines:
         words = tokens(raw)
         if not words:
             continue
@@ -53,6 +56,8 @@ def retractions(document, module):
             block = None
             continue
         if block is None and len(words) == 2 and words[1] == '(':
+            if words[0] in ('module', 'go', 'toolchain'):
+                raise ValueError('go.mod directive does not permit a block')
             block = words[0]
             continue
         directive, values = (block, words) if block else (words[0], words[1:])
@@ -60,7 +65,16 @@ def retractions(document, module):
             if len(values) != 1:
                 raise ValueError('invalid go.mod module directive')
             names.append(values[0])
-        elif directive == 'retract':
+        items.append((directive, values))
+    if block is not None or names != [module]:
+        raise ValueError('go.mod module identity or block structure is invalid')
+    return items
+
+
+def retractions(document, module):
+    ranges = []
+    for directive, values in directives(document, module):
+        if directive == 'retract':
             if len(values) == 5 and (values[0], values[2], values[4]) == ('[', ',', ']'):
                 low, high = values[1], values[3]
             elif len(values) == 1:
@@ -71,6 +85,4 @@ def retractions(document, module):
             if low > high or len(ranges) >= 1024:
                 raise ValueError('invalid or excessive go.mod retractions')
             ranges.append((low, high))
-    if block is not None or names != [module]:
-        raise ValueError('go.mod module identity or block structure is invalid')
     return ranges

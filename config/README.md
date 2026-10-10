@@ -137,7 +137,7 @@ widget = { monitors = { license = { pypi = "upstream-widget" } } }
 |---|---|
 | PyPI | Security, License, runtime requirements, Yanked |
 | crates.io | Security, License, Yanked. Toolchain requirements are not runtime dependencies |
-| Go module | Security, deps.dev license, proxy withdrawal. The build graph is not runtime requirements |
+| Go module | Security, deps.dev license, proxy withdrawal, explicit `go.mod` language minimum (build-only) |
 | CPAN distribution | License and static runtime prerequisites. Module and distribution versions differ |
 | Complete Source0 commit | OSV commit query. Repository matches do not establish subpackage applicability |
 | Version-matched Source0 archive tag | OSV GIT repository/tag query |

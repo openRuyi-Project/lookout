@@ -5,6 +5,7 @@ from tracker.monitors.model import finding, fingerprint
 from tracker.monitors.model import version_query as query_subject
 from tracker.monitors.requires import cpan as requires_cpan
 from tracker.monitors.requires import cratesio as requires_cratesio
+from tracker.monitors.requires import go as requires_go
 from tracker.monitors.requires import pypi as requires_pypi
 from tracker.monitors.requires.model import Requirement, UnsupportedRequirements, key
 from tracker.monitors.schedule import Schedule
@@ -21,7 +22,7 @@ class Backend(IdentityProvider, Protocol):
 TITLE = 'Dependencies'
 VERSION = 5
 SCOPE = 'current_and_upgrade'
-BACKENDS: dict[str, Backend] = {'pypi': requires_pypi, 'cratesio': requires_cratesio, 'cpan': requires_cpan}
+BACKENDS: dict[str, Backend] = {'pypi': requires_pypi, 'cratesio': requires_cratesio, 'cpan': requires_cpan, 'go': requires_go}
 HOSTS = set().union(*(backend.HOSTS for backend in BACKENDS.values()))
 
 
