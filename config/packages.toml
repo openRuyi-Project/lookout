@@ -13,7 +13,7 @@ git = {monitors = {security = {vendor = "git-scm", product = "git"}}}
 glibc = {compare = "glibc@commits", watch = ["glibc"]}
 # Product identities and cycle granularity verified against SPEC URLs and the
 # provider's release-cycle catalog. A missing future cycle remains unsupported.
-go = {monitors = {eol = {product = "go",cycle_parts = 2}}}
+go = {monitors = {security = {vendor = "golang", product = "go"}, eol = {product = "go",cycle_parts = 2}}}
 go-github-basgys-goxml2json = {compare = "go-github-basgys-goxml2json@commits", watch = ["go-github-basgys-goxml2json"], monitors = {security = {ecosystem = "Go",name = "github.com/basgys/goxml2json"}}}
 go-github-campoy-embedmd-embedmd = {compare = "go-github-campoy-embedmd-embedmd@commits", watch = ["go-github-campoy-embedmd-embedmd"], monitors = {security = {ecosystem = "Go",name = "github.com/campoy/embedmd"}}}
 go-github-charmbracelet-glamour = {compare = "go-github-charmbracelet-glamour@commits", watch = ["go-github-charmbracelet-glamour"], monitors = {security = {ecosystem = "Go",name = "github.com/charmbracelet/glamour"}}}
@@ -41,10 +41,10 @@ go-github-stefanhaller-git-todo-parser = {compare = "go-github-stefanhaller-git-
 go-github-syndtr-goleveldb = {compare = "go-github-syndtr-goleveldb@commits", watch = ["go-github-syndtr-goleveldb"], monitors = {security = {ecosystem = "Go",name = "github.com/syndtr/goleveldb"}}}
 go-github-xo-terminfo = {compare = "go-github-xo-terminfo@commits", watch = ["go-github-xo-terminfo"], monitors = {security = {ecosystem = "Go",name = "github.com/xo/terminfo"}}}
 go-rsc-pdf = {compare = "go-rsc-pdf@commits", watch = ["go-rsc-pdf"], monitors = {security = {ecosystem = "Go",name = "rsc.io/pdf"}}}
-httpd = {monitors = {eol = {product = "apache-http-server",cycle_parts = 2}}}
+httpd = {monitors = {security = {vendor = "apache", product = "http_server"}, eol = {product = "apache-http-server",cycle_parts = 2}}}
 libarchive = {monitors = {security = {vendor = "libarchive", product = "libarchive"}}}
 libiberty = {track_label = "16.x"}
-kubernetes = {monitors = {eol = {product = "kubernetes",cycle_parts = 2}}}
+kubernetes = {monitors = {security = {vendor = "kubernetes", product = "kubernetes"}, eol = {product = "kubernetes",cycle_parts = 2}}}
 libjpeg-turbo = {monitors = {security = {vendor = "libjpeg-turbo", product = "libjpeg-turbo"}}}
 libpng = {monitors = {security = {vendor = "libpng", product = "libpng"}}}
 libssh = {monitors = {security = {vendor = "libssh", product = "libssh"}}}
@@ -53,19 +53,19 @@ libtiff = {monitors = {security = {vendor = "libtiff", product = "libtiff"}}}
 libxml2 = {monitors = {security = {vendor = "xmlsoft",product = "libxml2"}}}
 linux = {monitors = {security = {vendor = "linux", product = "linux_kernel", part = "o"}, eol = {product = "linux", cycle_parts = 2}}}
 linux-lts = {monitors = {security = {vendor = "linux", product = "linux_kernel", part = "o"}, eol = {product = "linux", cycle_parts = 2}}}
-mariadb = {monitors = {eol = {product = "mariadb",cycle_parts = 2}}}
+mariadb = {monitors = {security = {vendor = "mariadb", product = "mariadb"}, eol = {product = "mariadb",cycle_parts = 2}}}
 mkosi = {compare = "mkosi@commits", watch = ["mkosi"]}
-nginx = {monitors = {eol = {product = "nginx",cycle_parts = 2}}}
-nodejs = {monitors = {eol = {product = "nodejs",cycle_parts = 1}}}
+nginx = {monitors = {security = {vendor = "f5", product = "nginx"}, eol = {product = "nginx",cycle_parts = 2}}}
+nodejs = {monitors = {security = {vendor = "nodejs", product = "node.js"}, eol = {product = "nodejs",cycle_parts = 1}}}
 openssl = {track_label = "3.x", monitors = {eol = {product = "openssl",cycle_parts = 2},security = {vendor = "openssl",product = "openssl"}}}
 pcre2 = {monitors = {security = {vendor = "pcre", product = "pcre2"}}}
-perl = {monitors = {eol = {product = "perl",cycle_parts = 2}}}
-php = {monitors = {eol = {product = "php",cycle_parts = 2}}}
-postgresql = {monitors = {eol = {product = "postgresql",cycle_parts = 1}}}
-python = {monitors = {eol = {product = "python",cycle_parts = 2}}}
+perl = {monitors = {security = {vendor = "perl", product = "perl"}, eol = {product = "perl",cycle_parts = 2}}}
+php = {monitors = {security = {vendor = "php", product = "php"}, eol = {product = "php",cycle_parts = 2}}}
+postgresql = {monitors = {security = {vendor = "postgresql", product = "postgresql"}, eol = {product = "postgresql",cycle_parts = 1}}}
+python = {monitors = {security = {vendor = "python", product = "python"}, eol = {product = "python",cycle_parts = 2}}}
 python-opentelemetry-semantic-conventions = {watch = ["python-opentelemetry-semantic-conventions@prerelease"]}
 rapidjson = {comparable = false}
-ruby = {monitors = {eol = {product = "ruby",cycle_parts = 2}}}
+ruby = {monitors = {security = {vendor = "ruby-lang", product = "ruby"}, eol = {product = "ruby",cycle_parts = 2}}}
 "rust-arwen-0.0.5" = {track_label = "0.0.5"}
 "rust-ctor-proc-macro-0.0.7" = {track_label = "0.0.7"}
 "rust-dtor-proc-macro-0.0.6" = {track_label = "0.0.6"}
@@ -86,17 +86,17 @@ breeze = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 calico = {monitors = {eol = {product = "calico", cycle_parts = 2}}}
 ceph = {monitors = {eol = {product = "ceph", cycle_parts = 1}}}
 clamav = {monitors = {eol = {product = "clamav", cycle_parts = 2}}}
-containerd = {monitors = {eol = {product = "containerd", cycle_parts = 2}}}
+containerd = {monitors = {security = {vendor = "linuxfoundation", product = "containerd"}, eol = {product = "containerd", cycle_parts = 2}}}
 discover = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 "dotnet10.0" = {monitors = {eol = {product = "dotnet", cycle_parts = 1}}}
 "dotnet10.0-bin" = {monitors = {eol = {product = "dotnet", cycle_parts = 1}}}
 etcd = {monitors = {eol = {product = "etcd", cycle_parts = 2}}}
-ffmpeg = {monitors = {eol = {product = "ffmpeg", cycle_parts = 2}}}
-firefox = {monitors = {eol = {product = "firefox", cycle_parts = 1}}}
+ffmpeg = {monitors = {security = {vendor = "ffmpeg", product = "ffmpeg"}, eol = {product = "ffmpeg", cycle_parts = 2}}}
+firefox = {monitors = {security = {vendor = "mozilla", product = "firefox"}, eol = {product = "firefox", cycle_parts = 1}}}
 fonts-fontawesome = {monitors = {eol = {product = "font-awesome", cycle_parts = 1}}}
 gstreamer = {monitors = {eol = {product = "gstreamer", cycle_parts = 2}}}
 gstreamer-plugins-base = {monitors = {eol = {product = "gstreamer", cycle_parts = 2}}}
-haproxy = {monitors = {eol = {product = "haproxy", cycle_parts = 2}}}
+haproxy = {monitors = {security = {vendor = "haproxy", product = "haproxy"}, eol = {product = "haproxy", cycle_parts = 2}}}
 kactivitymanagerd = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 kde-cli-tools = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 kde-gtk-config = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
@@ -117,8 +117,8 @@ libksysguard = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 libplasma = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 linux-headers = {monitors = {eol = {product = "linux", cycle_parts = 2}}}
 linux-lts-kmhv2 = {monitors = {eol = {product = "linux", cycle_parts = 2}}}
-lua = {monitors = {eol = {product = "lua", cycle_parts = 2}}}
-memcached = {monitors = {eol = {product = "memcached", cycle_parts = 2}}}
+lua = {monitors = {security = {vendor = "lua", product = "lua"}, eol = {product = "lua", cycle_parts = 2}}}
+memcached = {monitors = {security = {vendor = "memcached", product = "memcached"}, eol = {product = "memcached", cycle_parts = 2}}}
 milou = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 moby = {monitors = {eol = {product = "docker-engine", cycle_parts = 1}}}
 oniguruma = {monitors = {eol = {product = "oniguruma", cycle_parts = 1}}}
@@ -137,7 +137,7 @@ plasma-workspace = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}
 plasma5support = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 podman = {monitors = {eol = {product = "podman", cycle_parts = 2}}}
 polkit-kde-agent-1 = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
-postfix = {monitors = {eol = {product = "postfix", cycle_parts = 2}}}
+postfix = {monitors = {security = {vendor = "postfix", product = "postfix"}, eol = {product = "postfix", cycle_parts = 2}}}
 powerdevil = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 python-ansible-core = {monitors = {eol = {product = "ansible-core", cycle_parts = 2}}}
 python-django = {monitors = {eol = {product = "django", cycle_parts = 2}}}
@@ -183,7 +183,7 @@ qt6-qtwebchannel = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
 qt6-qtwebengine = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
 qt6-qtwebsockets = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
 qt6-qtwebview = {monitors = {eol = {product = "qt", cycle_parts = 2}}}
-rust = {monitors = {eol = {product = "rust", cycle_parts = 2}}}
+rust = {monitors = {security = {vendor = "rust-lang", product = "rust"}, eol = {product = "rust", cycle_parts = 2}}}
 samba = {monitors = {eol = {product = "samba", cycle_parts = 2}}}
 sddm-kcm = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 systemsettings = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
