@@ -6,6 +6,8 @@ No observations, alternate package registry, network or version policy live here
 import re
 from urllib.parse import unquote, urlsplit
 
+from packaging.utils import canonicalize_name
+
 
 def request_url(entry):
     """Registry identity or explicit transport URL, never two authoring points.
@@ -53,7 +55,7 @@ def from_native(entry):
         name = entry['cpan']
         return {'ecosystem': 'CPANModule' if '::' in name else 'CPAN', 'name': name}
     if entry.get('source') == 'pypi' and entry.get('pypi'):
-        return {'ecosystem': 'PyPI', 'name': entry['pypi']}
+        return {'ecosystem': 'PyPI', 'name': canonicalize_name(entry['pypi'])}
     if entry.get('source') == 'cratesio' and entry.get('cratesio'):
         return {'ecosystem': 'crates.io', 'name': entry['cratesio']}
     try:

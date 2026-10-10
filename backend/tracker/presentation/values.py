@@ -95,8 +95,10 @@ def version_value(pkg, *, compact=True, links=None):
     if release and release['version'] != value['current']:
         prefix = str(value['current']) + '-'
         qualifier = release['version'].removeprefix(prefix)
-        values.append(text('(' + qualifier + ')', kind='code', tone='muted',
-                           href=release['url'], title='Exact upstream source release'))
+        label = ('PyPI ' + release['version'] if release['ecosystem'] == 'PyPI'
+                 else '(' + qualifier + ')')
+        values.append(text(label, kind='code', tone='muted',
+                           href=release['url'], title='Exact Source0 release'))
     if value['relation'] == 'outdated':
         values += [text('→', title='Update available'), text(value['latest'], kind='code', tone='positive')]
     return values + annotation

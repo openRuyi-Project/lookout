@@ -6,7 +6,7 @@ from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
 from tracker.identity import from_package
-from tracker.providers.model import Release
+from tracker.providers.model import Release, UnsupportedRelease
 
 HOSTS = {"pypi.org"}
 
@@ -31,6 +31,13 @@ def release(name, version, io):
     """Return release info and its evidence URL; shared IO owns request caching."""
     if not isinstance(version, str) or not 1 <= len(version) <= 512:
         raise ValueError("monitor requires an observed release version")
+    try:
+        local = Version(version).local
+    except InvalidVersion:
+        local = None
+    if local is not None:
+        # PyPI excludes local versions; stripping the suffix would query another build.
+        raise UnsupportedRelease("A local build version does not identify a published PyPI release.")
     url = f"https://pypi.org/pypi/{quote(name, safe='')}/{quote(version, safe='')}/json"
     data = io.json("GET", url)
     if not isinstance(data, dict) or not isinstance(data.get("info"), dict):

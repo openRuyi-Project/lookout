@@ -59,7 +59,8 @@ def query_version(version, ecosystem):
     if ecosystem == 'PyPI':
         from packaging.version import InvalidVersion, Version
         try:
-            Version(version)
+            if Version(version).local is not None:
+                return False
         except (InvalidVersion, TypeError):
             return False
     if ecosystem in ('Go', 'crates.io'):

@@ -81,7 +81,7 @@ def registry_entry(candidate):
         return None
     source = candidate.get('source_url') or ''
     release = source_release.from_url(source)
-    if not release or not source_release.matches_rpm(release, current):
+    if not release or release.ecosystem != 'crates.io' or not source_release.matches_rpm(release, current):
         return None
     major, minor, _ = current.split('.')
     line = (re.escape(major + '.' + minor) + r'\.[0-9]+' if major == '0'

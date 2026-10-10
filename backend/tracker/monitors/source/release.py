@@ -8,6 +8,9 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from packaging.utils import InvalidName, InvalidSdistFilename, canonicalize_name, parse_sdist_filename
+from packaging.version import InvalidVersion, Version
+
 _NUMBER = r'(?:0|[1-9][0-9]*)'
 _SEMVER = re.compile(
     rf'(?P<base>{_NUMBER}\.{_NUMBER}\.{_NUMBER})'
@@ -43,15 +46,27 @@ class Release:
 
 def from_url(value):
     """Recognize registry-owned archive protocols, not package-name conventions."""
-    if not isinstance(value, str):
+    if not isinstance(value, str) or len(value) > 8192:
         return None
     try:
         url = urlsplit(value)
-        if (url.scheme != 'https' or url.hostname not in ('static.crates.io', 'crates.io')
+        if (url.scheme != 'https' or url.hostname not in ('static.crates.io', 'crates.io', 'files.pythonhosted.org')
                 or url.username or url.password or url.port not in (None, 443) or url.query):
             return None
     except ValueError:
         return None
+    if url.hostname == 'files.pythonhosted.org':
+        if not url.path.startswith('/packages/') or '%' in url.path or any(
+                part in ('', '.', '..') for part in url.path.split('/')[1:]):
+            return None
+        try:
+            name, version = parse_sdist_filename(url.path.rsplit('/', 1)[-1])
+            name = canonicalize_name(name, validate=True)
+        except (InvalidSdistFilename, InvalidName):
+            return None
+        if version.local is not None or len(name) > 512 or len(str(version)) > 200:
+            return None
+        return Release('PyPI', name, str(version), urlunsplit((url.scheme, url.netloc, url.path, '', '')))
     prefix = '/crates/' if url.hostname == 'static.crates.io' else '/api/v1/crates/'
     if not url.path.startswith(prefix):
         return None
@@ -70,7 +85,15 @@ def from_url(value):
 
 
 def matches_rpm(release, current):
-    """Recognize the observed numeric-base/tilde packaging forms, not any mismatch."""
+    """Require an evidenced relationship between registry and RPM versions."""
+    if release.ecosystem == 'PyPI':
+        try:
+            if Version(current) == Version(release.version):
+                return True
+        except (InvalidVersion, TypeError):
+            pass
+        # Accept this RPM spelling only with the exact Source0 sdist as evidence.
+        return current == re.sub(r'\.post(?=[0-9]+$)', '~post', release.version)
     parsed = semver(release.version)
     return bool(parsed and current in (release.version, parsed['base'], release.version.replace('-', '~', 1)))
 

@@ -2,6 +2,8 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from packaging.version import InvalidVersion, Version
+
 from tracker import config as cfg
 from tracker import identity as package_identity
 from tracker import state
@@ -65,7 +67,7 @@ def evaluate(snapshot, name, now=None, *, native_ids=None):
     upstream_stale = state.stale(upstream, now, snapshot.get('stale_after_seconds', 86400)) if track else False
     # Historical comparison is retained for API evidence, never upgrade eligibility.
     current, target = source.get('version'), upstream.get('version')
-    released = source_release.semver(release.version) if release else None
+    released = source_release.semver(release.version) if release and release.ecosystem == 'crates.io' else None
     if released is not None:
         # Main comparison selects formal releases. A prerelease with the same
         # numeric base is still older; RPM's display version may have lost that
@@ -77,6 +79,14 @@ def evaluate(snapshot, name, now=None, *, native_ids=None):
         target = source_release.observed_commit(upstream)
         last = ('current' if revision.current == target else 'changed') if (
             revision and source_release.commit_hash(target) and binding.get('comparable', True)) else 'unknown'
+    elif release and release.ecosystem == 'PyPI':
+        try:
+            observed, wanted = Version(release.version), Version(target or '')
+            last = ('current' if observed == wanted else 'outdated' if observed < wanted else 'ahead')
+            if not binding.get('comparable', True):
+                last = 'unknown'
+        except (InvalidVersion, TypeError):
+            last = 'unknown'
     else:
         last = state.compare(current, target, binding.get('comparable', True))
     if released is not None and last == 'current' and released['preview']:

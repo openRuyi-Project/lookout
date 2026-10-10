@@ -296,7 +296,7 @@ def test_pypi_release_rejects_missing_or_mismatched_identity(info):
 @pytest.mark.parametrize('version, observed', [
     ('1.0', '1.0.0'),
     ('1.0rc1', '1.0RC1'),
-    ('1.0+linux', '1.0+LINUX'),
+    ('1.0post1', '1.0.post1'),
     ('legacy-release', 'legacy-release'),
 ])
 def test_pypi_release_keeps_equivalent_identity_and_literal_evidence(version, observed):
