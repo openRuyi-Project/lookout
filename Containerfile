@@ -44,6 +44,12 @@ RUN python3 -m venv --system-site-packages /opt/venv \
     && rm -f /tmp/requirements.lock \
     && /opt/venv/bin/python -m pip uninstall --yes pip
 
+FROM python-builder AS application-metadata
+ARG RELEASE_VERSION="development"
+COPY backend/pyproject.toml /build/pyproject.toml
+COPY scripts/stamp-release-version.py /build/stamp-release-version.py
+RUN /opt/venv/bin/python /build/stamp-release-version.py /build/pyproject.toml "$RELEASE_VERSION"
+
 # ---- runtime stage --------------------------------------------------------
 FROM ${FEDORA_IMAGE} AS runtime-system
 ARG SYSTEM_REFRESH=manual
@@ -69,6 +75,7 @@ COPY --from=python-builder /opt/venv/ /opt/venv/
 
 WORKDIR /app
 COPY backend/ /app/backend/
+COPY --from=application-metadata /build/pyproject.toml /app/backend/pyproject.toml
 COPY config/ /app/config/
 COPY deploy/ /app/deploy/
 COPY LICENSE /app/LICENSE
