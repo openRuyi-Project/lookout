@@ -213,6 +213,11 @@ All three inputs must reference the same release catalog. Catalog drift requires
 
 ## SPEC inputs
 
+Failed repository refreshes retain confirmed SPEC revisions and their collection
+times. Overdue refreshes mark results as retained; elapsed time alone does not
+invalidate version comparisons or exact-release monitor inputs. Changed inputs,
+identity conflicts and parse failures still invalidate affected conclusions.
+
 `[spec].extra_macro_packages` selects macro packages in the managed Git tree.
 `[spec.local_sources]` maps files needed for native `%include`, such as a patch
 series. Their hashes invalidate parse caches. Missing inputs fail the parse.

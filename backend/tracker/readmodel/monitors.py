@@ -189,6 +189,14 @@ def version(context):
         check.update(status='not_applicable', stale=False)
     elif not value.track:
         check.update(status='not_configured', stale=False)
+    if value.track and not value.binding.get('not_applicable'):
+        if value.source_unavailable or not value.source.get('version'):
+            check.update(status='input_unavailable', stale=True, note=value.error)
+        elif value.source_stale:
+            checked = value.source.get('checked_at') or value.source.get('fetched_at')
+            check.update(stale=True, note=f'Source last confirmed at {checked}; repository refresh overdue.')
+            if check['status'] == 'ok':
+                check['status'] = 'expired'
     check['failures'] = ([str(upstream['error'])] if upstream.get('error') else [])
     check['failures'].extend(t + ': ' + str(snapshot['tracks'][t]['error'])
                             for t in value.binding.get('watch', []) if snapshot['tracks'].get(t, {}).get('error'))

@@ -76,6 +76,8 @@ def version_value(pkg, *, compact=True, links=None):
     annotation = ([text(Issue.UNTRACKED, kind='tag', appearance=appearance(Issue.UNTRACKED),
                         href=links.condition('maintenance', Issue.UNTRACKED) if links else None)]
                   if untracked else [])
+    if value.get('stale'):
+        annotation.append(retained_marker())
     decoration = 'dashed' if untracked and value['current'] else None
     revision = value.get('revision')
     if revision:

@@ -245,7 +245,7 @@ class Resolver:
                 return provided
         if package not in self.observations:
             source = state.current_source(self.snapshot, package)
-            expired = state.stale(source, self.now, source['stale_after_seconds'])
+            expired = source['origin'] != 'spec' and state.stale(source, self.now, source['stale_after_seconds'])
             self.observations[package] = dict(version=source.get('version'), revision=source.get('revision'),
                 origin=source['origin'], checked_at=source.get('fetched_at'),
                 stale=expired or bool(source.get('error')))

@@ -104,7 +104,7 @@ def plan(config, snapshot, name, provider, *, version=None):
           and package_identity.from_native(identity) not in (None, version.release.identity))):
         status, note = 'unsupported', 'Source0 and configured upstream identities disagree.'
     elif (not current['version'] or not current['revision']
-          or version.source.get('error') or version.source_stale):
+          or version.source_unavailable):
         status, note = 'unsupported', 'Current source version/revision is not established.'
     elif scope == 'upgrade':
         active = cfg.binding(config, name)

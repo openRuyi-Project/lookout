@@ -162,7 +162,7 @@ def project(snapshot, name, now, *, version=None):
     version = version or version_status.evaluate(snapshot, name, now)
     current = version.subject
     latest = version.upstream.get('version')
-    source_unavailable = bool(version.source.get('error')) or version.source_stale
+    source_unavailable = version.source_unavailable
     findings, checks = [], []
     ttl = snapshot.get("monitor_stale_after_seconds", 86400)
     for provider, observation in sorted(observations.items()):

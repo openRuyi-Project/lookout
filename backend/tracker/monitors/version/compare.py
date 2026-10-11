@@ -26,6 +26,10 @@ class VersionStatus:
     revision: source_release.Revision | None = None
 
     @property
+    def source_unavailable(self):
+        return unavailable_source(self.source, self.source_stale)
+
+    @property
     def identity_conflict(self):
         identity = package_identity.from_native(self.upstream.get('source') or {})
         return bool(self.release and identity and self.release.identity != identity)
@@ -50,6 +54,12 @@ class VersionStatus:
     def stale(self):
         return (bool(self.source.get('version') and (self.source_stale or self.source.get('error')))
                 or bool(self.upstream.get('version') and (self.upstream_stale or self.upstream.get('error'))))
+
+
+def unavailable_source(source, stale):
+    # A confirmed SPEC revision remains evidence when repository refresh is overdue.
+    # Parse errors and unverified live OBS values do not gain this guarantee.
+    return bool(source.get('error')) or (stale and source.get('origin') != 'spec')
 
 
 def evaluate(snapshot, name, now=None, *, native_ids=None):
@@ -105,7 +115,7 @@ def evaluate(snapshot, name, now=None, *, native_ids=None):
     if conflict:
         last = 'unknown'
     error = None
-    if not source.get('version') or source.get('error') or source_stale:
+    if not source.get('version') or unavailable_source(source, source_stale):
         relation = 'unknown'
         error = source.get('error') or source.get('version_error') or 'source version unknown or stale'
     elif conflict:

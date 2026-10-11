@@ -113,6 +113,9 @@ def listing(payload, query):
         pagination.append(Choice(label='Next', href=links.to(page=payload['page'] + 1)))
     meta = [] if focus else collection_meta(payload['collection'])
     notices = ['Test fixture — not live openRuyi data.'] if payload['collection']['mode'] == 'fixture' else []
+    if errors := payload['collection'].get('errors'):
+        notices.append('Collection degraded: ' + '; '.join(dict.fromkeys(errors))
+                       + '. Retained observations use their last successful collection times.')
     if notice := payload['collection'].get('projection_notice'):
         notices.append(notice)
     return ListingDocument(title=title, navigation=navigation, global_navigation=global_navigation(payload, links), controls=controls,

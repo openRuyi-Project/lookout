@@ -60,7 +60,9 @@ def test_spec_expiry_has_cache_deadline_and_fetch_failure_stays_visible(config, 
     snapshot['specs']['binutils']['fetched_at'] = (now - timedelta(seconds=119)).isoformat()
     assert view.next_transition(snapshot, now) <= now + timedelta(seconds=2)
     rows, _ = view.project_monitors(snapshot, now + timedelta(seconds=2))
-    assert next(r for r in rows if r['name'] == 'binutils')['monitors']['version']['data']['relation'] == 'unknown'
+    version = next(r for r in rows if r['name'] == 'binutils')['monitors']['version']
+    assert version['data']['relation'] == 'current'
+    assert version['check']['status'] == 'expired'
     snapshot['specs']['binutils']['fetched_at'] = now.isoformat()
     snapshot['components']['spec_git'] = {'error': 'fetch failed'}
     assert state.current_source(snapshot, 'binutils')['error'] is None

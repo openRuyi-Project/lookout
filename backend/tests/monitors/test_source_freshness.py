@@ -1,4 +1,4 @@
-"""Repository refresh failures do not invalidate fresh, pinned package observations."""
+"""Repository refresh failures do not invalidate pinned package observations."""
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
@@ -46,7 +46,7 @@ def test_repository_retry_does_not_make_expired_facts_fresh(config, snapshot):
     check = next(row for row in rows if row['name'] == 'binutils')['monitors']['source']['check']
     assert check['status'] == 'expired'
     assert state.stale(state.current_source(snapshot, 'binutils'), now, 86400)
-    assert runner.plan(config, snapshot, 'binutils', 'security')['status'] == 'unsupported'
+    assert runner.plan(config, snapshot, 'binutils', 'security')['status'] == 'pending'
     assert fact['fetched_at'] != now.isoformat()
 
 
