@@ -9,7 +9,6 @@ from tracker.monitors.model import validate_findings
 from tracker.monitors.requires import go, monitor
 from tracker.providers import go_components
 
-
 ROOT = 'https://github.com/example/bundle/archive/refs/tags/'
 IDENTITY = {'source': 'go_proxy', 'url': 'https://proxy.golang.org/example.org/bundle/@latest'}
 INCLUDE = {'go': {'include': [{'module': 'example.org/bundle/sibling',
@@ -213,3 +212,27 @@ def test_established_single_module_keeps_proxy_and_upgrade_support(suffix):
     assert go.inputs(value, None) == {'go': 'example.org/bundle/a' + suffix}
     value['source_archives'].append({'number': 1, 'url': ROOT + 'b/v2.0.0.tar.gz'})
     assert isinstance(go.inputs(value, None)['go'], dict)
+
+
+@pytest.mark.parametrize('alias', ['.zip', '.tar.gz#/alias.tar.gz'])
+def test_same_tag_archive_formats_share_one_module_observation(alias):
+    value = package()
+    original = value['source_archives'][0]['url']
+    value['source_archives'].append({'number': 2, 'url': original.removesuffix('.tar.gz') + alias})
+    settings = go.inputs(value, None)
+    value['source_archives'].reverse()
+    assert go.inputs(value, None) == settings
+    io = IO()
+    result = monitor.check({'version': value['version']}, settings, io)
+    assert result['status'] == 'ok'
+    assert len(io.urls) == 2
+    assert len(result['findings'][0]['facts']) == 4
+    assert result['findings'][0]['requirement']['constraint']['expression'] == '1.24'
+
+
+def test_different_tags_with_same_module_remain_ambiguous():
+    value = package()
+    value['source_archives'].append({'number': 2, 'url': ROOT + 'a/v1.1.0.tar.gz'})
+    result = monitor.check({'version': value['version']}, go.inputs(value, None), IO())
+    assert result['status'] == 'error'
+    assert result['findings'] == []

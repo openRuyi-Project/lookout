@@ -72,7 +72,10 @@ def inputs(package, configured):
     components = {}
     for source in package.get('source_archives') or []:
         if candidate := source_tag(source['url']):
-            components[candidate['archive']] = candidate
+            key = candidate['repository'], candidate['tag']
+            previous = components.get(key)
+            if previous is None or candidate['archive'] < previous['archive']:
+                components[key] = candidate
     if not components:
         if includes:
             raise ValueError('Go bundled modules have no submodule source archives')
