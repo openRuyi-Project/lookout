@@ -39,9 +39,14 @@ def requirement_values(requirement, *, compact=False):
         label += '[' + ', '.join(requirement['extras']) + ']'
     mapped = requirement.get('mapping') in (None, 'mapped')
     name = text(label, href='/packages/' + quote(package, safe='') if package and mapped else None)
-    values = [name, requirement_constraint(requirement, 'current'), requirement_status(requirement)]
+    statuses = requirement['kind'] == 'runtime'
+    values = [name, requirement_constraint(requirement, 'current')]
+    if statuses:
+        values.append(requirement_status(requirement))
     if requirement['changed']:
-        values += [text('→'), requirement_constraint(requirement, 'target'), requirement_status(requirement, target=True)]
+        values += [text('→'), requirement_constraint(requirement, 'target')]
+        if statuses:
+            values.append(requirement_status(requirement, target=True))
     elif requirement['current'] is None and requirement['target'] is not None:
         values = [name, text('Upgrade:'), requirement_constraint(requirement, 'target'), requirement_status(requirement, target=True)]
     mapping = requirement.get('mapping')

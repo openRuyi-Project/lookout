@@ -327,9 +327,11 @@ def test_build_declarations_are_saved_without_current_runtime_warnings(config, s
     assert {f['scope'] for f in observed['findings']} == {'current', 'upgrade'}
     assert all(f['requirement']['kind'] == 'build' for f in observed['findings'])
     result = assessment(snapshot, observed)
-    assert result['data']['requirements'] == []
+    assert len(result['data']['requirements']) == 1
+    assert result['data']['requirements'][0]['kind'] == 'build'
+    assert result['data']['requirements'][0]['changed']
     assert result['data']['labels'] == []
-    assert result['dimensions']['requires'] == []
+    assert result['dimensions']['requires'] == ['changes']
 
 
 def test_dependency_spec_version_is_not_replaced_with_obs_or_artifact_truth(config, snapshot, release_setup):

@@ -29,6 +29,15 @@ def semver(value):
     return match
 
 
+def semver_key(value):
+    match = semver(value)
+    if not match:
+        raise ValueError('Invalid semantic version')
+    prerelease = tuple((0, int(part)) if part.isdigit() else (1, part)
+                      for part in (match['preview'] or '').split('.') if part)
+    return tuple(map(int, match['base'].split('.'))), not bool(prerelease), prerelease
+
+
 @dataclass(frozen=True)
 class Release:
     ecosystem: str
@@ -112,9 +121,41 @@ def primary_source_url(source):
     return sources[0]
 
 
-def from_source(source):
+def go_source_release(source, identity):
+    """An explicit Go identity and a same-repository Source0 tag must agree."""
+    if not identity or identity.get('ecosystem') != 'Go':
+        return None
+    value = primary_source_url(source)
+    if not isinstance(value, str):
+        return None
+    try:
+        url = urlsplit(value)
+        if (url.scheme != 'https' or url.hostname != 'github.com' or url.username or url.password
+                or url.port not in (None, 443) or url.query or '%' in url.path):
+            return None
+    except ValueError:
+        return None
+    match = re.fullmatch(r'/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/archive/refs/tags/'
+                         r'v([0-9A-Za-z.+-]+)\.(?:tar\.gz|zip)', url.path)
+    if not match or identity.get('name') != 'github.com/' + match[1]:
+        return None
+    version = match[2]
+    parsed = semver(version)
+    if not parsed:
+        return None
+    current = source.get('version')
+    patch = re.fullmatch(r'([A-Za-z]+)-([0-9]+)', parsed['preview'] or '')
+    spellings = (version, version.replace('-', '~', 1))
+    if current not in spellings and not (patch and current == parsed['base'] + '+' + ''.join(patch.groups())):
+        return None
+    return Release('Go', identity['name'], version, urlunsplit((url.scheme, url.netloc, url.path, '', '')))
+
+
+def from_source(source, identity=None):
     release = from_url(primary_source_url(source))
-    return release if release and matches_rpm(release, source.get('version')) else None
+    if release and matches_rpm(release, source.get('version')):
+        return release
+    return go_source_release(source, identity)
 
 
 def commit_hash(value):

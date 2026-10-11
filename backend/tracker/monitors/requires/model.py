@@ -94,7 +94,8 @@ class UnsupportedRequirements(ValueError):
 
 def unsatisfied(requirement):
     """Either observed release can conflict; unknown is never a conflict."""
-    return 'unsatisfied' in (requirement['satisfaction'], requirement['target_satisfaction'])
+    return requirement['kind'] == 'runtime' and 'unsatisfied' in (
+        requirement['satisfaction'], requirement['target_satisfaction'])
 
 
 @dataclass(frozen=True)
@@ -294,7 +295,7 @@ def project(findings, snapshot, now, resolver=None):
     pairs = {}
     for finding in findings:
         declaration = finding.get('requirement')
-        if not declaration or declaration['kind'] != 'runtime':
+        if not declaration:
             continue
         identity = key(declaration)
         if identity not in pairs:
@@ -308,5 +309,8 @@ def project(findings, snapshot, now, resolver=None):
     for _, entry in sorted(pairs.items()):
         stale = entry.pop('current_stale', False)
         target_stale = entry.pop('target_stale', False)
-        result.append(assess(entry, snapshot, now, stale=stale, target_stale=target_stale, resolver=resolver))
+        assessed = assess(entry, snapshot, now, stale=stale, target_stale=target_stale, resolver=resolver)
+        # Build requirements describe upgrade changes, not installed runtime conflicts.
+        if entry['kind'] == 'runtime' or assessed['changed']:
+            result.append(assessed)
     return result

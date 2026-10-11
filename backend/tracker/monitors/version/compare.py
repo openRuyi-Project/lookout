@@ -57,10 +57,10 @@ def evaluate(snapshot, name, now=None, *, native_ids=None):
     binding = cfg.resolve_binding(name, native_ids if native_ids is not None else snapshot.get('native_ids', ()),
                                   snapshot.get('bindings', {}).get(name, {}))
     source = state.current_source(snapshot, name)
-    release = source_release.from_source(source)
     track = binding['compare']
     upstream = snapshot.get('tracks', {}).get(track, {}) if track else {}
     entry = upstream.get('source') or {}
+    release = source_release.from_source(source, package_identity.from_native(entry))
     commit_mode = source_release.tracks_commits(entry)
     revision = source_release.revision(source, entry) if commit_mode else None
     source_stale = state.stale(source, now, source['stale_after_seconds'])
@@ -79,6 +79,15 @@ def evaluate(snapshot, name, now=None, *, native_ids=None):
         target = source_release.observed_commit(upstream)
         last = ('current' if revision.current == target else 'changed') if (
             revision and source_release.commit_hash(target) and binding.get('comparable', True)) else 'unknown'
+    elif release and release.ecosystem == 'Go':
+        try:
+            observed = source_release.semver_key(release.version)
+            wanted = source_release.semver_key((target or '').removeprefix('v'))
+            last = ('current' if observed == wanted else 'outdated' if observed < wanted else 'ahead')
+            if not binding.get('comparable', True):
+                last = 'unknown'
+        except (ValueError, AttributeError):
+            last = 'unknown'
     elif release and release.ecosystem == 'PyPI':
         try:
             observed, wanted = Version(release.version), Version(target or '')

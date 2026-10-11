@@ -109,8 +109,10 @@ def test_build_minimum_is_retained_as_upstream_fact_without_runtime_warning(snap
         assert fact['constraint']['url'] == 'https://crates.io/api/v1/crates/widget'
     snapshot['dependency_packages'] = {'rust': 'compiler-source'}
     snapshot['sources']['compiler-source'] = state.success({}, {'version': '1.0', 'srcmd5': 'hash'}, state.utcnow())
-    assert requirements.project([{**finding, 'stale': False} for finding in result['findings']],
-                                snapshot, datetime.now(timezone.utc)) == []
+    projected = requirements.project([{**finding, 'stale': False} for finding in result['findings']],
+                                     snapshot, datetime.now(timezone.utc))
+    assert len(projected) == 1 and projected[0]['changed']
+    assert not requirements.unsatisfied(projected[0])
 
 
 @pytest.mark.parametrize('version,expected', [('1.81.9', False), ('1.82', True), ('1.82.0', True), ('1.90.1', True)])

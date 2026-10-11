@@ -3,9 +3,8 @@ from copy import deepcopy
 
 import pytest
 
-from tracker.presentation import navigation as presentation_navigation, requires as presentation_requires
-
-
+from tracker.presentation import navigation as presentation_navigation
+from tracker.presentation import requires as presentation_requires
 
 
 def assessment(**changes):
@@ -123,14 +122,19 @@ def test_mixed_dependency_preview_orders_runtime_before_build_and_keeps_detail_e
     links = presentation_navigation.Links()
     lines = presentation_requires.requires_preview({'detail_url': '/packages/fixture'}, items, links)
     assert [[v.text for v in line] for line in lines] == [
+        ['RuntimeDeps:', 'Library', '>=1', '✓', '→', '>=3', '✗']]
+    selected = presentation_navigation.Links({'filters': {'tail': [
+        {'dimension': 'version_signal', 'value': 'requires'}]}})
+    lines = presentation_requires.requires_preview({'detail_url': '/packages/fixture'}, items, selected)
+    assert [[v.text for v in line] for line in lines] == [
         ['RuntimeDeps:', 'Library', '>=1', '✓', '→', '>=3', '✗'],
-        ['BuildDeps:', 'Compiler', '>=1', '✓', '→', '>=3', '✗']]
+        ['BuildDeps:', 'Compiler', '>=1', '→', '>=3']]
     sections = presentation_requires.requires_sections(items, links)
     assert [(s.id, s.title) for s in sections] == [('requires', 'RuntimeDeps'), ('requires-build', 'BuildDeps')]
     for section in sections:
         assert not section.collapsible
         values = section.table.rows[0].cells[1].lines[0]
-        assert values[0].href == 'https://example.org/current'
-        assert values[3].href == 'https://example.org/target'
+        assert [value.href for value in values if value.href] == [
+            'https://example.org/current', 'https://example.org/target']
     build_only = presentation_requires.requires_sections(result(items['data']['requirements'][0]), links)
     assert build_only[0].id == 'requires' and build_only[0].title == 'BuildDeps'

@@ -1,7 +1,7 @@
 """Bounded projection of go.mod module/retract directives, never code execution."""
 import re
 
-from tracker.monitors.source.release import semver
+from tracker.monitors.source.release import semver_key
 from tracker.providers.model import UnsupportedRelease
 
 _TOKEN = re.compile(r'\s+|//.*|"(?:\\[^\r\n]|[^"\\\r\n])*"|`[^`\r\n]*`|[()\[\],]|'
@@ -31,12 +31,7 @@ def tokens(line):
 def version_key(version):
     if not isinstance(version, str) or not version.startswith('v'):
         raise ValueError('Go version is not canonical')
-    match = semver(version[1:])
-    if not match:
-        raise ValueError('Go version is not canonical')
-    prerelease = tuple((0, int(part)) if part.isdigit() else (1, part)
-                      for part in (match['preview'] or '').split('.') if part)
-    return tuple(map(int, match['base'].split('.'))), not bool(prerelease), prerelease
+    return semver_key(version[1:])
 
 
 def directives(document, module):

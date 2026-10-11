@@ -26,7 +26,7 @@ def test_exact_release_minimum_is_build_only_and_not_toolchain_suggestion():
     assert (fact['kind'], fact['dependency'], fact['constraint']['expression']) == ('build', 'go', '1.23.0')
     assert io.urls[-1] == 'https://proxy.golang.org/example.org/!widget/@v/v1.2.3.mod'
     assert not any('@latest' in url for url in io.urls)
-    assert project(result['findings'], {}, None) == []
+    assert project([{**finding, 'stale': False} for finding in result['findings']], {}, None) == []
 
 
 @pytest.mark.parametrize('document,status', [

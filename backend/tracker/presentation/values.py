@@ -95,7 +95,7 @@ def version_value(pkg, *, compact=True, links=None):
     if release and release['version'] != value['current']:
         prefix = str(value['current']) + '-'
         qualifier = release['version'].removeprefix(prefix)
-        label = ('PyPI ' + release['version'] if release['ecosystem'] == 'PyPI'
+        label = (release['ecosystem'] + ' ' + release['version'] if release['ecosystem'] in ('PyPI', 'Go')
                  else '(' + qualifier + ')')
         values.append(text(label, kind='code', tone='muted',
                            href=release['url'], title='Exact Source0 release'))
