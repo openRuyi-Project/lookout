@@ -11,6 +11,13 @@ if [ "$ENGINE" = podman ] && [ "$(podman info --format '{{.Host.Security.Rootles
   set -- --userns=keep-id:uid=10001,gid=10001
 fi
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# Set COVERAGE_OUTPUT_DIR to a host directory to collect a Cobertura coverage
+# report from the native pytest run; this mount stays read-only otherwise.
+if [ -n "${COVERAGE_OUTPUT_DIR:-}" ]; then
+  mkdir -p "$COVERAGE_OUTPUT_DIR"
+  chmod 0777 "$COVERAGE_OUTPUT_DIR"
+  set -- "$@" -v "$COVERAGE_OUTPUT_DIR:/coverage:rw,Z"
+fi
 # A disposable test layer leaves the application image free of test tooling.
 if [ -z "$TEST_IMAGE" ]; then
   TEST_IMAGE="localhost/openruyi-lookout-check:$$"
@@ -35,6 +42,7 @@ fi
     export RUFF_CACHE_DIR=/tmp/ruff-cache
     export NODE_PATH=/app/frontend/node_modules
     export PYTHONPATH=/testsrc/backend:/app/backend
+    export COVERAGE_FILE=/tmp/.coverage
     cd /testsrc
     python scripts/check-architecture.py
     python scripts/api-types.py --check
@@ -44,7 +52,11 @@ fi
     lint-imports --no-cache --no-logo
     deptry .
     vulture tracker nvchecker_source --min-confidence 100
-    python -m pytest -q -p no:cacheprovider --junitxml=/tmp/results.xml
+    if [ -d /coverage ]; then
+      python -m pytest -q -p no:cacheprovider --junitxml=/tmp/results.xml --cov-report=xml:/coverage/backend-coverage.xml
+    else
+      python -m pytest -q -p no:cacheprovider --junitxml=/tmp/results.xml
+    fi
     python -c '\''import xml.etree.ElementTree as E; r=E.parse("/tmp/results.xml"); assert not r.findall(".//skipped"), "Skipped tests are not allowed in the native release gate"'\''
     cd /app/frontend
     node /testsrc/frontend/tests/render.mjs
