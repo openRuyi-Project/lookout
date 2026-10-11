@@ -268,3 +268,22 @@ per PR. Incomplete paths remain explicit rather than becoming an empty match.
 Credentials are not written to observations. Homepage counts show packages.
 Package badges count linked records across all states. `/api/v2/packages/NAME/activity?kind=pr` (or `issue`) returns
 20 records, newest updated first, with `next_cursor`. `per_page` is at most 50.
+
+### Multi-module Go sources
+
+For packages with a Go identity, the requirements monitor discovers submodules
+from saved GitHub Source tag archives (`module/path/vX.Y.Z`). It reads the module
+identity and Go minimum from each upstream `go.mod`. Established single-module
+identities keep the proxy path, including upgrade checks. Source numbers and download
+filenames are not association keys. New or removed archives change the query.
+
+For a bundled module without its own source tag, set
+`monitors.requires.go.include` to `{module, from_module, path}` entries.
+`from_module` names a discovered module whose source archive contains `path/go.mod`.
+The declared module identity must match. Duplicate identities or missing anchors
+fail the observation; the monitor does not select the highest or first version.
+
+The result covers discovered source-tag modules and explicit includes, not every
+module present in a repository or installed RPM. All must validate before their
+highest Go minimum is published. Current archives cannot describe an upgrade or
+establish independent component versions for Security or Yanked queries.

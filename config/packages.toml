@@ -189,3 +189,6 @@ sddm-kcm = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 systemsettings = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 xdg-desktop-portal-kde = {monitors = {eol = {product = "kde-plasma", cycle_parts = 2}}}
 zfs = {monitors = {eol = {product = "openzfs", cycle_parts = 2}}}
+
+# strutil is bundled in the parseutil source, without its own Source tag.
+go-github-hashicorp-go-secure-stdlib = {monitors = {requires = {go = {include = [{module = "github.com/hashicorp/go-secure-stdlib/strutil", from_module = "github.com/hashicorp/go-secure-stdlib/parseutil", path = "strutil"}]}}}}

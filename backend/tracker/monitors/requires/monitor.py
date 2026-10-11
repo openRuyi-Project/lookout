@@ -57,7 +57,7 @@ def check(subject, settings, io):
                 release_findings.append(finding(
                     scope + ':' + fingerprint(identity), TITLE,
                     declaration.name + ' ' + (declaration.declaration.strip() or 'any version'),
-                    [], declaration.url, scope=scope,
+                    list(declaration.facts), declaration.url, scope=scope,
                     target_version=version if scope == 'upgrade' else None, requirement=fact))
             checks[scope] = {'status': 'ok', 'note': None}
             provides = getattr(backend, 'provides', None)

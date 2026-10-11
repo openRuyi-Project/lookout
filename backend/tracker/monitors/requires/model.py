@@ -120,6 +120,7 @@ class Requirement:
     optional: bool | None = None
     relationship: str = 'requires'
     version_scope: str = 'release'
+    facts: tuple[dict, ...] = ()
 
     def fact(self):
         return dict(dependency=self.dependency, name=self.name, kind=self.kind, scheme=self.scheme,

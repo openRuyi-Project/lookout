@@ -107,18 +107,25 @@ def matches_rpm(release, current):
     return bool(parsed and current in (release.version, parsed['base'], release.version.replace('-', '~', 1)))
 
 
-def primary_source_url(source):
+def source_archives(source):
     query = source.get('native_query') or {}
     metadata = source.get('metadata') or {}
-    if (source.get('origin') != 'spec' or source.get('error') or query.get('error')
+    if (source.get('origin') != 'spec' or source.get('error') or source.get('metadata_error') or query.get('error')
             or not re.fullmatch(r'[a-f0-9]{64}', query.get('spec_sha256') or '')
             or query.get('context', {}).get('resolver', 0) < 6
             or metadata.get('version') != source.get('version')):
         return None
-    sources = [item.get('url') for item in metadata.get('sources', []) if item.get('number') == 0]
-    if len(sources) != 1:
+    sources = metadata.get('sources', [])
+    numbers = [item.get('number') for item in sources]
+    if (any(type(number) is not int or number < 0 for number in numbers)
+            or len(set(numbers)) != len(numbers)
+            or any(not isinstance(item.get('url'), str) for item in sources)):
         return None
-    return sources[0]
+    return [{'number': item['number'], 'url': item['url']} for item in sources]
+
+
+def primary_source_url(source):
+    return next((item['url'] for item in source_archives(source) or [] if item['number'] == 0), None)
 
 
 def go_source_release(source, identity):

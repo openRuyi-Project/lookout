@@ -14,7 +14,7 @@ from tracker.monitors.model import CORE_IDS, fingerprint, validate_findings, val
 from tracker.monitors.registry import REGISTRY
 from tracker.monitors.requires.model import validate_provides
 from tracker.monitors.schedule import Schedule
-from tracker.monitors.source.release import pinned_revision, pinned_tag
+from tracker.monitors.source.release import pinned_revision, pinned_tag, source_archives
 from tracker.monitors.version import compare as version_status
 from tracker.providers.client import IO
 
@@ -84,6 +84,7 @@ def plan(config, snapshot, name, provider, *, version=None):
                                  'source_commit': {'repository': revision.repository, 'commit': revision.current}
                                                   if revision else None,
                                  'source_tag': pinned_tag(version.source),
+                                 'source_archives': source_archives(version.source),
                                  'source_release': version.release.public() if version.release else None}, configured)
         if inputs is not None and not isinstance(inputs, dict):
             raise ValueError('monitor inputs must be a mapping or None')

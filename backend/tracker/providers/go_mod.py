@@ -61,7 +61,7 @@ def directives(document, module):
                 raise ValueError('invalid go.mod module directive')
             names.append(values[0])
         items.append((directive, values))
-    if block is not None or names != [module]:
+    if block is not None or len(names) != 1 or (module is not None and names != [module]):
         raise ValueError('go.mod module identity or block structure is invalid')
     return items
 
