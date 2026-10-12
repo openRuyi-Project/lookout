@@ -109,8 +109,19 @@ def process_terminated(pid):
     status = Path(f'/proc/{pid}/status')
     try:
         return any(line.startswith('State:') and 'Z' in line for line in status.read_text().splitlines())
-    except FileNotFoundError:
-        return False
+    except (FileNotFoundError, ProcessLookupError):
+        return True
+
+
+@pytest.mark.parametrize('missing', [FileNotFoundError, ProcessLookupError])
+def test_process_exit_during_status_read(monkeypatch, missing):
+    monkeypatch.setattr(os, 'kill', lambda *_: None)
+
+    def disappeared(_path):
+        raise missing()
+
+    monkeypatch.setattr(Path, 'read_text', disappeared)
+    assert process_terminated(123)
 
 
 @pytest.mark.parametrize('streaming', [False, True])
