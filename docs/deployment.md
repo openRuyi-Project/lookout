@@ -509,7 +509,7 @@ In GitHub Actions, select **Release → Run workflow**, choose `main`, and selec
 `patch` (default), `minor`, or `major`. Use `patch` for compatible fixes,
 `minor` for features, and `major` for a new major version.
 The workflow increments the highest version from the project declaration and
-stable release tags. It shows the selected version in the run summary.
+stable release tags. It shows the selected version in the publication job title and run summary.
 The workflow pins the selected commit, runs the complete image checks, and
 publishes that same image as `v<VERSION>` and `sha-<commit>`. The container's OCI
 version label records the release version. A commit can be released only once.

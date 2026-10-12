@@ -1,5 +1,5 @@
 name: Release
-run-name: Release (${{ inputs.bump }})
+run-name: Release new ${{ inputs.bump }} version
 on:
   workflow_dispatch:
     inputs:
@@ -27,6 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: Select the release version
         id: version
         env:
@@ -48,6 +49,7 @@ jobs:
       version: ${{ needs.prepare.outputs.version }}
       release: true
   publish:
+    name: Release new ${{ inputs.bump }} version ${{ needs.prepare.outputs.version }}
     needs: [prepare, verify]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
