@@ -83,7 +83,7 @@ def test_explicit_source_ui_link_is_coverage_without_a_fake_results_mode(client)
     assert not any(choice['label'] == 'Results' for nav in document['controls']['navigation']
                    for choice in nav['choices'])
     hidden = {item['name']: item['value'] for item in document['controls']['hidden']}
-    assert hidden['monitor'] == 'source' and hidden['section'] == 'coverage'
+    assert set(hidden) <= {'per_page'}
     choices = [choice for nav in document['controls']['navigation'] for choice in nav['choices']]
     assert [(choice['label'], choice['count']) for choice in choices] == [
         ('Coverage', 1), ('Uncovered', 0), ('CheckFailed', 0)]

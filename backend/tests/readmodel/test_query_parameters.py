@@ -93,7 +93,7 @@ def test_includes_and_pagination_preserve_modes(scoped_client):
         response = scoped_client.get('/api/ui/packages?' + raw + '&per_page=1').json()
         assert response['total'] == 2
         hidden = [(p['name'], p['value']) for p in response['controls']['hidden']]
-        assert ListingQuery.from_parameters(hidden).filters == parsed.filters
+        assert hidden == [('per_page', '1')]
         for link in response['pagination']:
             assert query(urlsplit(link['href']).query) == parsed.filters
 
@@ -165,3 +165,15 @@ def test_ordinary_budget_includes_implicit_group_and_raw_repeats(scoped_client):
     valid = '&'.join(flags)
     assert scoped_client.get('/api/ui/packages?' + valid).status_code == 200
     assert scoped_client.get('/api/ui/packages?' + valid + '&rva23_failed').status_code == 422
+
+
+
+@pytest.mark.parametrize('raw', ['Outdated', 'Outdated=AND&Advisory=NOT&Group=OR&next_logic=not', 'rva23_disabled', 'buildsystem_cmake', 'monitor=source&section=coverage'])
+def test_search_ignores_filters(scoped_client, raw):
+    selected = scoped_client.get('/api/ui/packages?' + raw + '&per_page=2').json()
+    parameters = [(p['name'], p['value']) for p in selected['controls']['hidden']]
+    assert parameters == [('per_page', '2')]
+    result = scoped_client.get('/api/ui/packages', params=parameters + [('q', 'binutils')]).json()
+    expected = scoped_client.get('/api/ui/packages?q=binutils&per_page=2').json()
+    assert result == expected
+    assert result['total'] == 1

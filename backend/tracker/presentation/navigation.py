@@ -167,8 +167,7 @@ def listing_controls(payload, query, focus, links):
             href=links.condition('check:' + focus['id'], group, section='coverage')) for group in CHECK_GROUPS)
         navigation.append(Navigation(label=caption(focus['title']), choices=choices))
     hidden = [Parameter(name=key, value=str(query[key]))
-              for key in ('monitor', 'section', 'next_logic', 'per_page') if query.get(key)]
-    hidden.extend(Parameter(name=key, value=value) for key, value in links.editor.query.parameters())
+              for key in ('per_page',) if query.get(key)]
     return Controls(query=query.get('q', ''), hidden=hidden, choice_rows=rows, navigation=navigation,
         active=[Choice(label='Search: ' + query['q'], href=links.to(q=''))] if query.get('q') else [],
         editor=filter_editor(payload, links))

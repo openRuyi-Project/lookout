@@ -479,9 +479,8 @@ try {
   const inlineURL = '/?per_page=2&Outdated=AND&Advisory=OR&DepMismatch=AND';
   const inlineQuery = filterFrom(inlineURL);
   const inlinePage = await read(inlineURL);
-  assert.deepEqual([...inlinePage.matchAll(/<input type="hidden" name="([^"]+)" value="(AND|OR|NOT)"/g)]
-    .map(([, key, value]) => [key, value]), [...new URL(inlineURL, 'http://fixture').searchParams]
-    .filter(([, value]) => ['AND', 'OR', 'NOT'].includes(value)));
+  assert.deepEqual([...inlinePage.matchAll(/<input type="hidden" name="([^"]+)" value="([^"]*)"/g)]
+    .map(([, key, value]) => [key, value]), [['per_page', '2']]);
   for (const [, href] of inlinePage.matchAll(/href="([^"]+)"/g)) {
     const url = new URL(href.replaceAll('&amp;', '&'), 'http://fixture');
     if (url.searchParams.get('page') === '2') assert.deepEqual(filterFrom(href), inlineQuery);
