@@ -11,17 +11,23 @@ if [ "$ENGINE" = podman ] && [ "$(podman info --format '{{.Host.Security.Rootles
   set -- --userns=keep-id:uid=10001,gid=10001
 fi
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-# Set COVERAGE_OUTPUT_DIR to a host directory to collect a Cobertura coverage
-# report from the native pytest run; this mount stays read-only otherwise.
+REPORT=/dev/null
+TEMP_REPORT=
+CREATED_IMAGE=
+cleanup() {
+  [ -z "$TEMP_REPORT" ] || rm -f "$TEMP_REPORT"
+  [ -z "$CREATED_IMAGE" ] || "$ENGINE" image rm "$CREATED_IMAGE" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 if [ -n "${COVERAGE_OUTPUT_DIR:-}" ]; then
   mkdir -p "$COVERAGE_OUTPUT_DIR"
-  chmod 0777 "$COVERAGE_OUTPUT_DIR"
-  set -- "$@" -v "$COVERAGE_OUTPUT_DIR:/coverage:rw,Z"
+  TEMP_REPORT=$(mktemp "$COVERAGE_OUTPUT_DIR/.coverage-XXXXXX")
+  REPORT=$TEMP_REPORT
 fi
 # A disposable test layer leaves the application image free of test tooling.
 if [ -z "$TEST_IMAGE" ]; then
   TEST_IMAGE="localhost/openruyi-lookout-check:$$"
-  trap '"$ENGINE" image rm "$TEST_IMAGE" >/dev/null 2>&1 || true' EXIT
+  CREATED_IMAGE=$TEST_IMAGE
   BASE=$("$ENGINE" image inspect --format '{{ index .Config.Labels "org.opencontainers.image.base.name" }}' "$IMAGE")
   if [ "$ENGINE" = podman ]; then
     "$ENGINE" build --format docker --target check --build-arg "CHECK_RUNTIME_IMAGE=$IMAGE" --build-arg "FEDORA_IMAGE=$BASE" -t "$TEST_IMAGE" -f "$ROOT/Containerfile" "$ROOT"
@@ -34,8 +40,11 @@ fi
 "$ENGINE" run "$@" --rm --network none --read-only --cap-drop=all \
   --security-opt=no-new-privileges --user 10001:10001 \
   --tmpfs /tmp:rw,nosuid,nodev,exec,size=128m \
+  -e "COLLECT_COVERAGE=${COVERAGE_OUTPUT_DIR:+1}" \
   -v "$ROOT:/testsrc:ro,Z" --entrypoint sh "$TEST_IMAGE" -c '
     set -eu
+    # Keep test logs separate from the optional XML output stream.
+    exec 3>&1 1>&2
     unset TRACKER_CONFIG TRACKER_DB TRACKER_SPEC_REPO HOST PORT API_PORT
     export PYTHONDONTWRITEBYTECODE=1
     export HYPOTHESIS_STORAGE_DIRECTORY=/tmp/hypothesis
@@ -52,12 +61,19 @@ fi
     lint-imports --no-cache --no-logo
     deptry .
     vulture tracker nvchecker_source --min-confidence 100
-    if [ -d /coverage ]; then
-      python -m pytest -q -p no:cacheprovider --junitxml=/tmp/results.xml --cov-report=xml:/coverage/backend-coverage.xml
+    if [ -n "$COLLECT_COVERAGE" ]; then
+      python -m pytest -q -p no:cacheprovider --junitxml=/tmp/results.xml --cov --cov-report=term --cov-report=xml:/tmp/backend-coverage.xml
     else
       python -m pytest -q -p no:cacheprovider --junitxml=/tmp/results.xml
     fi
     python -c '\''import xml.etree.ElementTree as E; r=E.parse("/tmp/results.xml"); assert not r.findall(".//skipped"), "Skipped tests are not allowed in the native release gate"'\''
     cd /app/frontend
     node /testsrc/frontend/tests/render.mjs
-  '
+    if [ -n "$COLLECT_COVERAGE" ]; then
+      cd /testsrc/backend
+      python /testsrc/scripts/coverage-report.py /tmp/backend-coverage.xml /testsrc >&3
+    fi
+  ' > "$REPORT"
+if [ -n "$TEMP_REPORT" ]; then
+  mv "$TEMP_REPORT" "$COVERAGE_OUTPUT_DIR/backend-coverage.xml"
+fi

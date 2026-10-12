@@ -41,10 +41,8 @@ python3 scripts/api-types.py --check
 (cd frontend && npm run quality && npm run check && npm test)
 ```
 
-`backend/pyproject.toml` configures `pytest-cov`, so `pytest -q` prints a
-terminal coverage summary; IDEs that read `.coverage` data pick it up too.
-Add `--cov-report=xml` to produce `coverage.xml` for external tools. CI
-extracts the same Cobertura report from the native gate below.
+For local coverage, run `(cd backend && pytest --cov --cov-report=term)`.
+Add `--cov-report=xml` to write `backend/coverage.xml`.
 
 Then run [Image checks](#image-checks).
 
@@ -97,9 +95,9 @@ Node/npm into the Fedora runtime. The test image inherits them. Update that pin
 in `Containerfile` when upgrading Node.
 
 Set `COVERAGE_OUTPUT_DIR` to a host directory before calling `check-image.sh` to
-collect `backend-coverage.xml`, the Cobertura report the pytest run writes from
-inside the read-only, network-less check container. CI does this to publish
-coverage; leave it unset for a plain local run.
+collect `backend-coverage.xml`, a Cobertura report with repository-relative file paths. The script exports it
+from the read-only, offline container without a writable host mount. CI enables
+coverage; leave the variable unset for a run without coverage.
 
 CI reuses build layers, but runs tests on every code change. Only the document
 paths listed in `scripts/ci-scope.py` skip image checks. Release always runs them.

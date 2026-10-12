@@ -145,7 +145,7 @@ jobs:
         with:
           file: backend-coverage.xml
           language: Python
-          label: code-coverage-agent
+          label: backend
   result:
     name: CI result
     if: always()

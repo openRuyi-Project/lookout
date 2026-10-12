@@ -38,7 +38,7 @@ namespaces = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --cov=tracker --cov=nvchecker_source --cov-report=term-missing"
+addopts = "-ra"
 
 [tool.coverage.run]
 source = ["tracker", "nvchecker_source"]
