@@ -100,8 +100,8 @@ def matches_rpm(release, current):
             if Version(current) == Version(release.version):
                 return True
         except (InvalidVersion, TypeError):
+            # RPM's ~post is not PEP 440; try the Source0-backed spelling below.
             pass
-        # Accept this RPM spelling only with the exact Source0 sdist as evidence.
         return current == re.sub(r'\.post(?=[0-9]+$)', '~post', release.version)
     parsed = semver(release.version)
     return bool(parsed and current in (release.version, parsed['base'], release.version.replace('-', '~', 1)))
