@@ -39,6 +39,10 @@ jobs:
           printf '### Release v%s\n' "$VERSION" >> "$GITHUB_STEP_SUMMARY"
   verify:
     needs: prepare
+    # GitHub validates permissions even for the skipped coverage-upload job.
+    permissions:
+      contents: read
+      code-quality: write
     uses: ./.github/workflows/ci.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
