@@ -6,7 +6,8 @@ import subprocess
 import pytest
 
 from tracker import collector, state
-from tracker.monitors.source import git as spec_git, rpm
+from tracker.monitors.source import git as spec_git
+from tracker.monitors.source import rpm
 
 
 @pytest.fixture
@@ -105,3 +106,37 @@ def test_head_change_during_parse_does_not_publish_partial_revision(repository):
     assert actual['specs'] == first['specs']
     assert actual['components']['spec_git']['head'] == first['components']['spec_git']['head']
     assert actual['components']['spec_git']['error'] == 'SPEC HEAD changed during parsing'
+
+
+@pytest.mark.parametrize('online', [True, False])
+def test_history_failure_does_not_block_current_spec_recovery(repository, monkeypatch, online):
+    config, db, commit, clock = repository
+    first = collector.check_specs(config, db, describe)
+    head = commit('2')
+    clock[0] = '2026-01-02T00:00:00+00:00'
+    failed = collector.check_specs(config, db, lambda *a, **k: {
+        'metadata': None, 'metadata_error': 'native SPEC parse failed'})
+    history = spec_git.changelogs
+    calls = []
+    def unavailable_history(*args, **kwargs):
+        calls.append(kwargs)
+        return {}, 'git log timeout'
+    monkeypatch.setattr(spec_git, 'changelogs', unavailable_history)
+    monkeypatch.setattr(spec_git, 'fetch', lambda *a, **k: (
+        (True, None) if online else (False, 'git fetch timeout')))
+    clock[0] = '2026-01-03T00:00:00+00:00'
+    repaired = collector.check_specs(config, db, describe)
+    fact = repaired['specs']['widget']
+    assert len(calls) == 1 and calls[0].get('names') is None
+    assert fact['metadata']['version'] == '2'
+    assert fact['head'] == head
+    assert fact['changelog'] == first['specs']['widget']['changelog']
+    assert fact['error'] is None
+    assert fact['fetched_at'] == (clock[0] if online else failed['components']['spec_git']['fetched_at'])
+    assert 'git log timeout' in repaired['components']['spec_git']['error']
+    collector.check_specs(config, db, lambda *a, **k: pytest.fail('unchanged tree reparsed'))
+    monkeypatch.setattr(spec_git, 'changelogs', history)
+    completed = collector.check_specs(config, db, describe)
+    assert completed['specs']['widget']['changelog'][0]['commit'] == head
+    assert not completed['components']['spec_git'].get('history_error')
+    assert completed['components']['spec_git']['error'] == (None if online else 'git fetch timeout')

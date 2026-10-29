@@ -1,7 +1,7 @@
 """Package identity comes from SPEC directories, not OBS support objects."""
+import subprocess
 from copy import deepcopy
 from datetime import datetime, timezone
-import subprocess
 
 import pytest
 
@@ -9,7 +9,8 @@ from tests.helpers.documents import client_for
 from tracker import collector, state
 from tracker.monitors import runner
 from tracker.monitors.requires.model import Resolver
-from tracker.monitors.source import git as source_git, rpm
+from tracker.monitors.source import git as source_git
+from tracker.monitors.source import rpm
 from tracker.monitors.version import compare
 from tracker.readmodel import snapshot as view
 
@@ -123,7 +124,7 @@ def test_list_detail_batch_export_and_ui_share_package_identity(repository, tmp_
     assert client.get('/api/v2/packages:batchGet', params={'names': ['LICENSES']}).status_code == 404
 
 
-@pytest.mark.parametrize('failed_step', ['fetch', 'packages', 'changelogs', 'read_macros'])
+@pytest.mark.parametrize('failed_step', ['fetch', 'packages', 'read_macros'])
 def test_failed_refresh_retains_catalogue_and_evidence(repository, monkeypatch, failed_step):
     repo, _, write, commit, _, poll = repository
     first = poll()
@@ -137,7 +138,7 @@ def test_failed_refresh_retains_catalogue_and_evidence(repository, monkeypatch, 
             raise source_git.MacroReadError(failure)
         monkeypatch.setattr(source_git, 'read_macros', fail)
     else:
-        value = False if failed_step == 'fetch' else {} if failed_step == 'changelogs' else None
+        value = False if failed_step == 'fetch' else None
         response = (value, failure)
         monkeypatch.setattr(source_git, failed_step, lambda *args, **kwargs: response)
     retained = poll()
@@ -180,3 +181,18 @@ def test_independent_monitor_check_accepts_source_only_package(repository, confi
     assert runner.check(config, observed, 'git-only', 'requires', None) == {'status': 'fixture'}
     with pytest.raises(ValueError, match='unknown package'):
         runner.check(config, observed, 'LICENSES', 'requires', None)
+
+
+def test_history_failure_keeps_current_catalogue_and_versions(repository, monkeypatch):
+    _, _, write, commit, _, poll = repository
+    first = poll()
+    write('new-package', '2.0')
+    head = commit()
+    monkeypatch.setattr(source_git, 'changelogs', lambda *a, **k: ({}, 'git log timeout'))
+    observed = poll()
+    assert set(observed['specs']) == set(first['specs']) | {'new-package'}
+    assert observed['specs']['new-package']['metadata']['version'] == '2.0'
+    assert observed['specs']['new-package']['head'] == head
+    assert observed['specs']['binutils']['changelog'] == first['specs']['binutils']['changelog']
+    assert observed['components']['spec_git']['catalog_head'] == head
+    assert observed['components']['spec_git']['error'] == 'git log timeout'

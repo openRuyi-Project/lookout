@@ -231,7 +231,7 @@ def merge_upstreams(config, latest, tracks, error, now, selected=None):
     return state.merge(latest, 'upstreams', fields, components)
 
 
-def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.describe, *, observed_at=None):
+def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.describe, *, observed_at=None, tree_head=None):
     """Rebuild per-package SPEC entries from one already-computed changelog map.
 
     `logs` is spec_git.changelogs() output: every package's changelog from a single
@@ -240,7 +240,8 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
     only real per-package cost). Changed or previously failed packages are re-read and
     re-parsed. Resolver and macro provenance changes also invalidate cached metadata;
     keeping a commit fixed is not enough to prove the parser environment is unchanged.
-    Per-package parse failures remain explicit; metadata is never guessed.
+    If history is unavailable, tree_head identifies the verified input tree while
+    logs retain earlier history. Per-package parse failures remain explicit.
     """
     spec = config['spec']
     repo, git = spec['repo'], spec.get('git', 'git')
@@ -255,7 +256,7 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
     for name in names:
         previous = old_specs.get(name, {})
         entries = logs.get(name, [])
-        head = entries[0]['commit'] if entries else None
+        head = tree_head or (entries[0]['commit'] if entries else None)
         previous_context = previous.get('native_query', {}).get('context', {})
         source_names = spec.get('local_sources', {}).get(name, [])
         same_parser = (previous_context.get('resolver') == native_spec.RESOLVER
@@ -347,34 +348,44 @@ def check_specs(config, db, describe=native_spec.describe):
                     **{key: spec.get(key) for key in ('url', 'branch', 'source_url_template',
                                                      'macro_package', 'extra_macro_packages', 'local_sources', 'changelog_limit')},
                 })
-                incremental = (prior.get('input_fingerprint') == fingerprint
+                incremental = (not prior.get('history_error')
+                               and prior.get('input_fingerprint') == fingerprint
                                and spec_git.is_ancestor(repo, prior.get('head'), head, git))
                 logs = {}
+                history_error = None
                 if not error and incremental and prior['head'] != head:
-                    logs, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
-                                                     since=prior['head'])
+                    logs, history_error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
+                                                             since=prior['head'])
                 if incremental and any(package in logs for package in spec_git.macro_packages(spec)):
                     incremental = False
                 if not error and not incremental:
-                    logs, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git)
+                    logs, history_error = spec_git.changelogs(repo, spec['changelog_limit'], git=git)
                     selected = set(names)
                 else:
                     added = set(names) - specs.keys()
                     retry = {name for name, fact in specs.items()
                              if fact.get('error') or fact.get('metadata') is None} & set(names)
-                    if (added or retry) and not error:
-                        history, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
-                                                            names=sorted(added | retry))
+                    if (added or retry) and not error and not history_error:
+                        history_names = added | retry
+                        history, history_error = spec_git.changelogs(
+                            repo, spec['changelog_limit'], git=git,
+                            names=None if history_names == set(names) else sorted(history_names))
                         logs.update(history)
                     selected = (set(logs) | added | retry) & set(names)
                     for name in selected - added:
                         combined = {entry['commit']: entry for entry in
                                     logs.get(name, []) + specs.get(name, {}).get('changelog', [])}
                         logs[name] = list(combined.values())[:spec['changelog_limit']]
+                if history_error:
+                    # History is presentation data, not permission to read the tree.
+                    # Bind reparsed metadata to HEAD, never to a retained old log entry.
+                    selected = set(names)
+                    logs = {name: specs.get(name, {}).get('changelog', []) for name in names}
                 if not error:
                     try:
                         refreshed = refresh_specs(config, specs, sorted(selected), logs, now, describe,
-                                                  observed_at=prior['fetched_at'] if offline else now)
+                                                  observed_at=prior['fetched_at'] if offline else now,
+                                                  tree_head=head if history_error else None)
                     except (spec_git.MacroReadError, native_spec.MacroInputError) as failure:
                         error = str(failure)
                     else:
@@ -387,7 +398,8 @@ def check_specs(config, db, describe=native_spec.describe):
                                      for name in names}
                             context = {'head': head, 'catalog_head': head, 'input_fingerprint': fingerprint,
                                        'mode': 'incremental' if incremental else 'full',
-                                       'selected_packages': len(selected)}
+                                       'selected_packages': len(selected), 'history_error': history_error}
+                            error = history_error
             elif not error:
                 error = 'SPEC HEAD unavailable'
         elif not error:
