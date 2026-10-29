@@ -42,6 +42,14 @@ source packages. OBS status and history share an identity but not ownership:
 | `builds` | Project-wide `_result` status, errors and poll timestamps |
 | `obs` | Inventory, source identity and successful-build history |
 
+On a SPEC parse failure, Lookout retains the last successful metadata, revision and
+observation time. It records the error and attempt time. Invalid shared macros reject
+the whole batch.
+
+If Git fetch fails, Lookout can retry parsing the confirmed local revision. This does
+not advance the remote observation time or clear the fetch error. Source check failures
+make readiness degraded, but do not fail the HTTP liveness probe.
+
 `state.BUILD_FIELDS` prevents slow history responses from overwriting newer status. A
 change to the target repository or architecture invalidates old evidence and pending
 responses for that scope.

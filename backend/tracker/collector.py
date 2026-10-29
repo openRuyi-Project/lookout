@@ -576,7 +576,8 @@ def main():
     errors = [v['error'] for key, v in snapshot['components'].items() if v.get('error')
               and (args.only == 'all' or any(state.owns_component(owner, key) for owner in owners))]
     result = dict(generation=snapshot['generation'], packages=len(state.package_names(snapshot)),
-                  source_versions=sum(bool(s.get('version')) and not s.get('error') for s in snapshot['sources'].values()),
+                  source_versions=sum(bool(state.current_source(snapshot, name).get('version'))
+                                      for name in state.package_names(snapshot)),
                   tracks=len(snapshot['tracks']), errors=errors)
     if selected is not None or args.due:
         errors = ([attempt['command_error']] if attempt['command_error'] else []) + [

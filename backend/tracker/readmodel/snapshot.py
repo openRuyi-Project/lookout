@@ -72,6 +72,9 @@ def collection(snapshot, rows, now):
     if snapshot.get('last_attempt') and any(state.stale(v, now, component_ttl(snapshot, k))
                                           for k, v in snapshot['components'].items()):
         errors.append('collection observations are stale')
+    failed_sources = sum(monitor_model.check_failed(row['monitors']['source']['check']) for row in rows)
+    if failed_sources:
+        errors.append(f'Source checks failed for {failed_sources} of {len(rows)} packages')
     if 'targets' not in snapshot:
         errors.append('Initial package collection is pending')
     components = snapshot['components']
