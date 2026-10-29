@@ -315,6 +315,24 @@ async function read(path, cookie) {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, {headers: cookie ? {cookie} : {}});
   assert.equal(response.status, 200, `${path}: ${logs}`); return response.text();
 }
+const rowKeys = html => new Set([...html.matchAll(/<tr data-key="([^"]+)"/g)].map(([, key]) => key));
+async function assertGlobalSearch(html, name, perPage = null) {
+  const form = html.match(/<form\b[^>]*role="search"[^]*?<\/form>/)?.[0];
+  assert.ok(form, 'search form is present');
+  assert.match(form, /method="get"/);
+  const action = form.match(/\baction="([^"]+)"/)?.[1];
+  assert.equal(action, '/');
+  const parameters = new URLSearchParams([...form.matchAll(/<input\b([^>]*)>/g)].map(([, attributes]) => {
+    const field = attributes.match(/\bname="([^"]+)"/)?.[1];
+    assert.ok(field, 'search inputs have names');
+    return [field, attributes.match(/\bvalue="([^"]*)"/)?.[1] || ''];
+  }));
+  assert.deepEqual([...parameters.keys()].sort(), perPage ? ['per_page', 'q'] : ['q']);
+  assert.equal(parameters.get('per_page'), perPage);
+  parameters.set('q', name);
+  const result = await read(`${action}?${parameters}`);
+  assert.deepEqual(rowKeys(result), new Set([name]));
+}
 function assertCollapsedChecksLast(html) {
   const details = [...html.matchAll(/<details\b([^>]*)>([^]*?)<\/details>/g)];
   assert.ok(details.every(([, attrs]) => /id="(?:checks|requires-conditions)"/.test(attrs)),
@@ -487,7 +505,6 @@ try {
   }
   const excludedURL = '/?Outdated=AND&Advisory=NOT&next_logic=not';
   const excludedPage = await read(excludedURL);
-  const rowKeys = html => new Set([...html.matchAll(/<tr data-key="([^"]+)"/g)].map(([, key]) => key));
   const outdatedKeys = rowKeys(await read('/?Outdated=AND'));
   const advisoryKeys = rowKeys(await read('/?Advisory=AND'));
   const combinedKeys = rowKeys(await read('/?Outdated=AND&Advisory=OR'));
@@ -495,12 +512,13 @@ try {
   assert.ok(!outdatedKeys.has('advisory-current'));
   assert.deepEqual([...combinedKeys].sort(), [...new Set([...outdatedKeys, ...advisoryKeys])].sort());
   assert.deepEqual(rowKeys(excludedPage), outdatedKeys.difference(advisoryKeys));
-  assert.match(excludedPage, /name="Advisory" value="NOT"/);
+  assert.ok(!rowKeys(excludedPage).has('advisory-current'));
+  await assertGlobalSearch(excludedPage, 'advisory-current');
   assert.match(excludedPage, /class="condition-operator">NOT/);
   assert.match(excludedPage, /aria-current="true"[^>]*>NOT|>NOT<\/a>/);
   const leadingNot = await read('/?Outdated=NOT&Advisory=AND');
   assert.deepEqual(rowKeys(leadingNot), advisoryKeys.difference(outdatedKeys));
-  console.log('PASS NOT: set subtraction and retained ordered search inputs');
+  console.log('PASS NOT: set subtraction, ordered filter links and independent search');
   const alertCount = (html, label) => {
     const alerts = html.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
     return Number(alerts.match(new RegExp(`>${label}</span></span>\\s*<b>(\\d+)</b>`))[1]);
@@ -545,7 +563,7 @@ try {
   console.log('PASS palette counts: intersection, additions and removals; ordered condition/group parameters, search inputs and pagination');
   const changedPage = await read(filtered([[['version_signal', 'requires']]]));
   assert.match(changedPage, /aria-label="Remove DepChanges"/);
-  assert.match(changedPage, /name="DepChanges" value="AND"/);
+  await assertGlobalSearch(changedPage, 'advisory-current');
   const untrackedRow = listing.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
   assert.match(untrackedRow, /data-decoration="dashed"/);
   assert.match(untrackedRow, /label%3AUntracked[^>]*>Untracked/);
@@ -570,9 +588,7 @@ try {
   const clearBuild = scoped.match(/<a href="([^"]+)" aria-label="Remove rva23: Failed"/)[1];
   assert.deepEqual(filterFrom(clearBuild).tail, terms.slice(0, 2).map(([dimension, value]) => ({dimension, value, logic: 'and'})));
   assert.match(scoped, /0 packages/);
-  for (const [dimension, value] of terms) {
-    assert.ok(scoped.includes(`name="${token(dimension, value)}" value="AND"`));
-  }
+  await assertGlobalSearch(scoped, 'success');
   assert.match(scoped, /aria-label="Next operator"/);
   const grouped = await read(filtered([[['build:rva23', 'failed'], ['build:rva23', 'unresolvable']], [['maintenance', 'Advisory']]], {next_logic: 'or'}, 'or'));
   assert.equal((grouped.match(/class="logic-switch"/g) || []).length, 1);
@@ -649,7 +665,7 @@ try {
   assert.match(sourceTable, />Last checked<\/th>/);
   assert.match(sourceTable, /Checked/);
   assert.equal((sourceTable.match(/<col(?:\s[^>]*)?\s*\/?>/g) || []).length, 3);
-  assert.match(sourceCoverage, /name="section" value="coverage"/);
+  await assertGlobalSearch(sourceCoverage, 'advisory-current', '2');
   const focused = await read('/?monitor=yanked');
   assert.match(focused, /Release withdrawn/);
   assert.doesNotMatch(focused, /data-key="success"/);
@@ -763,7 +779,7 @@ try {
   for (const label of ['DepMismatch', 'DepChanges', 'Uncovered', 'CheckFailed']) assert.ok(requirementNav.includes(label));
   const requiresFiltered = await read(filtered([[['requires', 'unmet']]], {monitor: 'requires', per_page: '1'}));
   assert.match(requiresFiltered, /Remove DepMismatch/);
-  assert.match(requiresFiltered, /name="requires\/unmet"/);
+  await assertGlobalSearch(requiresFiltered, 'advisory-current', '1');
   const requiresCoverage = await read(filtered([[['check:requires', 'uncovered'], ['requires', 'unmet']]], {monitor: 'requires', section: 'coverage'}));
   assert.match(requiresCoverage, />Version<\/th>/);
   assert.match(requiresCoverage, /0 packages/);
