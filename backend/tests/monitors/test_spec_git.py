@@ -9,7 +9,6 @@ import hashlib
 import subprocess
 
 import pytest
-
 from tracker.monitors.source import git as sg
 
 
@@ -18,7 +17,8 @@ from tracker.monitors.source import git as sg
     ('SSL certificate problem for https://secret@example.invalid', 'tls'),
     ('Failed to connect to internal.example port 22', 'connection'),
     ('Authentication failed for https://user:token@example.invalid', 'authentication'),
-    ('The requested URL returned error: 503', 'http'),
+    ('The requested URL returned error: 503', 'http-server'),
+    ('The requested URL returned error: 403', 'http'),
     ('unexpected error includes private source path', None),
 ])
 def test_git_failures_report_operation_and_category_without_private_details(monkeypatch, stderr, category):
@@ -34,6 +34,86 @@ def test_git_timeout_names_the_operation_not_a_path(monkeypatch):
         raise subprocess.TimeoutExpired(args[0], 1)
     monkeypatch.setattr(sg.subprocess, 'run', timeout)
     assert sg._git_text(['-C', '/secret/repo', 'fetch']) == (None, 'git fetch timeout')
+
+
+
+@pytest.mark.parametrize('stderr', [
+    'Authentication failed for https://user:token@example.invalid',
+    'Repository not found. could not read Username: terminal prompts disabled',
+    'Permission denied (publickey)',
+    'The requested URL returned error: 429',
+    'SSL certificate problem',
+    'not a git repository',
+])
+def test_fetch_does_not_retry_nontransient_failures(monkeypatch, stderr):
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 128, '', stderr)
+
+    monkeypatch.setattr(sg.subprocess, 'run', run)
+    ok, error = sg.fetch('/repo', retries=2)
+    assert not ok and error
+    assert len(calls) == 1
+
+
+def test_fetch_does_not_retry_missing_executable(monkeypatch):
+    calls = []
+
+    def run(*args, **kwargs):
+        calls.append(args)
+        raise FileNotFoundError('git')
+
+    monkeypatch.setattr(sg.subprocess, 'run', run)
+    assert sg.fetch('/repo') == (False, 'git executable unavailable')
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('stderr', [
+    'Could not resolve host: example.invalid',
+    'Connection reset by peer',
+    'The requested URL returned error: 503',
+])
+def test_fetch_transient_retry_shares_timeout_budget(monkeypatch, stderr):
+    ticks = iter([100.0, 100.0, 104.0])
+    monkeypatch.setattr(sg.time, 'monotonic', lambda: next(ticks))
+    budgets = []
+
+    def run(argv, **kwargs):
+        budgets.append(kwargs['timeout'])
+        return subprocess.CompletedProcess(argv, 128 if len(budgets) == 1 else 0, '', stderr)
+
+    monkeypatch.setattr(sg.subprocess, 'run', run)
+    assert sg.fetch('/repo', timeout=10) == (True, None)
+    assert budgets == [10.0, 6.0]
+
+
+def test_fetch_stops_when_total_budget_is_exhausted(monkeypatch):
+    ticks = iter([100.0, 100.0, 110.0])
+    monkeypatch.setattr(sg.time, 'monotonic', lambda: next(ticks))
+    budgets = []
+
+    def run(argv, **kwargs):
+        budgets.append(kwargs['timeout'])
+        raise subprocess.TimeoutExpired(argv, kwargs['timeout'])
+
+    monkeypatch.setattr(sg.subprocess, 'run', run)
+    assert sg.fetch('/repo', timeout=10) == (False, 'git fetch timeout')
+    assert budgets == [10.0]
+
+
+def test_fetch_limits_attempts_even_when_each_failure_is_fast(monkeypatch):
+    monkeypatch.setattr(sg.time, 'monotonic', lambda: 100.0)
+    calls = []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 128, '', 'Connection reset by peer')
+
+    monkeypatch.setattr(sg.subprocess, 'run', run)
+    assert sg.fetch('/repo', retries=2) == (False, 'git fetch exited 128 (connection)')
+    assert len(calls) == 3
 
 
 def test_local_sources_require_regular_pinned_blobs(monkeypatch):

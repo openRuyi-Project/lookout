@@ -11,6 +11,7 @@ Following nv.py, subprocess calls and pure parsing are separate for testability.
 import hashlib
 import re
 import subprocess
+import time
 
 from tracker.monitors.schedule import Schedule
 
@@ -61,7 +62,7 @@ def is_ancestor(repo, previous, current, git='git'):
     return error is None
 
 
-def _git_text(args, git='git', timeout=300):
+def _git_text(args, git='git', timeout: float = 300):
     """Run git and capture text stdout; return (stdout, error). Never surface URLs,
     credentials, or raw stderr."""
     operation = args[2] if len(args) > 2 and args[0] == '-C' else args[0] if args else 'command'
@@ -75,7 +76,8 @@ def _git_text(args, git='git', timeout=300):
                 ('dns', r'Could not resolve (?:host|proxy)|Could not resolve hostname'),
                 ('tls', r'SSL|TLS|certificate'),
                 ('connection', r'Failed to connect|Connection (?:refused|timed out)|Connection reset'),
-                ('http', r'requested URL returned error: [45][0-9]{2}'),
+                ('http-server', r'requested URL returned error: 5[0-9]{2}'),
+                ('http', r'requested URL returned error: 4[0-9]{2}'),
             )
             category = next((name for name, pattern in categories
                              if re.search(pattern, p.stderr[:16384], re.IGNORECASE)), None)
@@ -100,11 +102,19 @@ def _git_bytes(args, git='git', timeout=60):
 def fetch(repo, git='git', timeout=300, retries=2):
     """Advance the managed full clone to origin HEAD. The configured refspec moves the
     local branch; the clone is complete, so history and blobs remain local afterwards."""
-    error = None
-    for attempt in range(max(1, retries + 1)):
-        _, error = _git_text(['-C', repo, 'fetch', '--quiet', 'origin'], git, timeout)
+    deadline = time.monotonic() + timeout
+    error = 'git fetch timeout'
+    for _ in range(max(1, retries + 1)):
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        _, error = _git_text(['-C', repo, 'fetch', '--quiet', 'origin'], git, remaining)
         if error is None:
             return True, None
+        # Authentication, configuration and backpressure need a later scheduled
+        # attempt, not repeated requests within the same collection run.
+        if not error.endswith((' (dns)', ' (connection)', ' (http-server)', ' timeout')):
+            break
     return False, error
 
 
