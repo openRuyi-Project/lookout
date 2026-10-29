@@ -18,6 +18,8 @@ from tracker.state import usable_version
 
 RESOLVER = 10  # cache epoch for parser and runtime macro changes
 _SIZE_LIMIT = 1024 * 1024
+MACRO_FILE_LIMIT = 64
+MACRO_BYTES_LIMIT = 4 * 1024 * 1024
 _TIMEOUT = 5.0
 _MAX_OUTPUT = 256 * 1024
 _MAX_STDERR = 16 * 1024
@@ -132,24 +134,41 @@ def _run(inputs, work):
         writer.close()
 
 
+class SpecInputError(ValueError):
+    """A SPEC input violates the worker's admission policy."""
+
+
+class MacroInputError(SpecInputError):
+    """Shared macro inputs cannot be used for this collection."""
+
+
+def validate_macros(macros):
+    """Bound file count and total bytes before materializing worker inputs."""
+    if len(macros) > MACRO_FILE_LIMIT:
+        raise MacroInputError('too many native macro files')
+    if sum(len(data) for _, data in macros) > MACRO_BYTES_LIMIT:
+        raise MacroInputError('native macro inputs exceed total size limit')
+    for provenance, data in macros:
+        if len(data) > _SIZE_LIMIT:
+            raise MacroInputError('native macro file exceeds size limit')
+        if hashlib.sha256(data).hexdigest() != provenance.get('sha256'):
+            raise MacroInputError('native macro content does not match its pinned hash')
+
+
 def _parse(spec, macros, local_sources=()):
     if len(spec) > _SIZE_LIMIT:
-        raise ValueError('SPEC exceeds size limit')
-    if len(macros) > 16:
-        raise ValueError('too many native macro files')
-    for provenance, data in macros:
-        if len(data) > _SIZE_LIMIT or hashlib.sha256(data).hexdigest() != provenance['sha256']:
-            raise ValueError('native macro content does not match its pinned hash')
+        raise SpecInputError('SPEC exceeds size limit')
+    validate_macros(macros)
     if len(local_sources) > 16:
-        raise ValueError('too many local SPEC sources')
+        raise SpecInputError('too many local SPEC sources')
     names = set()
     for provenance, data in local_sources:
         name = provenance.get('name')
         if (not isinstance(name, str) or not name or Path(name).name != name or name in ('.', '..')
                 or name in names or '\\' in name or '\x00' in name):
-            raise ValueError('local SPEC source requires a unique filename')
+            raise SpecInputError('local SPEC source requires a unique filename')
         if len(data) > _SIZE_LIMIT or hashlib.sha256(data).hexdigest() != provenance['sha256']:
-            raise ValueError('local SPEC source content does not match its pinned hash')
+            raise SpecInputError('local SPEC source content does not match its pinned hash')
         names.add(name)
     context = {'resolver': RESOLVER, 'rpm': None, 'target': None,
                'environment': 'one-shot Landlock+seccomp native RPM worker',

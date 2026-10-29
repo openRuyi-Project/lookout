@@ -4,6 +4,8 @@
 """refresh_specs: the single-clone core driven by one changelog map. Metadata is
 re-parsed only where a package's head commit changed (or a prior parse failed); every
 other package refreshes its changelog and reuses stored metadata. Fakes, no repo."""
+import hashlib
+
 import pytest
 
 from tracker import collector, state
@@ -78,6 +80,7 @@ def test_parse_failure_keeps_changelog_and_marks(config):
     assert specs['bad']['head'] == 'c9'
     assert specs['bad']['changelog'][0]['commit'] == 'c9'
     assert specs['bad']['error'] == 'cannot parse'
+    assert 'fetched_at' not in specs['bad']
 
 
 def test_package_without_history_has_none_head(config):
@@ -94,7 +97,7 @@ def test_disabled_source_returns_unchanged():
 
 def test_configured_inputs_are_loaded_without_package_specific_code(config, monkeypatch):
     config['spec'].update(macro_package='base', extra_macro_packages=['extra'], local_sources={'bash': ['series']})
-    macro = ({'path': 'extra/macros', 'sha256': 'fixture'}, b'macro')
+    macro = ({'path': 'extra/macros', 'sha256': hashlib.sha256(b'macro').hexdigest()}, b'macro')
     source = ({'path': 'bash/series', 'name': 'series', 'sha256': 'fixture'}, b'include')
     seen = []
     monkeypatch.setattr(spec_git, 'read_macros', lambda repo, package, git: [macro] if package == 'extra' else [])
@@ -184,3 +187,52 @@ def test_macro_failure_precedes_individual_spec_processing(config, monkeypatch):
     with pytest.raises(spec_git.MacroReadError):
         collector.refresh_specs(config, {}, ['bash'], {}, 'now',
                                 lambda *_a, **_kw: pytest.fail('worker must not run'))
+
+
+def test_macro_admission_failure_retains_the_entire_batch(config, tmp_path, monkeypatch):
+    config['collector'] = {}
+    config['spec']['macro_package'] = 'base'
+    old = state.empty()
+    old['specs'] = {'bash': state.success({}, {'metadata': {'version': '1'}}, 'old-time')}
+    old['components']['spec_git'] = state.success({}, {'head': 'old-head'}, 'old-time')
+    db = tmp_path / 'snapshot.db'
+    state.commit(db, old)
+    monkeypatch.setattr(spec_git, 'fetch', lambda *a, **k: (True, None))
+    monkeypatch.setattr(spec_git, 'head', lambda *a, **k: ('new-head', None))
+    monkeypatch.setattr(spec_git, 'packages', lambda *a, **k: (['bash', 'gcc'], None))
+    monkeypatch.setattr(spec_git, 'changelogs', lambda *a, **k: ({}, None))
+    data = b'%fixture 1\n'
+    macro = ({'sha256': hashlib.sha256(data).hexdigest()}, data)
+    monkeypatch.setattr(spec_git, 'read_macros', lambda *a, **k: [macro] * (native_spec.MACRO_FILE_LIMIT + 1))
+    actual = collector.check_specs(config, db, lambda *a, **k: pytest.fail('invalid shared inputs'))
+    assert actual['specs'] == old['specs']
+    assert actual['components']['spec_git']['fetched_at'] == 'old-time'
+    assert actual['components']['spec_git']['head'] == 'old-head'
+    assert actual['components']['spec_git']['error'] == 'too many native macro files'
+
+
+def test_failed_parse_retains_success_provenance_until_recovery(config):
+    previous = state.success({}, {'head': 'old-head', 'changelog': [cl('old-head')],
+        'metadata': {'version': '1'}, 'native_query': {'spec_sha256': 'old-hash'}}, 'old-time')
+    failed = collector.refresh_specs(config, {'bash': previous}, ['bash'], {'bash': [cl('new-head')]},
+        'failed-time', lambda *a, **k: {'metadata': None, 'metadata_error': 'native SPEC parse failed'})['bash']
+    assert failed == {**previous, 'attempted_at': 'failed-time',
+                      'error': 'native SPEC parse failed'}
+    recovered = collector.refresh_specs(config, {'bash': failed}, ['bash'], {'bash': [cl('new-head')]},
+        'recovered-time', lambda *a, **k: {'metadata': {'version': '2'}, 'metadata_error': None})['bash']
+    assert recovered['head'] == 'new-head' and recovered['metadata']['version'] == '2'
+    assert recovered['fetched_at'] == 'recovered-time' and recovered['error'] is None
+
+
+def test_parser_programming_error_is_not_mislabeled_as_local_input(config):
+    def broken(*a, **k):
+        raise ValueError('unexpected parser state')
+    with pytest.raises(ValueError, match='unexpected parser state'):
+        collector.refresh_specs(config, {}, ['bash'], {}, 'now', broken)
+
+
+def test_package_input_error_keeps_its_safe_reason(config):
+    def oversized(*a, **k):
+        raise native_spec.SpecInputError('SPEC exceeds size limit')
+    result = collector.refresh_specs(config, {}, ['bash'], {}, 'now', oversized)
+    assert result['bash']['error'] == 'SPEC exceeds size limit'

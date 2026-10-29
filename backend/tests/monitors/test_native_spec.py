@@ -51,6 +51,17 @@ def test_extra_macro_is_native_and_hash_checked():
     with pytest.raises(ValueError,match='pinned hash'):
         native_spec.query(spec,macros=[(provenance,macro+b'bad')])
 
+def test_macro_set_preserves_all_files_and_load_order():
+    macros = []
+    for index in range(17):
+        data = f'%fixture_version {index}\n'.encode()
+        macros.append(({'path': f'fixture/macros.{index}', 'sha256': hashlib.sha256(data).hexdigest()}, data))
+    spec = SPEC.replace(b'0+git20260202.%{shortcommit}', b'%{fixture_version}')
+    result = native_spec.query(spec, macros=macros)
+    assert result['version'] == '16'
+    assert result['native_query']['context']['additional_macros'] == [p for p, _ in macros]
+
+
 def test_macro_revision_follows_obs_not_a_literal_version():
     settings={'spec_macro_package':'rpm-config', 'spec_macro_files':['macros.buildsystem']}
     first=native_spec.macro_paths(settings,'openruyi',{'rpm-config':{'srcmd5':'first'}})

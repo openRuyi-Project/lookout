@@ -231,7 +231,7 @@ def merge_upstreams(config, latest, tracks, error, now, selected=None):
     return state.merge(latest, 'upstreams', fields, components)
 
 
-def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.describe):
+def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.describe, *, observed_at=None):
     """Rebuild per-package SPEC entries from one already-computed changelog map.
 
     `logs` is spec_git.changelogs() output: every package's changelog from a single
@@ -248,7 +248,9 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
         return old_specs
     macros = [item for package in spec_git.macro_packages(spec)
               for item in spec_git.read_macros(repo, package, git=git)]
+    native_spec.validate_macros(macros)
     origin = {k: spec.get(k) for k in ('url', 'branch', 'source_url_template')}
+    observed_at = observed_at or now
     result = {}
     for name in names:
         previous = old_specs.get(name, {})
@@ -263,19 +265,35 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
                 and previous.get('metadata') is not None and not previous.get('error')):
             # SPECS/<name> unchanged since last observation: refresh changelog only, skip parsing.
             result[name] = state.success(previous, {'head': head, 'changelog': entries,
-                                                     'metadata': previous['metadata'], 'source_origin': origin}, now)
+                                                     'metadata': previous['metadata'], 'source_origin': origin}, observed_at)
+            result[name]['attempted_at'] = now
             continue
         data = spec_git.read_spec(repo, name, git=git)
         try:
             inputs = {'local_sources': spec_git.read_local_sources(repo, name, source_names, git)} if source_names else {}
-            described = describe(data, macros=macros, **inputs) if data is not None else {'metadata': None, 'metadata_error': 'SPEC not found in clone'}
         except ValueError:
             described = {'metadata': None, 'metadata_error': 'Configured local SPEC inputs unavailable or invalid'}
-        entry = state.success(previous, {'head': head, 'changelog': entries,
-                                         'metadata': described['metadata'],
-                                         'native_query': described.get('native_query', {}), 'source_origin': origin}, now)
-        if described.get('metadata_error'):
-            entry = {**entry, 'error': described['metadata_error']}
+        else:
+            try:
+                described = describe(data, macros=macros, **inputs) if data is not None else {
+                    'metadata': None, 'metadata_error': 'SPEC not found in clone'}
+            except native_spec.MacroInputError:
+                raise
+            except native_spec.SpecInputError as error:
+                described = {'metadata': None, 'metadata_error': str(error)}
+        if error := described.get('metadata_error'):
+            # A failed attempt does not establish a new source revision or erase
+            # the last successful parse. Its old provenance must stay attached.
+            entry = state.failure(previous, error, now)
+            if previous.get('metadata') is None:
+                entry.update(head=head, changelog=entries, metadata=None,
+                             native_query=described.get('native_query', {}), source_origin=origin)
+        else:
+            entry = state.success(previous, {'head': head, 'changelog': entries,
+                                            'metadata': described['metadata'],
+                                            'native_query': described.get('native_query', {}),
+                                            'source_origin': origin}, observed_at)
+            entry['attempted_at'] = now
         result[name] = entry
     return result
 
@@ -283,7 +301,8 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
 def merge_specs(config, latest, specs, error, now, *, context=None):
     """Merge SPEC results into the newest snapshot without rewinding OBS/upstream."""
     prior = latest['components'].get('spec_git', {})
-    component = state.failure(prior, error, now) if error else state.success(prior, context or {}, now)
+    component = (state.failure({**prior, **(context or {})}, error, now) if error
+                 else state.success(prior, context or {}, now))
     return state.merge(latest, 'specs', {'specs': specs,
                        'spec_interval_seconds': config['spec'].get('interval_seconds', 60)},
                        {'spec_git': component})
@@ -293,7 +312,7 @@ def check_specs(config, db, describe=native_spec.describe):
     """Fetch, reconcile changed packages and failed parses, then publish a checkpoint.
 
     A missing ancestor or changed parser policy reconciles all packages. An unchanged
-    commit needs no log traversal; parse failures remain in the next retry set.
+    commit needs no log traversal unless a failed parse must be retried.
     """
     spec = config['spec']
     if not spec['repo']:
@@ -309,10 +328,15 @@ def check_specs(config, db, describe=native_spec.describe):
         error = fetch_error
         context = None
         now = state.utcnow()
-        if ok:
-            head, error = spec_git.head(repo, git=git)
+        prior = old['components'].get('spec_git', {})
+        head, head_error = spec_git.head(repo, git=git)
+        origin = {k: spec.get(k) for k in ('url', 'branch', 'source_url_template')}
+        offline = (not ok and not head_error and head and prior.get('head') == head
+                   and prior.get('fetched_at') and specs
+                   and all(fact.get('source_origin') == origin for fact in specs.values()))
+        if ok or offline:
+            error = head_error
             if not error and head:
-                prior = old['components'].get('spec_git', {})
                 if prior.get('catalog_head') == head:
                     names = list(specs)
                 else:
@@ -336,32 +360,41 @@ def check_specs(config, db, describe=native_spec.describe):
                     selected = set(names)
                 else:
                     added = set(names) - specs.keys()
-                    if added and not error:
+                    retry = {name for name, fact in specs.items()
+                             if fact.get('error') or fact.get('metadata') is None} & set(names)
+                    if (added or retry) and not error:
                         history, error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
-                                                            names=sorted(added))
+                                                            names=sorted(added | retry))
                         logs.update(history)
-                    selected = (set(logs) | added | {name for name, fact in specs.items()
-                                if fact.get('error') or fact.get('metadata') is None}) & set(names)
+                    selected = (set(logs) | added | retry) & set(names)
                     for name in selected - added:
                         combined = {entry['commit']: entry for entry in
                                     logs.get(name, []) + specs.get(name, {}).get('changelog', [])}
                         logs[name] = list(combined.values())[:spec['changelog_limit']]
                 if not error:
                     try:
-                        refreshed = refresh_specs(config, specs, sorted(selected), logs, now, describe)
-                    except spec_git.MacroReadError as failure:
+                        refreshed = refresh_specs(config, specs, sorted(selected), logs, now, describe,
+                                                  observed_at=prior['fetched_at'] if offline else now)
+                    except (spec_git.MacroReadError, native_spec.MacroInputError) as failure:
                         error = str(failure)
                     else:
-                        specs = {name: refreshed[name] if name in refreshed else
-                                 state.success(specs[name], {}, now) for name in names}
-                        context = {'head': head, 'catalog_head': head, 'input_fingerprint': fingerprint,
-                                   'mode': 'incremental' if incremental else 'full',
-                                   'selected_packages': len(selected)}
+                        observed_head, changed_error = spec_git.head(repo, git=git)
+                        if changed_error or observed_head != head:
+                            error = changed_error or 'SPEC HEAD changed during parsing'
+                        else:
+                            specs = {name: refreshed[name] if name in refreshed else
+                                     specs[name] if offline else state.success(specs[name], {}, now)
+                                     for name in names}
+                            context = {'head': head, 'catalog_head': head, 'input_fingerprint': fingerprint,
+                                       'mode': 'incremental' if incremental else 'full',
+                                       'selected_packages': len(selected)}
             elif not error:
                 error = 'SPEC HEAD unavailable'
         elif not error:
             error = 'SPEC fetch failed'
-        # Failed fetch, traversal or macro reads retain facts and success timestamps.
+        if not ok:
+            error = '; '.join(dict.fromkeys(e for e in (fetch_error or 'SPEC fetch failed', error) if e))
+        # Offline parsing can repair evidence, but cannot confirm remote freshness.
         with state.writer_lock(db, timeout=60):
             previous = state.read_cached(db)
             latest = previous[0]
