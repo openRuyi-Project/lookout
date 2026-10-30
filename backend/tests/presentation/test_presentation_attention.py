@@ -104,7 +104,10 @@ def test_source_v2_fields_and_detail_provenance_remain_available(client):
     assert document['subtitle'] == 'Fixture summary'
     assert sum(section['id'] == 'source' for section in document['sections']) == 1
     context = next(section for section in document['sections'] if section['id'] == 'source')
-    assert context['notes'] == ['Fixture long description']
+    assert context['notes'] == []
+    description = next(section for section in document['sections'] if section['id'] == 'source-description')
+    assert description['placement'] == 'flow'
+    assert description['notes'] == ['Fixture long description']
     assert next(field for field in context['fields'] if field['label'] == 'License')['values'][0]['text'] == 'Fixture-License'
     assert any(link['href'] == raw['data']['source_url'] for link in document['links'])
     assert any(link['href'] == 'https://upstream.example/fixture' for link in document['links'])
@@ -290,3 +293,13 @@ def test_aggregate_columns_and_target_filters_share_the_query(client):
             assert selected['total'] == choice['count']
     assert not any(row['label'] in [column['title'] for column in doc['table']['columns'][3:]]
                    for row in doc['controls']['choice_rows'])
+
+
+def test_detail_version_values_have_one_place_and_checks_remain_last(client):
+    doc = client.get('/api/ui/packages/binutils').json()
+    version = next(section for section in doc['sections'] if section['id'] == 'version')
+    assert version['placement'] == 'lead' and version['title'] == ''
+    current = next(field for field in version['fields'] if field['label'] == 'Current')
+    assert current['values'][0]['text'] == '3.9.0'
+    assert all(value['text'] != '3.9.0' for value in doc['identity'])
+    assert doc['sections'][-1]['id'] == 'checks' and doc['sections'][-1]['collapsible']

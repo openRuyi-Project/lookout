@@ -30,11 +30,11 @@ from tracker.presentation.values import (
     buildsystem,
     cell,
     check_value,
+    field,
     module,
     stamp,
     text,
     version_parts,
-    version_value,
 )
 from tracker.presentation.version import version_annotations
 
@@ -188,7 +188,6 @@ def detail(pkg, collection=None):
     data = source['data'] if source else {}
     meta = data.get('metadata') or {}
     identity = [buildsystem(data['buildsystem'], links)] if data.get('buildsystem') else []
-    identity.extend(version_value(pkg, compact=False))
     signals = version_annotations(pkg) + check_failed_label(pkg)
     requirements = module(pkg, 'requires')
     if requirements:
@@ -204,7 +203,18 @@ def detail(pkg, collection=None):
         kind = result['data']['kind']
         adapter = PRESENTERS[kind]
         destination = sections if adapter.has_results else context
-        destination.extend(adapter.sections(result, links))
+        rendered = adapter.sections(result, links)
+        if kind == 'version':
+            current, candidate, annotations = version_parts(pkg)
+            fields = [field('Current', *current, *annotations)]
+            if candidate:
+                fields.append(field('Candidate', *candidate))
+            if not rendered:
+                rendered = [Section(id=result['id'], title='')]
+            rendered[0].placement = 'lead'
+            rendered[0].title = ''
+            rendered[0].fields = fields + rendered[0].fields
+        destination.extend(rendered)
     checks = []
     for result in pkg['monitors'].values():
         check = result['check']
@@ -219,9 +229,9 @@ def detail(pkg, collection=None):
         checks.append(Row(key=result['id'], id='check-' + result['id'], cells=[cell([text(caption(result['title']),
             href=links.condition('check:' + result['id'], check['status'], monitor=result['id'], section='coverage'))]),
             cell(*status_lines), cell(*timestamps)]))
+    sections.extend(context)
     if source:
         sections.extend(changelog_section(source, (collection or {}).get('source_repository')))
-    sections.extend(context)
     context = []
     sections.append(Section(id='checks', title='Checks', collapsible=True, table=Table(label='Collection checks', columns=[
         Column(title='Monitor'), Column(title='Observation'), Column(title='Last checked')], rows=checks)))

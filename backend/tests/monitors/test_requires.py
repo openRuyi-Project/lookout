@@ -280,9 +280,11 @@ def test_requires_document_is_small_and_status_has_text_meaning(snapshot, tmp_pa
     assert section['fields'] == section['entries'] == section['notes'] == []
     row = section['table']['rows'][0]['cells']
     assert row[0]['lines'][0][0]['text'] == 'Python'
-    assert row[1]['lines'][0][0]['text'] == '>=3.8'
-    assert [value['text'] for value in row[1]['lines'][0] if value['kind'] == 'code'] == ['>=3.8', '>=3.10']
-    rendered = next(value for value in row[1]['lines'][0] if value['text'] == mark)
+    assert [column['title'] for column in section['table']['columns']] == [
+        'Dependency', 'Observed source', 'Current requirement', 'Candidate requirement']
+    assert row[2]['lines'][0][0]['text'] == '>=3.8'
+    assert row[3]['lines'][0][0]['text'] == '>=3.10'
+    rendered = next(value for value in row[0 if status == 'unknown' else 2]['lines'][0] if value['text'] == mark)
     assert (rendered['text'], rendered['tone']) == (mark, tone)
     if status != 'unknown':
         assert rendered['title']  # non-colour meaning, not just a green/red glyph

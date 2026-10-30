@@ -77,7 +77,7 @@ def version_parts(pkg, *, compact=True, links=None):
                         href=links.condition('maintenance', Issue.UNTRACKED) if links else None)]
                   if untracked else [])
     if value.get('stale'):
-        annotation.append(retained_marker())
+        annotation.append(retained_marker(pkg.get('detail_url', '') + '#checks'))
     decoration = 'dashed' if untracked and value['current'] else None
     revision = value.get('revision')
     if revision:

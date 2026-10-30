@@ -705,6 +705,7 @@ try {
   for (const version of ['1.9', '1.8', '1.7']) assert.ok(row('failed').includes(`>${version}</a>`));
   assert.doesNotMatch(listing, /9\.9-shared/);
   assert.match(row('failed'), /tone-negative/);
+  assert.match(row('failed'), /href="\/packages\/failed#checks"/);
   const presentationCSS = await read('/presentation.css');
   assert.match(presentationCSS, /\[data-appearance="buildsystem%3Acustom"\]\{--appearance-background:#123456;--appearance-foreground:#ffffff\}/);
   assert.doesNotMatch(presentationCSS, /\.value-tag|\.document-nav/, 'one palette authority serves every document role');
@@ -730,7 +731,8 @@ try {
   assert.match(sourceContext, /class="detail-aside"[^]*?<section[^>]*id="build"/);
   assert.match(sourceContext, /class="detail-lead"[^]*?<section[^>]*id="source"/);
   assert.ok(sourceContext.indexOf('class="document-sections"') > sourceContext.indexOf('class="detail-aside"'));
-  assert.match(sourceContext, /Fixture source description/);
+  assert.match(sourceContext, /class="document-sections"[^]*?id="source-description"[^]*?Fixture source description/);
+  assert.ok(sourceContext.indexOf('class="package-heading"') < sourceContext.indexOf('class="detail-overview"'));
   assert.match(sourceContext, />MIT<\/span>/);
   assert.match(sourceContext, />\/SPECS\/success<\/a>/);
   assert.match(sourceContext, /href="https:\/\/example.org\/upstream"/);
@@ -780,7 +782,8 @@ try {
   const requirementSection = requirementPage.match(/<section\b[^>]*id="requires"[^]*?<\/section>/)[0];
   assert.match(requirementSection, />RuntimeDeps<\/h2>/);
   for (const name of ['Python', 'libwidget', 'libexample']) assert.ok(requirementSection.includes(name));
-  assert.match(requirementSection, /≥ 1.80<[^]*?>✓<[^]*?→[^]*?≥ 1.82<[^]*?>✗</);
+  assert.match(requirementSection, /≥ 1.80<[^]*?>✓<[^]*?≥ 1.82<[^]*?>✗</);
+  assert.match(requirementSection, />Current requirement<[^]*?>Candidate requirement</);
   for (const mark of ['✓', '✗']) assert.ok(requirementSection.includes(`>${mark}<`));
   assert.match(requirementSection, /Observed dependency version does not satisfy the upstream declaration/);
   const optionalSection = requirementPage.match(/<section\b[^>]*id="requires-optional"[^]*?<\/section>/)[0];

@@ -338,7 +338,8 @@ def test_package_context_and_changelog_remain_visible_without_empty_sections(sna
                            'date': '2026-09-19T01:00:00Z', 'signed_off_by': ['Packager']}]
     document = presentation_pages.detail(pkg)
     context = next(s for s in document.sections if s.id == 'source')
-    assert context.notes == ['Useful description']
+    assert context.notes == []
+    assert next(s for s in document.sections if s.id == 'source-description').notes == ['Useful description']
     assert context.fields[0].values[0].text == 'MIT'
     changelog = next(s for s in document.sections if s.title == 'Changelog')
     assert changelog.entries[0].metadata[0].text == 'Packager'

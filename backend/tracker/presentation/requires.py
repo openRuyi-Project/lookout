@@ -32,31 +32,38 @@ def requirement_constraint(requirement, side):
     return text(expression, kind='code', href=constraint['url'])
 
 
-def requirement_values(requirement, *, compact=False):
+def requirement_name(requirement):
     package = requirement['package']
     label = requirement['name']
     if requirement.get('extras'):
         label += '[' + ', '.join(requirement['extras']) + ']'
-    mapped = requirement.get('mapping') in (None, 'mapped')
-    name = text(label, href='/packages/' + quote(package, safe='') if package and mapped else None)
-    statuses = requirement['kind'] == 'runtime'
-    values = [name, requirement_constraint(requirement, 'current')]
-    if statuses:
-        values.append(requirement_status(requirement))
-    if requirement['changed']:
-        values += [text('→'), requirement_constraint(requirement, 'target')]
-        if statuses:
-            values.append(requirement_status(requirement, target=True))
-    elif requirement['current'] is None and requirement['target'] is not None:
-        values = [name, text('Upgrade:'), requirement_constraint(requirement, 'target'), requirement_status(requirement, target=True)]
     mapping = requirement.get('mapping')
+    mapped = mapping in (None, 'mapped')
+    values = [text(label, href='/packages/' + quote(package, safe='') if package and mapped else None)]
     if mapping in ('not_mapped', 'ambiguous', 'not_packaged'):
-        values = [value for value in values if value.text != '?']
         values.append(text(caption({'not_mapped': 'Not mapped', 'ambiguous': 'Ambiguous mapping',
                             'not_packaged': 'Not packaged'}[mapping]), tone='muted'))
+    return values
+
+
+def requirement_side(requirement, side):
+    values = [requirement_constraint(requirement, side)]
+    if (requirement.get(side) is not None and requirement['kind'] == 'runtime'
+            and requirement.get('mapping') in (None, 'mapped')):
+        values.append(requirement_status(requirement, target=side == 'target'))
+    return values
+
+
+def requirement_values(requirement, *, compact=False):
+    name, *mapping = requirement_name(requirement)
+    values = [name, *requirement_side(requirement, 'current')]
+    if requirement['changed']:
+        values += [text('→'), *requirement_side(requirement, 'target')]
+    elif requirement['current'] is None and requirement['target'] is not None:
+        values = [name, text('Upgrade:'), *requirement_side(requirement, 'target')]
     if compact and not requirement['changed']:
         values = [value for value in values if value.text != 'any version']
-    return values
+    return values + mapping
 
 
 def requirement_groups(requirements):
@@ -81,14 +88,19 @@ def requires_sections(result, links):
     if not requirements:
         return []
     sections, conditions = [], []
+    has_candidate = any(item['target'] is not None for item in requirements)
     for title, suffix, groups in dependency_groups(requirements):
         rows = []
         for number, (requirement, clauses) in enumerate(groups):
             values = requirement_values(requirement)
             observed = requirement['observed'] or {}
-            rows.append(Row(key=str(number) + ':' + requirement['dependency'], cells=[
-                cell([values[0]]), cell(values[1:]), cell([text(observed.get('version'), kind='code',
-                    href=observed.get('evidence_url'), title=observed.get('origin'))])]))
+            cells = [cell(requirement_name(requirement)),
+                     cell([text(observed.get('version'), kind='code',
+                                href=observed.get('evidence_url'), title=observed.get('origin'))]),
+                     cell(requirement_side(requirement, 'current'))]
+            if has_candidate:
+                cells.append(cell(requirement_side(requirement, 'target')))
+            rows.append(Row(key=str(number) + ':' + requirement['dependency'], cells=cells))
             if clauses:
                 condition_fields = [field('Applies when (any)', *[text(clause, kind='code') for clause in clauses])]
                 if requirement.get('optional') is None:
@@ -97,7 +109,8 @@ def requires_sections(result, links):
         if rows:
             sections.append(Section(id=result['id'] + suffix if sections else result['id'], title=title, table=Table(
                 label=title + ' compared with current source versions',
-                columns=[Column(title='Dependency'), Column(title='Required'), Column(title='Current source')], rows=rows)))
+                columns=[Column(title='Dependency'), Column(title='Observed source'), Column(title='Current requirement'),
+                         *([Column(title='Candidate requirement')] if has_candidate else [])], rows=rows)))
     if conditions:
         sections.append(Section(id=result['id'] + '-conditions', title='Dependency conditions',
                                 collapsible=True, entries=conditions))

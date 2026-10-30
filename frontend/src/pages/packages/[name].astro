@@ -14,12 +14,12 @@ const flowSections = data?.sections.filter(section => section.placement === 'flo
   <div class="package-detail"><a class="back" href="/">← Packages</a>
   {data ? <>
     {data.notices.map(notice => <p class="notice">{notice}</p>)}
+    <header class="package-heading"><h1>{data.title}</h1><div class="identity"><Values values={data.identity}/></div></header>
+    {data.subtitle && <p class="package-subtitle">{data.subtitle}</p>}
+    <nav class="package-links" aria-label="Package sources"><Values values={data.links}/></nav>
     <div class="detail-workspace">
       <div class="detail-overview">
         <div class="detail-lead">
-          <header class="package-heading"><h1>{data.title}</h1><div class="identity"><Values values={data.identity}/></div></header>
-          {data.subtitle && <p class="package-subtitle">{data.subtitle}</p>}
-          <nav class="package-links" aria-label="Package sources"><Values values={data.links}/></nav>
           {topSections.filter(section => section.placement === 'lead').map(section => <Section section={section}/>)}
         </div>
         <div class="detail-aside">{topSections.filter(section => section.placement === 'aside').map(section => <Section section={section}/>)}</div>

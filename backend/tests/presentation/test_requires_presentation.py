@@ -133,8 +133,28 @@ def test_mixed_dependency_preview_orders_runtime_before_build_and_keeps_detail_e
     assert [(s.id, s.title) for s in sections] == [('requires', 'RuntimeDeps'), ('requires-build', 'BuildDeps')]
     for section in sections:
         assert not section.collapsible
-        values = section.table.rows[0].cells[1].lines[0]
+        values = [value for cell in section.table.rows[0].cells[2:] for line in cell.lines for value in line]
         assert [value.href for value in values if value.href] == [
             'https://example.org/current', 'https://example.org/target']
     build_only = presentation_requires.requires_sections(result(items['data']['requirements'][0]), links)
     assert build_only[0].id == 'requires' and build_only[0].title == 'BuildDeps'
+
+
+def test_requirement_matrix_keeps_each_side_and_missing_evidence_distinct():
+    target = dict(expression='>=3', source='Registry', url='https://example.org/target')
+    items = result(changed(target=target, changed=True, target_satisfaction='unsatisfied'),
+                   changed(name='New dependency', current=None, target=target, changed=False),
+                   changed(name='Unobserved candidate'))
+    before = deepcopy(items)
+    table = presentation_requires.requires_sections(items, presentation_navigation.Links())[0].table
+    assert [column.title for column in table.columns] == [
+        'Dependency', 'Observed source', 'Current requirement', 'Candidate requirement']
+    assert [texts(cell) for cell in table.rows[0].cells[1:]] == [[['2']], [['>=1', '✓']], [['>=3', '✗']]]
+    assert texts(table.rows[1].cells[2]) == [['Not observed']]
+    assert texts(table.rows[2].cells[3]) == [['Not observed']]
+    assert items == before
+
+
+def test_requirement_matrix_omits_an_unobserved_candidate_column():
+    table = presentation_requires.requires_sections(result(changed()), presentation_navigation.Links())[0].table
+    assert [column.title for column in table.columns] == ['Dependency', 'Observed source', 'Current requirement']
