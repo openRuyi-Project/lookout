@@ -137,15 +137,36 @@ jobs:
       contents: read
       code-quality: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/coverage-upload.py
+          sparse-checkout-cone-mode: false
+      - name: Check out the coverage uploader
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: actions/upload-code-coverage
+          ref: 2b21a77928be8d5168c2b9581a67f2adbebacc52 # v1.4.4
+          path: .coverage-action
+          persist-credentials: false
       - name: Download coverage artifact
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
           name: coverage-report-python
-      - uses: actions/upload-code-coverage@2b21a77928be8d5168c2b9581a67f2adbebacc52 # v1.4.4
-        with:
-          file: backend-coverage.xml
-          language: Python
-          label: backend
+          path: ${{ runner.temp }}/coverage
+          digest-mismatch: error
+      - name: Upload coverage report
+        env:
+          PYTHONPATH: .coverage-action
+          GH_TOKEN: ${{ github.token }}
+          INPUT_FILE: ${{ runner.temp }}/coverage/backend-coverage.xml
+          INPUT_LANGUAGE: Python
+          INPUT_LABEL: backend
+          COVERAGE_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          COVERAGE_PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          COVERAGE_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          COVERAGE_PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: timeout 240s python3 scripts/coverage-upload.py
   result:
     name: CI result
     if: always()
