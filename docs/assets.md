@@ -14,6 +14,8 @@ Preserve these asset-specific conditions:
 - GNU: credit FSF and Aurélio A. Heckert. Share adaptations under CC-BY-SA-2.0.
 - Go Gopher: retain both the CC-BY-4.0 attribution and Devicon MIT notice.
 - Rust: follow the linked trademark policy as well as the artwork license.
+- Waf: the original SVG states CC BY-NC without a version. Its noncommercial
+  restriction is separate from the software license; attribution does not waive it.
 - CMake: the [software license](https://cmake.org/licensing/) does not grant trademark rights.
 
 The catalog records dark-mode changes and Tux's archived permission source.

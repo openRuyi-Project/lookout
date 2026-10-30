@@ -63,3 +63,8 @@ path = "frontend/src/assets/icons/obs-*.svg"
 precedence = "override"
 SPDX-FileCopyrightText = "Fonticons, Inc."
 SPDX-License-Identifier = "CC-BY-4.0"
+
+[[annotations]]
+path = "frontend/src/assets/logos/waf.svg"
+SPDX-FileCopyrightText = "Thomas Nagy"
+SPDX-License-Identifier = "LicenseRef-Waf-Artwork"

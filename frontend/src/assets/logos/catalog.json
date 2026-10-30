@@ -96,5 +96,17 @@
     "changes": "Emblem extracted from the upstream logo sheet; geometry unchanged. Displayed in white in dark mode.",
     "sha256": "787022282bbe299ebea5c36e2cb317beb6b67a5e8162bdb5b48266facc3ec0b1",
     "trademark_symbol": ""
+  },
+  "waf": {
+    "title": "Waf",
+    "credit": "Thomas Nagy",
+    "source": "https://waf.io/",
+    "license": "CC BY-NC (noncommercial; version unspecified)",
+    "license_url": "https://gitlab.com/ita1024/waf/-/blob/95b06a7fd602bc961132368e9029d11d6de52ba8/docs/slides/presentation/gfx/waflogo.svg",
+    "asset_source": "https://gitlab.com/ita1024/waf/-/raw/95b06a7fd602bc961132368e9029d11d6de52ba8/docs/slides/presentation/gfx/waflogo.svg",
+    "monochrome": false,
+    "changes": "None; upstream SVG, displayed at reduced size.",
+    "sha256": "54569f48382181af06753acbc16662f648019333e44e24281f4b707712704a96",
+    "trademark_symbol": ""
   }
 }

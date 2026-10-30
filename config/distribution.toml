@@ -63,6 +63,11 @@ icon = "linux"
 background = "#475569"
 foreground = "#ffffff"
 
+[buildsystems.waf]
+icon = "waf"
+background = "#756800"
+foreground = "#ffffff"
+
 [github]
 interval_seconds = 600
 stale_after_seconds = 1800

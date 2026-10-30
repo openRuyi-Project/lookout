@@ -1,0 +1,12 @@
+Waf logo
+Author and rights holder: Thomas Nagy
+Source: https://gitlab.com/ita1024/waf/-/blob/95b06a7fd602bc961132368e9029d11d6de52ba8/docs/slides/presentation/gfx/waflogo.svg
+
+The upstream SVG contains this notice:
+
+License:
+ cc by-nc
+ http://creativecommons.org/about/licenses/
+
+The notice does not specify a license version. Its noncommercial restriction
+applies to the artwork, separately from the Waf software license.

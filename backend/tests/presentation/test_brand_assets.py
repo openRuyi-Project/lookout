@@ -20,7 +20,7 @@ def test_declared_logos_are_complete_local_assets():
         svg = ET.fromstring(data)
         assert svg.tag == '{http://www.w3.org/2000/svg}svg' and (svg.get('viewBox') or (svg.get('width') and svg.get('height')))
         for element in svg.iter():
-            assert element.tag.rsplit('}', 1)[-1] in {'svg', 'path', 'g', 'defs', 'clipPath', 'use', 'title', 'metadata', 'RDF', 'Work', 'format', 'type', 'namedview', 'linearGradient', 'radialGradient', 'stop', 'ellipse', 'circle', 'mask', 'rect'}
+            assert element.tag.rsplit('}', 1)[-1] in {'svg', 'path', 'g', 'defs', 'clipPath', 'use', 'title', 'metadata', 'RDF', 'Work', 'format', 'type', 'namedview', 'linearGradient', 'radialGradient', 'stop', 'ellipse', 'circle', 'mask', 'rect', 'text', 'tspan', 'description', 'creator', 'Agent', 'rights', 'subject', 'Bag', 'li'}
             for key, value in element.attrib.items():
                 assert not key.startswith('on')
                 if key.rsplit('}', 1)[-1] == 'href':

@@ -675,6 +675,8 @@ try {
   assert.match(about, /permission notice shall be included/);
   assert.match(about, /Python Software Foundation/);
   assert.match(about, /Trademark policy/);
+  assert.match(about, /Thomas Nagy/);
+  assert.match(about, /CC BY-NC \(noncommercial; version unspecified\)/);
   const simple = await read('/?monitor=version');
   assert.match(simple, /<table class="data-table"/);
   assert.match(await read('/?monitor=build'), /<table class="data-table wide status-matrix"/);
@@ -720,9 +722,11 @@ try {
   const changedPaletteCSS = await read('/presentation.css');
   assert.match(changedPaletteCSS, /--appearance-background:#654321;--appearance-foreground:#eeeeee/);
   assert.doesNotMatch(changedPaletteCSS, /unsafe|body|display|#123456/);
-  appearancePalette = {custom: {background: '#123456', foreground: '#ffffff', icon: 'rust'}};
-  const changedIcon = await read('/');
-  assert.match(changedIcon, /<img src="\/_astro\/rust[.\w-]*\.svg"/);
+  for (const icon of ['rust', 'waf']) {
+    appearancePalette = {custom: {background: '#123456', foreground: '#ffffff', icon}};
+    const changedIcon = await read('/');
+    assert.match(changedIcon, new RegExp(`<img src="/_astro/${icon}[.\\w-]*\\.svg"`));
+  }
   for (const icon of ['not-in-catalog', '../gopher', 'https://untrusted.example/logo.svg']) {
     appearancePalette.custom.icon = icon;
     const fallback = (await read('/')).match(/<nav[^>]*aria-label="BuildSystem"[^]*?<\/nav>/)[0];
