@@ -39,6 +39,11 @@ export interface components {
              * @enum {string}
              */
             role: "identity" | "value" | "status";
+            /**
+             * Navigation
+             * @default []
+             */
+            navigation: components["schemas"]["Navigation"][];
         };
         /** Condition */
         Condition: {
@@ -256,11 +261,6 @@ export interface components {
             /** Title */
             title: string;
             navigation: components["schemas"]["Navigation"];
-            /**
-             * Global Navigation
-             * @default []
-             */
-            global_navigation: components["schemas"]["Navigation"][];
             controls: components["schemas"]["Controls"];
             table: components["schemas"]["Table"];
             /** Total */

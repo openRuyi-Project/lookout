@@ -12,11 +12,13 @@ from tracker.presentation.model import (
     ListingDocument,
     Navigation,
     Row,
+    RowNote,
     Section,
     Table,
 )
 from tracker.presentation.navigation import (
     Links,
+    build_navigation,
     global_navigation,
     listing_controls,
     listing_query,
@@ -31,6 +33,7 @@ from tracker.presentation.values import (
     module,
     stamp,
     text,
+    version_parts,
     version_value,
 )
 from tracker.presentation.version import version_annotations
@@ -92,6 +95,7 @@ def listing(payload, query):
     table = (_coverage_table(payload, focus, links, title)
              if focus is not None and payload['section'] == 'coverage'
              else _results_table(payload, focus, links, title))
+    table.columns[0].navigation = global_navigation(payload, links)
     controls = listing_controls(payload, query, focus, links)
     pagination = []
     if payload['page'] > 1:
@@ -100,12 +104,11 @@ def listing(payload, query):
         pagination.append(Choice(label='Next', href=links.to(page=payload['page'] + 1)))
     meta = [] if focus else collection_meta(payload['collection'])
     notices = ['Test fixture — not live openRuyi data.'] if payload['collection']['mode'] == 'fixture' else []
-    return ListingDocument(title=title, navigation=navigation, global_navigation=global_navigation(payload, links), controls=controls,
+    return ListingDocument(title=title, navigation=navigation, controls=controls,
         table=table, total=payload['total'], page=payload['page'],
         pages=payload['pages'], pagination=pagination, meta=meta,
         data_status=data_status(payload['collection'], payload.get('monitor_coverage', {}), payload['monitors']),
         notices=notices)
-
 
 
 def _coverage_table(payload, focus, links, title):
@@ -141,9 +144,17 @@ def _results_table(payload, focus, links, title):
     descriptors = [focus] if focus else [m for m in payload['monitors'] if m['kind'] in ('version', 'build')]
     columns = [Column(title='Package', role='identity')]
     for descriptor in descriptors:
+        if not focus and descriptor['kind'] == 'version':
+            columns.extend([Column(title='Current'), Column(title='Candidate')])
+            continue
         columns_for = presenter(descriptor).columns
         assert columns_for is not None
-        columns.extend(columns_for(caption(descriptor['title']), payload['targets']))
+        added = columns_for(caption(descriptor['title']), payload['targets'])
+        if descriptor['kind'] == 'build':
+            menus = build_navigation(payload, links)
+            for target, column in zip(payload['targets'], added, strict=True):
+                column.navigation = [menus[target['id']]]
+        columns.extend(added)
     return Table(label=title, columns=columns,
                  rows=[_result_row(pkg, descriptors, focus is None, links) for pkg in payload['items']])
 
@@ -155,11 +166,13 @@ def _result_row(pkg, descriptors, aggregate, links):
         result = pkg['monitors'][descriptor['id']]
         column = len(cells)
         if aggregate and descriptor['kind'] == 'version':
-            cells.append(cell(version_value(pkg, links=links)))
+            current, candidate, annotations = version_parts(pkg, links=links)
+            cells.extend([cell(current + annotations), cell(candidate)])
             for related in sorted(pkg['monitors'].values(), key=lambda m: m['id'] == 'eol'):
                 preview = presenter({'kind': related['data']['kind']}).preview
                 if preview:
-                    cells[column].lines.extend(preview(pkg, related, links))
+                    notes.extend(RowNote(column=0, span=column + 2, values=line)
+                                 for line in preview(pkg, related, links))
         else:
             cells_for = presenter(descriptor).cells
             assert cells_for is not None
@@ -167,6 +180,7 @@ def _result_row(pkg, descriptors, aggregate, links):
         if aggregate and descriptor['kind'] == 'build':
             notes.extend(build_note(pkg, result, column))
     return Row(key=pkg['name'], cells=cells, notes=notes)
+
 
 def detail(pkg, collection=None):
     links = Links()

@@ -137,8 +137,6 @@ def listing_controls(payload, query, focus, links):
     navigation = []
     if not focus:
         rows.append(maintenance_navigation(payload, links))
-    if not focus or (focus['kind'] == 'build' and payload['section'] == 'results'):
-        rows.extend(row for row in build_navigation(payload, links).values() if row.choices)
     if focus:
         choices = []
         if focus['kind'] == 'version':

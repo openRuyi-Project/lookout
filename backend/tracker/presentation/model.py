@@ -51,6 +51,7 @@ class Navigation(DocumentModel):
 class Column(DocumentModel):
     title: str
     role: Literal['identity', 'value', 'status'] = 'value'
+    navigation: list[Navigation] = []
 
 
 class RowNote(DocumentModel):
@@ -148,7 +149,6 @@ class ListingDocument(DocumentModel):
     schema_version: Literal[1] = 1
     title: str
     navigation: Navigation
-    global_navigation: list[Navigation] = []
     controls: Controls
     table: Table
     total: int

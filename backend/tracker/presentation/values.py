@@ -58,10 +58,10 @@ def dated_commit(value, date, other=None):
     return prefix + short_commit(value, other)
 
 
-def version_value(pkg, *, compact=True, links=None):
+def version_parts(pkg, *, compact=True, links=None):
     result = module(pkg, 'version')
     if not result:
-        return []
+        return [], [], []
     value = result['data']
     build = module(pkg, 'build')
     success = build['data']['source_success'] if build else None
@@ -82,16 +82,16 @@ def version_value(pkg, *, compact=True, links=None):
     revision = value.get('revision')
     if revision:
         if not compact:
-            return [text(value['current'], kind='code', tone=tone, title=title, decoration=decoration), *annotation]
+            return [text(value['current'], kind='code', tone=tone, title=title, decoration=decoration)], [], annotation
         current, latest = revision['current'], revision['latest']
         links = revision['links']
         values = [text(value['current'], kind='code', tone=tone, decoration=decoration, href=links['current'],
                        title=f"{value['current']} · {current}")]
+        candidate = []
         if value['relation'] == 'changed':
-            values += [text('→', title='Tracked branch tip differs from packaged source'),
-                       text(dated_commit(latest, revision['latest_committed_at'], current), kind='code', tone='positive', href=links['latest'],
+            candidate = [text(dated_commit(latest, revision['latest_committed_at'], current), kind='code', tone='positive', href=links['latest'],
                             title=revision['branch'] + ' · ' + latest)]
-        return values + annotation
+        return values, candidate, annotation
     values = [text(value['current'], kind='code', tone=tone, title=title, decoration=decoration)]
     release = value.get('source_release')
     if release and release['version'] != value['current']:
@@ -101,9 +101,19 @@ def version_value(pkg, *, compact=True, links=None):
                  else '(' + qualifier + ')')
         values.append(text(label, kind='code', tone='muted',
                            href=release['url'], title='Exact Source0 release'))
-    if value['relation'] == 'outdated':
-        values += [text('→', title='Update available'), text(value['latest'], kind='code', tone='positive')]
-    return values + annotation
+    candidate = [text(value['latest'], kind='code', tone='positive')] if value['relation'] == 'outdated' else []
+    return values, candidate, annotation
+
+
+def version_value(pkg, *, compact=True, links=None):
+    current, candidate, annotations = version_parts(pkg, compact=compact, links=links)
+    if candidate:
+        result = module(pkg, 'version')
+        assert result is not None
+        title = ('Tracked branch tip differs from packaged source' if result['data'].get('revision')
+                 else 'Update available')
+        current = [*current, text('→', title=title), *candidate]
+    return current + annotations
 
 
 def check_value(check):

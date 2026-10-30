@@ -156,7 +156,9 @@ def test_selected_zero_count_menus_remain_visible_and_removable(prepared):
     query = {'filters': conjunction({'buildsystem': 'fixture-system', 'maintenance': 'FixtureSignal', 'build:' + target: 'failed'}).model_dump()}
     page = presentation_pages.listing(payload, query)
     controls = page.controls
-    selectors = [row for row in controls.choice_rows if any(choice.selected for choice in row.choices)]
+    selectors = [row for row in [*controls.choice_rows,
+        *[menu for column in page.table.columns[1:] for menu in column.navigation]]
+        if any(choice.selected for choice in row.choices)]
     assert len(selectors) == 2
     sidebar, = presentation_navigation.global_navigation(payload, presentation_navigation.Links(query))
     assert sidebar.label == 'BuildSystem'
@@ -271,3 +273,20 @@ def test_upgrade_arrow_does_not_substitute_for_evidence_freshness(relation, stal
 
     assert ('→' in values) == (relation == 'outdated')
     assert ('Stale' in values) == stale
+
+
+def test_aggregate_columns_and_target_filters_share_the_query(client):
+    doc = client.get('/api/ui/packages').json()
+    assert [column['title'] for column in doc['table']['columns'][:3]] == ['Package', 'Current', 'Candidate']
+    row = next(row for row in doc['table']['rows'] if row['key'] == 'binutils')
+    assert row['cells'][1]['lines'][0][0]['text'] == '3.9.0'
+    assert len(row['cells']) == len(doc['table']['columns'])
+    for column in doc['table']['columns'][3:]:
+        assert len(column['navigation']) == 1
+        menu = column['navigation'][0]
+        assert menu['label'] == column['title']
+        for choice in menu['choices']:
+            selected = client.get('/api/ui/packages' + '?' + urlsplit(choice['href']).query).json()
+            assert selected['total'] == choice['count']
+    assert not any(row['label'] in [column['title'] for column in doc['table']['columns'][3:]]
+                   for row in doc['controls']['choice_rows'])

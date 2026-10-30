@@ -71,8 +71,8 @@ def test_build_focus_shows_observed_reason_only_in_its_target(observed, client_f
     assert all('fixture-dependency' not in str(cell) for cell in cells[2:])
     overview = row(client.get('/api/ui/packages').json())
     assert 'fixture-dependency' not in str(overview['cells'])
-    assert overview['notes'][0]['column'] == 2 and overview['notes'][0]['span'] == 3
-    assert overview['notes'][0]['values'][0]['text'] == target + ':'
+    assert overview['notes'][0]['column'] == 3 and overview['notes'][0]['span'] == 1
+    assert overview['notes'][0]['values'][0]['text'] == 'nothing provides fixture-dependency >= 7'
     # Keep the public list API compact; its detail endpoint already owns the
     # original OBS observations. The UI consumes the full prepared projection.
     assert 'fixture-dependency' not in client.get('/api/v2/packages?monitor=build').text

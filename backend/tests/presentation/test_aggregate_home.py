@@ -52,19 +52,16 @@ def test_version_dependency_filter_explains_satisfied_changes():
     assert [value.text for value in lines[0]] == ['RuntimeDeps:', 'changed', '>=1', '✓', '→', '>=2', '✓']
 
 
-def test_build_reasons_group_identical_targets_without_omitting_details():
+def test_build_reasons_stay_in_their_target_columns():
     def target(label, reason):
         return dict(label=label, raw_status='blocked', text='Blocked', issue=True, details=reason)
     prefix = 'waiting for ' + 'fixture-dependency, ' * 20
     data = dict(data={'targets': [target('one', prefix + 'A'), target('two', prefix + 'A'),
                                  target('three', prefix + 'B')]})
-    note, other = build_note({'detail_url': '/packages/fixture'}, data, 2)
-    assert (note.column, note.span) == (2, 3)
-    assert note.values[0].text == 'one, two:'
-    assert note.values[1].text == prefix + 'A'
-    assert other.values[0].text == 'three:'
-    assert other.values[1].text == prefix + 'B'
-    assert note.values[1].href == '/packages/fixture#build'
+    notes = build_note({'detail_url': '/packages/fixture'}, data, 3)
+    assert [(note.column, note.span) for note in notes] == [(3, 1), (4, 1), (5, 1)]
+    assert [note.values[0].text for note in notes] == [prefix + 'A', prefix + 'A', prefix + 'B']
+    assert all(note.values[0].href == '/packages/fixture#build' for note in notes)
 
 
 def test_row_note_cannot_escape_the_table():

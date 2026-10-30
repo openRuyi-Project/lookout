@@ -93,13 +93,9 @@ def build_cells(pkg, result, links):
 
 
 def build_note(pkg, result, column):
-    """Group identical reasons by target; preserve every distinct reason."""
-    reasons = {}
-    for build in result['data']['targets']:
+    notes = []
+    for index, build in enumerate(result['data']['targets']):
         line = build_reason_line(build, pkg['detail_url'])
         if line:
-            reasons.setdefault(line[0].text, []).append(build['label'])
-    return [RowNote(column=column, span=len(result['data']['targets']), values=[
-        text(', '.join(targets) + ':', kind='code', tone='muted'),
-        text(reason, href=pkg['detail_url'] + '#build', tone='muted')])
-        for reason, targets in reasons.items()]
+            notes.append(RowNote(column=column + index, span=1, values=line))
+    return notes

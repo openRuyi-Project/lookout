@@ -22,3 +22,25 @@ export function safeHref(value?: string | null): string | undefined {
   } catch { /* Invalid provenance stays visible as text, never executable markup. */ }
   return undefined;
 }
+
+export function noteRows(notes: Table['rows'][number]['notes'], columns: number) {
+  const nextRow = Array<number>(columns).fill(0);
+  const rows: typeof notes[] = [];
+  for (const note of notes) {
+    const end = note.column + note.span;
+    const index = Math.max(...nextRow.slice(note.column, end));
+    (rows[index] ??= []).push(note);
+    nextRow.fill(index + 1, note.column, end);
+  }
+  return rows.map(row => {
+    const cells: typeof notes = [];
+    let column = 0;
+    for (const note of row.sort((a, b) => a.column - b.column)) {
+      if (note.column > column) cells.push({column, span: note.column - column, values: []});
+      cells.push(note);
+      column = note.column + note.span;
+    }
+    if (column < columns) cells.push({column, span: columns - column, values: []});
+    return cells;
+  });
+}

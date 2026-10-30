@@ -2,11 +2,24 @@
 import assert from 'node:assert/strict';
 import './http-cache.cjs';
 import './render-cache.mjs';
+import {noteRows} from '../src/lib/document.ts';
 import {spawn, spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {once} from 'node:events';
 import {createServer, request} from 'node:http';
 import {gunzipSync, brotliDecompressSync} from 'node:zlib';
+
+const note = (column, span, label) => ({column, span, values: [{text: label}]});
+const notes = [note(0, 3, 'evidence'), note(0, 3, 'more evidence'),
+  note(3, 1, 'rva23 reason'), note(5, 1, 'x86 reason')];
+const packed = noteRows(notes, 6);
+assert.deepEqual(packed.map(row => row.map(cell => [cell.column, cell.span])),
+  [[[0, 3], [3, 1], [4, 1], [5, 1]], [[0, 3], [3, 3]]]);
+assert.deepEqual(packed.flat().flatMap(cell => cell.values).map(value => value.text),
+  ['evidence', 'rva23 reason', 'x86 reason', 'more evidence']);
+assert.deepEqual(noteRows([], 6), []);
+assert.deepEqual(notes.map(cell => cell.values[0].text),
+  ['evidence', 'more evidence', 'rva23 reason', 'x86 reason']);
 
 const serving = process.argv.includes('--serve');
 let delays = {};
@@ -477,7 +490,7 @@ try {
   assert.match(listing, /href="https:\/\/build.example.org\/">BuildService<\/a>/);
   assert.match(listing, /href="https:\/\/github.com\/fixture\/repo\/tree\/stable%2F3">stable\/3<\/a>/);
   assert.match(listing, /href="https:\/\/github.com\/fixture\/repo\/commit\/abcdef0123456789abcdef0123456789abcdef01"[^>]*>abcdef<\/a>/);
-  assert.equal((listing.match(/<table\b[^]*?<\/table>/)[0].match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 5);
+  assert.equal((listing.match(/<table\b[^]*?<\/table>/)[0].match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 6);
   assert.equal((listing.match(/<form\b/g) || []).length, 1);
   assert.equal((listing.match(/data-group-id=/g) || []).length, 0);
   const packageMenu = listing.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
@@ -683,6 +696,7 @@ try {
   assert.match(statusPanel, /intentional fixture error/);
   assert.doesNotMatch(listing.slice(listing.indexOf('<main'), listing.indexOf('</main>')), /intentional fixture error/);
   assert.match(statusPanel, /Collection checks across all packages/);
+  const packageRows = name => listing.match(new RegExp(`<tr data-key="${name}"[^]*?</tbody>`))?.[0] ?? '';
   const row = name => listing.match(new RegExp(`<tr data-key="${name}"[^]*?</tr>`))?.[0] ?? '';
   assert.match(row('success'), /data-appearance="buildsystem%3Acustom"/);
   assert.doesNotMatch(row('success'), /#build/);
@@ -802,7 +816,10 @@ try {
   assert.doesNotMatch(buildReason, /worker:\/\/|nothing provides <fixture-dependency>/);
   const buildList = await read('/?monitor=build');
   assert.match(buildList, /status-matrix/);
-  assert.equal((buildList.match(/class="choice-row"/g) || []).length, targets.length);
+  for (const target of targets) {
+    assert.match(buildList, new RegExp(`aria-label="Filter ${target.label}"`));
+  }
+  assert.doesNotMatch(buildList, /class="choice-row"/);
   const buildFiltered = await read(filtered([[['build:rva23', 'failed'], ['build:rva23', 'unresolvable']]], {monitor: 'build'}, 'or'));
   const selectedTarget = buildFiltered.match(/<nav[^>]*aria-label="rva23"[^]*?<\/nav>/)[0];
   assert.equal((selectedTarget.match(/aria-current="page"/g) || []).length, 2);
@@ -812,10 +829,10 @@ try {
   assert.match(impossibleBuild, /0 packages/);
   assert.match(buildList, /nothing provides &lt;fixture-dependency&gt;/);
   assert.doesNotMatch(buildList, /worker:\/\//);
-  const aggregateReason = listing.match(/<tr class="row-note"[^]*?<\/tr>/)[0];
-  assert.match(aggregateReason, /colspan="2" aria-hidden="true"/);
-  assert.match(aggregateReason, /colspan="3"[^]*?rva23:[^]*?nothing provides &lt;fixture-dependency&gt;/);
-  const aggregateRuntime = listing.match(/<tr data-key="requires-upgrade"[^]*?<\/tr>/)[0];
+  const aggregateReason = packageRows('build-reason');
+  assert.match(aggregateReason, /colspan="3" aria-hidden="true"/);
+  assert.match(aggregateReason, /colspan="1"[^]*?headers="row-Packages-\d+ column-Packages-3"[^]*?nothing provides &lt;fixture-dependency&gt;/);
+  const aggregateRuntime = packageRows('requires-upgrade');
   assert.match(aggregateRuntime, /RuntimeDeps:[^]*?libwidget/);
   assert.doesNotMatch(aggregateRuntime, /Python|Optional library|platform_python_implementation/);
   assert.match(listing, /MIT → Apache-2.0/);
