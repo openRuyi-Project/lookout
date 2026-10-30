@@ -23,7 +23,6 @@ class Text(DocumentModel):
     variant: Literal['outline', 'solid'] = 'outline'
     tone: Literal['normal', 'muted', 'positive', 'negative', 'notice'] = 'normal'
     appearance: str | None = None
-    decoration: Literal['dashed'] | None = None
     datetime: str | None = None
     icon: str | None = None
 

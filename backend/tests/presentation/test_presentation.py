@@ -196,8 +196,11 @@ def test_version_display_uses_decision_not_independent_comparison(snapshot):
     version.update(track=None, relation='untracked')
     pkg['monitors']['version']['dimensions']['view'] = ['untracked']
     pkg['monitors']['version']['dimensions']['maintenance'] = ['Untracked']
-    assert presentation_values.version_value(pkg)[0].tone == 'muted'
-    assert presentation_values.version_value(pkg)[0].title == 'No upstream version track configured'
+    assert presentation_values.version_value(pkg)[0].tone == 'negative'
+    current, candidate, annotations = presentation_values.version_parts(pkg)
+    assert [value.text for value in current] == ['source.version']
+    assert candidate == []
+    assert annotations[0].title == 'No upstream version track configured'
 
 
 @pytest.mark.parametrize('matches', [False, None, True])

@@ -2,6 +2,7 @@
 from datetime import UTC, datetime
 
 from tracker.monitors.issues import Issue
+from tracker.monitors.model import check_failed
 from tracker.presentation.labels import appearance
 from tracker.presentation.model import Cell, Column, Field, Text
 
@@ -66,33 +67,35 @@ def version_parts(pkg, *, compact=True, links=None):
     build = module(pkg, 'build')
     success = build['data']['source_success'] if build else None
     untracked = Issue.UNTRACKED in result.get('dimensions', {}).get('maintenance', [])
-    tone = 'muted' if untracked or success is None else 'negative' if success is False else 'normal'
-    title = ('No upstream version track configured' if untracked else
-             'Current source has not succeeded on every active build target' if success is False else
+    tone = 'muted' if success is None else 'negative' if success is False else 'normal'
+    title = ('Current source has not succeeded on every active build target' if success is False else
              'Current source build success is unknown' if success is None else
              'Current source succeeded on every active build target')
-    if value['relation'] == 'unknown' and not untracked:
-        title += '; source and upstream cannot currently be compared'
     annotation = ([text(Issue.UNTRACKED, kind='tag', appearance=appearance(Issue.UNTRACKED),
+                        title='No upstream version track configured',
                         href=links.condition('maintenance', Issue.UNTRACKED) if links else None)]
                   if untracked else [])
-    if value.get('stale'):
-        annotation.append(retained_marker(pkg.get('detail_url', '') + '#checks'))
-    decoration = 'dashed' if untracked and value['current'] else None
+    check = result.get('check', {'status': 'pending'})
+    check_url = pkg.get('detail_url', '') + '#check-' + result.get('id', 'version')
+    if check_failed(check):
+        annotation.append(text(Issue.CHECK_FAILED, kind='tag', appearance=appearance(Issue.CHECK_FAILED),
+                               title=check.get('error') or 'Version checks failed', href=check_url))
+    elif value.get('stale'):
+        annotation.append(retained_marker(check_url))
     revision = value.get('revision')
     if revision:
         if not compact:
-            return [text(value['current'], kind='code', tone=tone, title=title, decoration=decoration)], [], annotation
+            return [text(value['current'], kind='code', tone=tone, title=title)], [], annotation
         current, latest = revision['current'], revision['latest']
         links = revision['links']
-        values = [text(value['current'], kind='code', tone=tone, decoration=decoration, href=links['current'],
+        values = [text(value['current'], kind='code', tone=tone, href=links['current'],
                        title=f"{value['current']} · {current}")]
         candidate = []
         if value['relation'] == 'changed':
             candidate = [text(dated_commit(latest, revision['latest_committed_at'], current), kind='code', tone='positive', href=links['latest'],
                             title=revision['branch'] + ' · ' + latest)]
         return values, candidate, annotation
-    values = [text(value['current'], kind='code', tone=tone, title=title, decoration=decoration)]
+    values = [text(value['current'], kind='code', tone=tone, title=title)]
     release = value.get('source_release')
     if release and release['version'] != value['current']:
         prefix = str(value['current']) + '-'

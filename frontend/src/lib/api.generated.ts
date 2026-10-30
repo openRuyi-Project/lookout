@@ -415,8 +415,6 @@ export interface components {
             tone: "normal" | "muted" | "positive" | "negative" | "notice";
             /** Appearance */
             appearance: string | null;
-            /** Decoration */
-            decoration: "dashed" | null;
             /** Datetime */
             datetime: string | null;
             /** Icon */

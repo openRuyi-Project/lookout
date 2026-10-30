@@ -579,8 +579,14 @@ try {
   assert.match(changedPage, /aria-label="Remove DepChanges"/);
   await assertGlobalSearch(changedPage, 'advisory-current');
   const untrackedRow = listing.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
-  assert.match(untrackedRow, /data-decoration="dashed"/);
-  assert.match(untrackedRow, /label%3AUntracked[^>]*>Untracked/);
+  const untrackedCells = [...untrackedRow.matchAll(/<t[hd]\b[^>]*>([^]*?)<\/t[hd]>/g)].map(match => match[1]);
+  assert.match(untrackedCells[1], />2\.0</);
+  assert.doesNotMatch(untrackedCells[1], /value-tag/);
+  assert.match(untrackedCells[2], /label%3AUntracked[^>]*>Untracked/);
+  const failedRow = listing.match(/<tr data-key="check-error"[^]*?<\/tr>/)[0];
+  const failedCells = [...failedRow.matchAll(/<t[hd]\b[^>]*>([^]*?)<\/t[hd]>/g)].map(match => match[1]);
+  assert.doesNotMatch(failedCells[0] + failedCells[1], />CheckFailed</);
+  assert.match(failedCells[2], /href="\/packages\/check-error#check-version"[^>]*>CheckFailed</);
 
   const errorPage = await read('/packages/check-error');
   for (const page of [listing, errorPage]) {
@@ -705,7 +711,7 @@ try {
   for (const version of ['1.9', '1.8', '1.7']) assert.ok(row('failed').includes(`>${version}</a>`));
   assert.doesNotMatch(listing, /9\.9-shared/);
   assert.match(row('failed'), /tone-negative/);
-  assert.match(row('failed'), /href="\/packages\/failed#checks"/);
+  assert.match(row('failed'), /href="\/packages\/failed#check-version"/);
   const presentationCSS = await read('/presentation.css');
   assert.match(presentationCSS, /\[data-appearance="buildsystem%3Acustom"\]\{--appearance-background:#123456;--appearance-foreground:#ffffff\}/);
   assert.doesNotMatch(presentationCSS, /\.value-tag|\.document-nav/, 'one palette authority serves every document role');

@@ -60,7 +60,7 @@ def identity_cell(pkg, links, *, labels=True):
         if version and Issue.OUTDATED in version['dimensions'].get('maintenance', []):
             signals.append(text(Issue.OUTDATED, kind='tag', appearance=appearance(Issue.OUTDATED),
                                 href=links.condition('maintenance', Issue.OUTDATED)))
-        signals.extend(check_failed_label(pkg, links))
+        signals.extend(check_failed_label(pkg, links, exclude_kind='version'))
         for result in pkg['monitors'].values():
             if result['data']['kind'] in ('evidence', 'requires', 'activity'):
                 signals.extend(evidence_labels(result, links, counts=True))
@@ -71,8 +71,9 @@ def identity_cell(pkg, links, *, labels=True):
     return cell(identity)
 
 
-def check_failed_label(pkg, links=None):
-    errors = [result for result in pkg['monitors'].values() if check_failed(result['check'])]
+def check_failed_label(pkg, links=None, *, exclude_kind=None):
+    errors = [result for result in pkg['monitors'].values()
+              if result['data']['kind'] != exclude_kind and check_failed(result['check'])]
     if not errors:
         return []
     anchor = 'check-' + errors[0]['id'] if len(errors) == 1 else 'checks'
@@ -167,7 +168,7 @@ def _result_row(pkg, descriptors, aggregate, links):
         column = len(cells)
         if aggregate and descriptor['kind'] == 'version':
             current, candidate, annotations = version_parts(pkg, links=links)
-            cells.extend([cell(current + annotations), cell(candidate)])
+            cells.extend([cell(current), cell(candidate + annotations)])
             for related in sorted(pkg['monitors'].values(), key=lambda m: m['id'] == 'eol'):
                 preview = presenter({'kind': related['data']['kind']}).preview
                 if preview:
@@ -188,7 +189,7 @@ def detail(pkg, collection=None):
     data = source['data'] if source else {}
     meta = data.get('metadata') or {}
     identity = [buildsystem(data['buildsystem'], links)] if data.get('buildsystem') else []
-    signals = version_annotations(pkg) + check_failed_label(pkg)
+    signals = version_annotations(pkg) + check_failed_label(pkg, exclude_kind='version')
     requirements = module(pkg, 'requires')
     if requirements:
         signals.extend(evidence_labels(requirements, links, counts=True))
@@ -206,9 +207,9 @@ def detail(pkg, collection=None):
         rendered = adapter.sections(result, links)
         if kind == 'version':
             current, candidate, annotations = version_parts(pkg)
-            fields = [field('Current', *current, *annotations)]
-            if candidate:
-                fields.append(field('Candidate', *candidate))
+            fields = [field('Current', *current)]
+            if candidate or annotations:
+                fields.append(field('Candidate', *candidate, *annotations))
             if not rendered:
                 rendered = [Section(id=result['id'], title='')]
             rendered[0].placement = 'lead'
