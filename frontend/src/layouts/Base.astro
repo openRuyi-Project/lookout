@@ -3,9 +3,11 @@ import '../styles/base.css';
 import '../styles/app.css';
 import {createHash} from 'node:crypto';
 import PageUpdates from '../components/PageUpdates.astro';
-interface Props {title?: string; result?: object}
+import DataStatus from '../components/document/DataStatus.astro';
+import type {Section} from '../lib/document';
+interface Props {title?: string; result?: object; dataStatus?: Section | null}
 const siteName = 'openRuyi Lookout';
-const {title, result} = Astro.props;
+const {title, result, dataStatus} = Astro.props;
 
 // Cookie-backed themes also work when scripting is disabled.
 // No cookie means follow the system preference, which the CSS handles on its own.
@@ -40,6 +42,7 @@ const fingerprint = result && createHash('sha256')
       <header class="masthead">
         <a class="brand" href="/"><img src="/openruyi.svg" width="38" height="28" alt=""/><span>{siteName}</span></a>
         <nav aria-label="Site links">
+          {dataStatus && <button class="data-status-trigger" type="button" popovertarget="data-status">{dataStatus.title}</button>}
           <a class="theme-toggle" hx-boost="false" href={themeHref} aria-label={`Color theme: ${label[theme]}. Activate for ${label[next]}.`}>
             <span aria-hidden="true">{icon[theme]}</span>{label[theme]}
           </a>
@@ -52,6 +55,7 @@ const fingerprint = result && createHash('sha256')
         <span class="count">{siteName}</span>
         <a href="/LICENSE.txt" hx-boost="false">License</a>
       </footer>
+      {dataStatus && <DataStatus section={dataStatus}/>}
     </div>
     {result && <>
       <button id="page-refresh" hidden type="button" hx-get="" hx-trigger="refresh"

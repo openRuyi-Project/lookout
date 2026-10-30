@@ -23,6 +23,7 @@ from tracker.presentation.navigation import (
 )
 from tracker.presentation.registry import PRESENTERS, presenter
 from tracker.presentation.source import changelog_section, repository_link
+from tracker.presentation.status import data_status
 from tracker.presentation.values import (
     buildsystem,
     cell,
@@ -99,14 +100,10 @@ def listing(payload, query):
         pagination.append(Choice(label='Next', href=links.to(page=payload['page'] + 1)))
     meta = [] if focus else collection_meta(payload['collection'])
     notices = ['Test fixture — not live openRuyi data.'] if payload['collection']['mode'] == 'fixture' else []
-    if errors := payload['collection'].get('errors'):
-        notices.append('Collection degraded: ' + '; '.join(dict.fromkeys(errors))
-                       + '. Retained observations use their last successful collection times.')
-    if notice := payload['collection'].get('projection_notice'):
-        notices.append(notice)
     return ListingDocument(title=title, navigation=navigation, global_navigation=global_navigation(payload, links), controls=controls,
         table=table, total=payload['total'], page=payload['page'],
         pages=payload['pages'], pagination=pagination, meta=meta,
+        data_status=data_status(payload['collection'], payload.get('monitor_coverage', {}), payload['monitors']),
         notices=notices)
 
 

@@ -315,7 +315,8 @@ async function read(path, cookie) {
   const response = await fetch(`http://127.0.0.1:${port}${path}`, {headers: cookie ? {cookie} : {}});
   assert.equal(response.status, 200, `${path}: ${logs}`); return response.text();
 }
-const rowKeys = html => new Set([...html.matchAll(/<tr data-key="([^"]+)"/g)].map(([, key]) => key));
+const mainHTML = html => html.slice(html.indexOf('<main'), html.indexOf('</main>'));
+const rowKeys = html => new Set([...mainHTML(html).matchAll(/<tr data-key="([^"]+)"/g)].map(([, key]) => key));
 async function assertGlobalSearch(html, name, perPage = null) {
   const form = html.match(/<form\b[^>]*role="search"[^]*?<\/form>/)?.[0];
   assert.ok(form, 'search form is present');
@@ -476,7 +477,7 @@ try {
   assert.match(listing, /href="https:\/\/build.example.org\/">BuildService<\/a>/);
   assert.match(listing, /href="https:\/\/github.com\/fixture\/repo\/tree\/stable%2F3">stable\/3<\/a>/);
   assert.match(listing, /href="https:\/\/github.com\/fixture\/repo\/commit\/abcdef0123456789abcdef0123456789abcdef01"[^>]*>abcdef<\/a>/);
-  assert.equal((listing.match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 5);
+  assert.equal((listing.match(/<table\b[^]*?<\/table>/)[0].match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 5);
   assert.equal((listing.match(/<form\b/g) || []).length, 1);
   assert.equal((listing.match(/data-group-id=/g) || []).length, 0);
   const packageMenu = listing.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
@@ -492,8 +493,8 @@ try {
   assert.equal(simpleLink, '/?DepMismatch');
   const simplePage = await read(simpleLink);
   const equivalentPage = await read(filtered([[['maintenance', 'DepMismatch']]]));
-  assert.deepEqual(simplePage.match(/<tr data-key="[^"]+"/g), equivalentPage.match(/<tr data-key="[^"]+"/g));
-  assert.deepEqual(simplePage.match(/\b\d+ packages\b/g), equivalentPage.match(/\b\d+ packages\b/g));
+  assert.deepEqual(mainHTML(simplePage).match(/<tr data-key="[^"]+"/g), mainHTML(equivalentPage).match(/<tr data-key="[^"]+"/g));
+  assert.deepEqual(mainHTML(simplePage).match(/\b\d+ packages\b/g), mainHTML(equivalentPage).match(/\b\d+ packages\b/g));
   const inlineURL = '/?per_page=2&Outdated=AND&Advisory=OR&DepMismatch=AND';
   const inlineQuery = filterFrom(inlineURL);
   const inlinePage = await read(inlineURL);
@@ -528,8 +529,8 @@ try {
   const palettes = {};
   for (const mode of ['and', 'or']) {
     const unionPage = await read(filtered(unionTerms, {next_logic: mode}, 'or'));
-    assert.deepEqual(unionPage.match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
-    assert.equal((unionPage.match(/<tr data-key=/g) || []).length, unionCount);
+    assert.deepEqual(mainHTML(unionPage).match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
+    assert.equal((mainHTML(unionPage).match(/<tr data-key=/g) || []).length, unionCount);
     for (const label of ['Outdated', 'Untracked']) {
       assert.equal(alertCount(unionPage, label), mode === 'or' ? 0 : alertCount(listing, label));
     }
@@ -552,8 +553,8 @@ try {
     assert.deepEqual(rowKeys(await read(target)), rowKeys(secondPage));
   }
   const paginatedUnion = await read(filtered(unionTerms, {next_logic: 'or', per_page: '2'}, 'or'));
-  assert.deepEqual(paginatedUnion.match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
-  assert.equal((paginatedUnion.match(/<tr data-key=/g) || []).length, 2);
+  assert.deepEqual(mainHTML(paginatedUnion).match(/\b\d+ packages\b/g), [`${unionCount} packages`]);
+  assert.equal((mainHTML(paginatedUnion).match(/<tr data-key=/g) || []).length, 2);
   const pageLinks = ['above', 'below'].map(position => {
     const navigation = paginatedUnion.match(new RegExp(`<nav[^>]*aria-label="Pages ${position} results"[^]*?</nav>`))[0];
     return [...navigation.matchAll(/href="([^"]+)"/g)].map(([, href]) => href);
@@ -605,7 +606,7 @@ try {
   assert.match(grouped, /data-group-id="0" data-palette="0"/);
   assert.match(grouped, /data-group-id="0" data-palette="0"[^]*?<span class="condition-operator">AND<\/span>/);
   const leadingOrPage = await read('/?Advisory=OR');
-  assert.deepEqual(leadingOrPage.match(/\b\d+ packages\b/g), listing.match(/\b\d+ packages\b/g));
+  assert.deepEqual(mainHTML(leadingOrPage).match(/\b\d+ packages\b/g), mainHTML(listing).match(/\b\d+ packages\b/g));
   const sealLink = grouped.match(/class="group-add" href="([^"]+)"/)[1];
   const sealedQuery = filterFrom(sealLink);
   assert.equal(sealedQuery.groups.length, 2);
@@ -632,7 +633,7 @@ try {
   assert.deepEqual(pagerLinks(topPager), pagerLinks(bottomPager));
   assert.equal(pagerLinks(topPager).length, 2);
   assert.ok(paged.indexOf(topPager) < paged.indexOf('<table class="data-table'));
-  assert.ok(paged.indexOf(bottomPager) > paged.lastIndexOf('</table>'));
+  assert.ok(paged.indexOf(bottomPager) > paged.indexOf('</table>'));
   for (const link of pagerLinks(topPager)) {
     assert.equal(new URL(link.replaceAll('&amp;', '&'), 'http://fixture').searchParams.get('per_page'), '3');
   }
@@ -676,6 +677,12 @@ try {
   assert.match(unknownPort, /Release withdrawn/);
   assert.match(unknownPort, />Files<\/dt>/);
   assert.match(unknownPort, />3<\/span>/);
+  assert.match(listing, /popovertarget="data-status"[^>]*>Data status · Degraded<\/button>/);
+  const statusPanel = listing.slice(listing.indexOf('<div id="data-status"'));
+  assert.match(statusPanel, /popover="auto" role="dialog" aria-label="Data status"/);
+  assert.match(statusPanel, /intentional fixture error/);
+  assert.doesNotMatch(listing.slice(listing.indexOf('<main'), listing.indexOf('</main>')), /intentional fixture error/);
+  assert.match(statusPanel, /Collection checks across all packages/);
   const row = name => listing.match(new RegExp(`<tr data-key="${name}"[^]*?</tr>`))?.[0] ?? '';
   assert.match(row('success'), /data-appearance="buildsystem%3Acustom"/);
   assert.doesNotMatch(row('success'), /#build/);

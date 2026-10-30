@@ -60,7 +60,8 @@ elif operation == 'list':
     selection = PackageList(packages, payload['targets']).select(query=filters.q,
         filters=filters.filters, next_logic=filters.next_logic, page=filters.page, per_page=filters.per_page,
         monitor=filters.monitor, findings_only=bool(focus and focus['kind'] in ('evidence', 'requires') and section == 'results'))
-    result = presentation_pages.listing({**payload, **selection, 'section': section},
+    result = presentation_pages.listing({**payload, **selection, 'section': section,
+        'monitor_coverage': PackageList(packages, payload['targets']).monitor_coverage()},
         filters.model_copy(update={'section': section, 'page': selection['page']}).model_dump(exclude_defaults=True)).model_dump()
 elif operation == 'activity':
     from tracker.presentation.activity import section

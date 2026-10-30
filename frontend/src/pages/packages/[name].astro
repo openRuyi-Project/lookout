@@ -10,7 +10,7 @@ if (!data) Astro.response.status = status === 404 ? 404 : 503;
 const topSections = data?.sections.filter(section => section.placement !== 'flow') || [];
 const flowSections = data?.sections.filter(section => section.placement === 'flow') || [];
 ---
-<Base title={name} result={data || undefined}>
+<Base title={name} result={data || undefined} dataStatus={data?.data_status}>
   <div class="package-detail"><a class="back" href="/">← Packages</a>
   {data ? <>
     {data.notices.map(notice => <p class="notice">{notice}</p>)}

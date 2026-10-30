@@ -116,6 +116,7 @@ export interface components {
             context: components["schemas"]["Section"][];
             /** Sections */
             sections: components["schemas"]["Section"][];
+            data_status: components["schemas"]["Section"] | null;
             /**
              * Notices
              * @default []
@@ -278,6 +279,7 @@ export interface components {
              * @default []
              */
             meta: components["schemas"]["Field"][];
+            data_status: components["schemas"]["Section"] | null;
             /**
              * Notices
              * @default []

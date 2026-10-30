@@ -44,7 +44,7 @@ def test_home_reports_failure_and_keeps_retained_version(snapshot, tmp_path):
     snapshot['components']['spec_git'] = state.failure({}, 'git fetch timeout', state.utcnow())
     client, _ = client_for(snapshot, tmp_path)
     document = client.get('/api/ui/packages').json()
-    assert any('git fetch timeout' in n and 'Retained observations' in n for n in document['notices'])
+    assert any('git fetch timeout' in n for n in document['data_status']['notes'])
     row = next(r for r in document['table']['rows'] if r['key'] == 'binutils')
     texts = [v['text'] for c in row['cells'] for line in c['lines'] for v in line]
     assert '3.9.0' in texts and '3.10.0' in texts

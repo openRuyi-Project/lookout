@@ -535,6 +535,7 @@ def create_app(db=None):
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
         if document:
+            result['monitor_coverage'] = index.monitor_coverage()
             result['query'] = filters.model_copy(update={'section': section, 'page': result['page']}).model_dump(exclude_defaults=True)
             result['query']['filters'] = filters.filters.model_dump()
         return {**result,
@@ -581,8 +582,8 @@ def create_app(db=None):
             history = activity.page(snap, name, kind)
             if history['total']:
                 document.sections.insert(len(document.sections) - 1, activity_presentation.section(name, kind, history))
-        if notice := collection.get('projection_notice'):
-            document.notices.append(notice)
+        document.data_status = presentation_pages.data_status(collection, index.monitor_coverage(),
+            [module.describe() for module in monitor_views.registry(snap)])
         return document
 
     def activity_history(name, kind, cursor, per_page):

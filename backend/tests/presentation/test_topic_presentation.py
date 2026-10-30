@@ -59,7 +59,7 @@ def test_navigation_deemphasizes_eol_and_omits_standalone_withdrawal():
         page=1, pages=1, total=0, per_page=100, counts=dict(all=0, updates=0, untracked=0),
         buildsystems={}, maintenance_labels={}, build_statuses={},
         result_count=0, coverage_count=0, check_statuses={},
-        collection=dict(mode='fixture', obs_updated_at=None, upstream_updated_at=None))
+        collection=dict(packages=0, mode='fixture', obs_updated_at=None, upstream_updated_at=None))
     doc = presentation_pages.listing(payload, {})
     assert [c.label for c in doc.navigation.choices] == ['Packages', 'Version', 'Advisory', 'EOL']
     assert doc.global_navigation[0].choices == []

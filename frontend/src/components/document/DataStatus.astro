@@ -1,0 +1,10 @@
+---
+import type {Section as StatusSection} from '../../lib/document';
+import Section from './Section.astro';
+interface Props {section: StatusSection}
+const {section} = Astro.props;
+---
+<div id="data-status" class="data-status-panel" popover="auto" role="dialog" aria-label="Data status">
+  <button class="data-status-close" type="button" popovertarget="data-status" popovertargetaction="hide" aria-label="Close data status">×</button>
+  <Section section={section}/>
+</div>

@@ -57,8 +57,8 @@ def test_refresh_failure_retains_data_but_never_reports_fresh_success(snapshot, 
     ready = client.get('/readyz').json()
     assert ready['status'] == 'degraded'
     assert 'refresh failed' in ready['projection_notice']
-    assert client.get('/api/ui/packages').json()['notices'][-1] == ready['projection_notice']
-    assert client.get('/api/ui/packages/binutils').json()['notices'] == [ready['projection_notice']]
+    assert ready['projection_notice'] in client.get('/api/ui/packages').json()['data_status']['notes']
+    assert ready['projection_notice'] in client.get('/api/ui/packages/binutils').json()['data_status']['notes']
     replacement = tmp_path / 'replacement.db'
     state.commit(replacement, snapshot)
     replacement.replace(db)

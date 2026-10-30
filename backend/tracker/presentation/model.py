@@ -156,6 +156,7 @@ class ListingDocument(DocumentModel):
     pages: int
     pagination: list[Choice] = []
     meta: list[Field] = []
+    data_status: Section | None = None
     notices: list[str] = []
 
 
@@ -167,6 +168,7 @@ class DetailDocument(DocumentModel):
     links: list[Text] = []
     context: list[Section] = []
     sections: list[Section]
+    data_status: Section | None = None
     notices: list[str] = []
 
 
