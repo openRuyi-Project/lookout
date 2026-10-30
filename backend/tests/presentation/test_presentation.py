@@ -341,7 +341,8 @@ def test_package_context_and_changelog_remain_visible_without_empty_sections(sna
     assert context.notes == ['Useful description']
     assert context.fields[0].values[0].text == 'MIT'
     changelog = next(s for s in document.sections if s.title == 'Changelog')
-    assert changelog.entries[0].fields[-1].values[0].text == 'Packager'
+    assert changelog.entries[0].metadata[0].text == 'Packager'
+    assert source['changelog'][0]['signed_off_by'] == ['Packager']
     assert document.sections[-1].id == 'checks'
     assert [s.id for s in document.sections + document.context if s.collapsible] == ['checks']
 

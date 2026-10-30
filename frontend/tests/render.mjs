@@ -714,7 +714,10 @@ try {
   assert.match(sourceContext, />\/SPECS\/success<\/a>/);
   assert.match(sourceContext, /href="https:\/\/example.org\/upstream"/);
   assert.match(sourceContext, /data-appearance="buildsystem%3Acustom"/);
-  assert.match(sourceContext, /id="changelog"/);
+  const history = sourceContext.match(/<section\b[^>]*id="changelog"[^]*?<\/section>/)[0];
+  assert.match(history, /Fixture change/);
+  assert.match(history, /class="entry-metadata"[^]*?Fixture author[^]*?abcdef012345[^]*?2026-09-19 09:00:00 UTC/);
+  assert.doesNotMatch(history, /<dl\b|<th\b/);
   const sourceCheck = sourceContext.match(/<tr data-key="source"[^]*?<\/tr>/)[0];
   assert.match(sourceCheck, />Source</);
   assert.match(sourceCheck, /2026-09-19 11:10:00 UTC/);

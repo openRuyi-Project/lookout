@@ -1,6 +1,4 @@
 """Pages for reading documents; no collection or persistence."""
-from urllib.parse import quote, urlsplit, urlunsplit
-
 from tracker.monitors.issues import Issue
 from tracker.monitors.model import check_failed
 from tracker.presentation.build import build_note
@@ -24,7 +22,7 @@ from tracker.presentation.navigation import (
     listing_query,
 )
 from tracker.presentation.registry import PRESENTERS, presenter
-from tracker.presentation.source import changelog_section
+from tracker.presentation.source import changelog_section, repository_link
 from tracker.presentation.values import (
     buildsystem,
     cell,
@@ -43,20 +41,8 @@ def collection_meta(collection):
     source = collection.get('source_repository')
     if not source:
         return result
-    branch_url = commit_url = None
-    try:
-        url = urlsplit(source['url'])
-        if (url.scheme in ('http', 'https') and url.hostname and not url.username
-                and not url.password and not url.query and not url.fragment):
-            base = urlunsplit((url.scheme, url.netloc, url.path.rstrip('/').removesuffix('.git'), '', ''))
-            routes = ('tree', 'commit') if url.hostname == 'github.com' else (
-                ('-/tree', '-/commit') if url.hostname.startswith('gitlab.') else None)
-            if routes:
-                branch_url = base + '/' + routes[0] + '/' + quote(source['branch'], safe='')
-                commit_url = base + '/' + routes[1] + '/' + quote(source['revision'], safe='')
-    except ValueError:
-        # Keep the source identity visible without a link when its URL is invalid.
-        pass
+    branch_url = repository_link(source['url'], 'tree', source['branch'])
+    commit_url = repository_link(source['url'], 'commit', source['revision'])
     result.append(Field(label=source['branch'], href=branch_url,
         values=[text(source['revision'][:6], kind='code', href=commit_url, title=source['revision'])]))
     return result
@@ -185,7 +171,7 @@ def _result_row(pkg, descriptors, aggregate, links):
             notes.extend(build_note(pkg, result, column))
     return Row(key=pkg['name'], cells=cells, notes=notes)
 
-def detail(pkg):
+def detail(pkg, collection=None):
     links = Links()
     source = module(pkg, 'source')
     data = source['data'] if source else {}
@@ -223,7 +209,7 @@ def detail(pkg):
             href=links.condition('check:' + result['id'], check['status'], monitor=result['id'], section='coverage'))]),
             cell(*status_lines), cell(*timestamps)]))
     if source:
-        sections.extend(changelog_section(source))
+        sections.extend(changelog_section(source, (collection or {}).get('source_repository')))
     sections.extend(context)
     context = []
     sections.append(Section(id='checks', title='Checks', collapsible=True, table=Table(label='Collection checks', columns=[

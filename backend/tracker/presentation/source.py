@@ -1,4 +1,6 @@
 """Source for reading documents; no collection or persistence."""
+from urllib.parse import quote, urlsplit, urlunsplit
+
 from tracker.presentation.labels import caption
 from tracker.presentation.model import Entry, Section
 from tracker.presentation.values import field, stamp, text
@@ -16,12 +18,28 @@ def source_sections(result, links):
     return [Section(placement='lead', id=result['id'], title='', fields=fields, notes=notes)] if fields or notes else []
 
 
-def changelog_section(source):
+def repository_link(url, kind, ref):
+    try:
+        parsed = urlsplit(url)
+        if (parsed.scheme not in ('http', 'https') or not parsed.hostname or parsed.username
+                or parsed.password or parsed.query or parsed.fragment):
+            return None
+        route = kind if parsed.hostname == 'github.com' else (
+            '-/' + kind if parsed.hostname.startswith('gitlab.') else None)
+        if route is None:
+            return None
+        base = urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip('/').removesuffix('.git'), '', ''))
+        return base + '/' + route + '/' + quote(ref, safe='')
+    except (ValueError, TypeError):
+        return None
+
+
+def changelog_section(source, repository=None):
     history = []
     for entry in source['data'].get('changelog', []):
-        fields = [field('Commit', text(entry['commit'][:12], kind='code')),
-                  field('Author', text(entry['author'])), field('Date', stamp(entry['date']))]
-        if entry['signed_off_by']:
-            fields.append(field('Signed-off-by', text(', '.join(entry['signed_off_by']))))
-        history.append(Entry(heading=[text(entry['subject'])], fields=fields))
+        href = repository_link(repository['url'], 'commit', entry['commit']) if repository else None
+        history.append(Entry(heading=[text(entry['subject'], href=href)], metadata=[
+            text(entry['author'], tone='muted'),
+            text(entry['commit'][:12], kind='code', href=href, title=entry['commit']),
+            stamp(entry['date'])]))
     return [Section(id='changelog', title='Changelog', entries=history)] if history else []

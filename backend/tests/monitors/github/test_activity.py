@@ -279,7 +279,7 @@ def test_activity_byline_keeps_title_and_author_without_repository():
     item = normalize(raw(title='widget: maintenance 7'), REPO, None, Client([]))
     view = section('widget', 'issue', {'items': [item], 'total': 1, 'next_cursor': None})
     assert view.entries[0].heading[1].text == 'widget: maintenance 7'
-    values = view.entries[0].fields[0].values
+    values = view.entries[0].metadata
     assert values[0].text == 'contributor'
     assert all(value.text != REPO for value in values)
     assert not view.collapsible

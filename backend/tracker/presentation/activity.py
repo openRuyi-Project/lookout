@@ -25,12 +25,12 @@ def section(name, kind, page):
                         appearance='label:github-' + style, title=item['status']),
                    text(item['title'], href=item['url'])]
         byline = [text(item['author'], tone='muted')] if item.get('author') else []
-        fields = [field('', *byline)] if byline else []
+        fields = []
         if not item['available']:
             fields.append(field('', text('No longer returned by repository', tone='muted')))
         if not item['paths_complete']:
             fields.append(field('', text('Changed-file list incomplete', tone='notice')))
-        entries.append(Entry(heading=heading, metadata=[stamp(item['updated_at'])], fields=fields))
+        entries.append(Entry(heading=heading, metadata=[*byline, stamp(item['updated_at'])], fields=fields))
     more = None
     if page['next_cursor']:
         more = '/packages/' + quote(name, safe='') + '/activity?' + urlencode({'kind': kind, 'cursor': page['next_cursor']})

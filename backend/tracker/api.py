@@ -576,7 +576,7 @@ def create_app(db=None):
     @app.get('/api/ui/packages/{name}', response_model=DetailDocument)
     def package_document(name: str):
         snap, index, collection = data()
-        document = presentation_pages.detail(find_package(name, index))
+        document = presentation_pages.detail(find_package(name, index), collection)
         for kind in ('pr', 'issue'):
             history = activity.page(snap, name, kind)
             if history['total']:

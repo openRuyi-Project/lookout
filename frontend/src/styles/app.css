@@ -744,7 +744,22 @@ a[aria-disabled] { opacity: .55; cursor: not-allowed; }
 
 .entry-header { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem 1rem; }
 .entry-header .entry-heading { flex: 1 1 20rem; min-width: 0; }
-.entry-metadata { margin-left: auto; white-space: nowrap; font-size: .85em; color: var(--muted); }
+.entry-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: .25rem 1rem;
+  margin-left: auto;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.entry-metadata .value { overflow-wrap: anywhere; }
+.entry-metadata .value-time { white-space: nowrap; }
+@media (max-width: 600px) {
+  .entry-metadata { margin-left: 0; justify-content: flex-start; }
+}
 
 .value-icon .document-icon { margin-inline-end: 0; }
 .visually-hidden {
