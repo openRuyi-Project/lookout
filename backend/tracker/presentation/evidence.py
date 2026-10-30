@@ -74,16 +74,26 @@ def evidence_section(result, links):
         # when they name a different subject (for example another CVE alias).
         facts = [{**f, 'key': f['key'].removesuffix(' · ' + finding['title'])}
                  for f in finding['facts'] if f not in shared]
-        facts.sort(key=lambda f: {'summary': 0, 'fixed_events': 1, 'epss_probability': 2,
+        sources = []
+        visible = []
+        for fact in facts:
+            if (fact.get('code') == 'advisory_id' and fact['status'] == 'observed'
+                    and fact['value'] == finding['title']):
+                source = text(fact['source'], href=fact['url'], tone='muted')
+                if source not in sources:
+                    sources.append(source)
+            else:
+                visible.append(fact)
+        visible.sort(key=lambda f: {'summary': 0, 'fixed_events': 1, 'epss_probability': 2, 'epss_date': 2,
                                  'kev_added': 3, 'kev_ransomware': 4}.get(f.get('code') or '', 5))
-        fields = fact_fields(facts)
+        fields = fact_fields(visible)
         if finding['scope'] == 'upgrade' and not shared_target:
             fields.insert(0, field('Target', text(finding.get('target_version'), kind='code')))
         heading = [text(finding['title'], href=finding['evidence_url'])]
         heading += [text(caption(tag), kind='tag', appearance=appearance(tag), href=links.condition('maintenance', tag)) for tag in finding['tags']]
         if finding['stale'] and not all_stale:
             heading.append(retained_marker())
-        entries.append(Entry(heading=heading, fields=fields))
+        entries.append(Entry(heading=heading, metadata=sources, fields=fields))
     notes = (['Provider matches do not establish RPM applicability. Local patches, bundled dependencies and binary artifacts are not evaluated.']
              if security else [])
     fields = fact_fields(shared)

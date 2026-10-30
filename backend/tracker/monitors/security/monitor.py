@@ -300,7 +300,7 @@ def check(subject, settings, io):
                 if provider == 'NVD'
                 else "https://osv.dev/vulnerability/" + quote(member["id"], safe="")
             )
-            facts.append(evidence("Returned advisory", member["id"], provider, member_url))
+            facts.append(evidence("Returned advisory", member["id"], provider, member_url, code="advisory_id"))
             fixed = set()
             for affected in member.get("affected", []):
                 for affected_range in matching_ranges(affected, settings):
@@ -346,7 +346,7 @@ def check(subject, settings, io):
             if cve in epss:
                 probability, day = epss[cve]
                 facts.append(evidence("EPSS probability · " + cve, probability, "FIRST", epss_url, code="epss_probability"))
-                facts.append(evidence("EPSS model date · " + cve, day, "FIRST", epss_url))
+                facts.append(evidence("EPSS model date · " + cve, day, "FIRST", epss_url, code="epss_date"))
             else:
                 facts.append(evidence("EPSS · " + cve, None, "FIRST", epss_url, status="unavailable"))
         findings.append(finding(identity, Issue.ADVISORY, identity, bounded_facts(facts, provider, aliases_url),

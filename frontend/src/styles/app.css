@@ -796,3 +796,9 @@ a[aria-disabled] { opacity: .55; cursor: not-allowed; }
 .data-status-panel .document-section { border: 0; padding: 0; }
 .data-status-panel .fields { margin-bottom: 18px; }
 .data-status-panel .section-note { max-width: none; overflow-wrap: anywhere; }
+
+.entry-page .fields.compact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 8px 24px;
+}
