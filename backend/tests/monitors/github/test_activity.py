@@ -3,6 +3,7 @@ import sqlite3
 from contextlib import closing
 from copy import deepcopy
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 
@@ -200,12 +201,51 @@ def test_projection_and_api(snapshot, tmp_path, monkeypatch):
         assert result['monitors']['github']['data']['labels'][0]['count'] == 45
         listing = client.get('/api/ui/packages?Issue=AND').json()
         assert listing['total'] == 1
-        assert any(v['text'] == 'Issue 45' for v in listing['table']['rows'][0]['cells'][0]['lines'][0])
+        counter = next(v for v in listing['table']['rows'][0]['cells'][0]['lines'][0]
+                       if v['icon'] == 'issue-opened')
+        assert counter['text'] == '45'
+        assert counter['aria_label'] == 'foo3: Open issues: 45'
+        assert counter['href'] == '/packages/foo3#github-issue'
         document = client.get('/api/ui/packages/foo3').json()
         history = next(s for s in document['sections'] if s['id'] == 'github-issue')
         assert len(history['entries']) == 20 and history['more']
         assert client.get('/api/v2/packages/foo3/activity?kind=issue&per_page=51').status_code == 422
         assert client.get('/api/v2/packages/foo3/activity?kind=issue').json()['total'] == 45
+
+
+def test_open_counts_preserve_closed_and_unavailable_history(snapshot):
+    populated(snapshot, count=9)
+    states = [('pr', 'open', True), ('pr', 'draft', True), ('pr', 'closed', True),
+              ('pr', 'merged', True), ('issue', 'open', True), ('issue', 'completed', True),
+              ('issue', 'not_planned', True), ('pr', 'open', False), ('issue', 'open', False)]
+    for item, (kind, status, available) in zip(snapshot['github_items'][REPO].values(), states, strict=True):
+        item.update(kind=kind, status=status, available=available)
+    original = deepcopy(snapshot)
+    context = SimpleNamespace(snapshot=snapshot, name='foo3', now=datetime.now(UTC))
+    result = activity.project(context)
+    assert result['data']['labels'] == [dict(label='PR', count=2, stale=False), dict(label='Issue', count=1, stale=False)]
+    assert result['dimensions']['maintenance'] == ['PR', 'Issue']
+    assert activity.page(snapshot, 'foo3', 'pr')['total'] == 5
+    assert activity.page(snapshot, 'foo3', 'issue')['total'] == 4
+    assert snapshot == original
+    context.name = 'foo4'
+    assert activity.project(context)['data']['labels'] == []
+    assert activity.project(context)['dimensions']['maintenance'] == []
+
+
+def test_open_counts_follow_closure_and_reopening_and_retain_failed_refresh(snapshot):
+    populated(snapshot, count=1)
+    context = SimpleNamespace(snapshot=snapshot, name='foo3', now=datetime.now(UTC))
+    item = snapshot['github_items'][REPO]['1']
+    item['status'] = 'completed'
+    assert activity.project(context)['data']['labels'] == []
+    assert activity.page(snapshot, 'foo3', 'issue')['total'] == 1
+    item['status'] = 'open'
+    assert activity.project(context)['data']['labels'] == [dict(label='Issue', count=1, stale=False)]
+    snapshot['components']['github:' + REPO]['error'] = 'Provider unavailable'
+    result = activity.project(context)
+    assert result['check']['status'] == 'error'
+    assert result['data']['labels'] == [dict(label='Issue', count=1, stale=True)]
 
 @pytest.mark.parametrize('code,headers', [(429, {'Retry-After': '120'}), (403, {'X-RateLimit-Remaining': '0', 'X-RateLimit-Reset': '1'})])
 def test_http_rate_limit(code, headers, monkeypatch):

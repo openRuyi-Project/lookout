@@ -395,6 +395,8 @@ export interface components {
             href: string | null;
             /** Title */
             title: string | null;
+            /** Aria Label */
+            aria_label: string | null;
             /**
              * Kind
              * @default text

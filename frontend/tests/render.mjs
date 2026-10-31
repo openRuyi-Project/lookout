@@ -93,6 +93,7 @@ const packages = [
     ],
   }]}),
   makePackage('success', {buildsystem: 'custom', buildsystem_status: 'declared', maintenance: [{label:'NewSignal', count:2, stale:false}],
+    activity: [{label:'PR', count:2, stale:false}, {label:'Issue', count:1, stale:false}],
     spec: {...makePackage('success').spec, metadata: {summary: 'Fixture package',
       url: 'https://example.org/upstream', license: 'MIT', description: 'Fixture source description'}}}),
   makePackage('watch-preview', {watch: [
@@ -136,6 +137,7 @@ const catalog = [
   {id: 'yanked', title: 'Release files', kind: 'evidence'},
   {id: 'requires', title: 'Dependencies', kind: 'requires'},
   {id: 'eol', title: 'EOL', kind: 'evidence'},
+  {id: 'github', title: 'GitHub', kind: 'activity'},
 ];
 // Synthetic runtime assessments, not live registry versions or host evaluation.
 const constraint = (expression, release) => ({expression, source: 'Fixture registry',
@@ -180,6 +182,7 @@ function monitored(pkg, detail = true, focus = '') {
   const check = {status: 'ok', stale: false, checked_at: '2026-09-19T11:10:00Z', attempted_at: null,
     error: null, note: null, changed_at: null, evidence_revision: null};
   const data = {
+    github: {kind: 'activity', labels: pkg.activity || []},
     source: {kind: 'source', version: pkg.current, revision: 'fixture', buildsystem: pkg.buildsystem,
       buildsystem_status: pkg.buildsystem_status, ...pkg.spec, obs: {}},
     version: {kind: 'version', current: pkg.current, latest: pkg.latest, relation: pkg.relation, track: pkg.track,
@@ -496,6 +499,16 @@ try {
   const packageMenu = listing.match(/<nav[^>]*aria-label="Alerts"[^]*?<\/nav>/)[0];
   assert.match(packageMenu, />Outdated<\/span>/);
   assert.match(packageMenu, />Untracked<\/span>/);
+  assert.doesNotMatch(packageMenu, />PR<|>Issue</);
+  const activityRow = listing.match(/<tr data-key="success"[^]*?<\/tr>/)[0];
+  for (const [kind, title, count] of [['pr', 'Open pull requests', 2], ['issue', 'Open issues', 1]]) {
+    const counter = activityRow.match(new RegExp(`<a href="/packages/success#github-${kind}"[^]*?</a>`))[0];
+    assert.ok(counter.includes(`aria-label="success: ${title}: ${count}"`));
+    assert.match(counter, /class="document-icon"/);
+    assert.ok(counter.endsWith(`</span>${count}</a>`));
+    assert.match(counter, /class="value value-text /);
+  }
+  assert.doesNotMatch(listing.match(/<tr data-key="ahead"[^]*?<\/tr>/)[0], /#github-/);
   const alertLinks = [...packageMenu.matchAll(/href="([^"]+)"/g)].map(([, href]) => filterFrom(href));
   for (const value of ['Outdated', 'Untracked', 'CheckFailed']) {
     assert.ok(alertLinks.some(q => q.tail.some(c => c.dimension === 'maintenance' && c.value === value)));
@@ -708,8 +721,12 @@ try {
   const row = name => listing.match(new RegExp(`<tr data-key="${name}"[^]*?</tr>`))?.[0] ?? '';
   assert.match(row('success'), /data-appearance="buildsystem%3Acustom"/);
   assert.doesNotMatch(row('success'), /#build/);
-  assert.equal((row('success').match(/class="visually-hidden">Succeeded<\/span>/g) || []).length, 3);
-  assert.equal((row('success').match(/class="document-icon"/g) || []).length, 3);
+  const successfulBuilds = [...row('success').matchAll(/<td class="column-status">[^]*?<\/td>/g)];
+  assert.equal(successfulBuilds.length, 3);
+  for (const [build] of successfulBuilds) {
+    assert.match(build, /class="visually-hidden">Succeeded<\/span>/);
+    assert.equal((build.match(/class="document-icon"/g) || []).length, 1);
+  }
   for (const version of ['1.9', '1.8', '1.7']) assert.ok(row('failed').includes(`>${version}</a>`));
   assert.doesNotMatch(listing, /9\.9-shared/);
   assert.match(row('failed'), /tone-negative/);

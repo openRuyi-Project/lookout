@@ -84,11 +84,11 @@ icon = "obs-circle-exclamation"
 style = "important"
 
 [labels.PR]
-facet = true
+facet = false
 style = "neutral"
 
 [labels.Issue]
-facet = true
+facet = false
 style = "neutral"
 
 [styles.github-open]

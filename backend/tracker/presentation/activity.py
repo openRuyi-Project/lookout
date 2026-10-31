@@ -17,6 +17,22 @@ STATES = {
 }
 
 
+def open_links(pkg, result):
+    counts = {label['label']: label for label in result['data']['labels']}
+    values = []
+    for kind, label, title in (('pr', 'PR', 'Open pull requests'), ('issue', 'Issue', 'Open issues')):
+        count = counts.get(label)
+        if not count or not count['count']:
+            continue
+        icon, style = STATES[kind, 'open']
+        description = f"{title}: {count['count']}" + (' (stale)' if count['stale'] else '')
+        values.append(text(count['count'], icon=icon,
+            appearance=None if count['stale'] else 'label:github-' + style,
+            tone='notice' if count['stale'] else 'normal', title=description,
+            aria_label=pkg['name'] + ': ' + description, href=pkg['detail_url'] + '#github-' + kind))
+    return values
+
+
 def section(name, kind, page):
     entries = []
     for item in page['items']:

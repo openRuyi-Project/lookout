@@ -72,7 +72,9 @@ def project(context):
     pending = any(snapshot.get('components', {}).get('github:' + repo, {}).get('page') for repo in repositories)
     errors = [check['error'] for check in checks if check['error']]
     stale = any(check['stale'] for check in checks)
-    labels = [{'label': label, 'count': sum(item['kind'] == kind for item, _ in observations), 'stale': stale}
+    labels = [{'label': label, 'count': sum(item['kind'] == kind and item['available']
+                                          and item['status'] in ('open', 'draft')
+                                          for item, _ in observations), 'stale': stale}
               for kind, label in (('pr', 'PR'), ('issue', 'Issue'))]
     labels = [label for label in labels if label['count']]
     check = {'status': 'error' if errors else 'partial' if partial or pending else

@@ -3,7 +3,8 @@ from copy import deepcopy
 
 import pytest
 
-from tracker.presentation.activity import section
+from tracker.presentation.activity import open_links, section
+from tracker.presentation.navigation import Links, maintenance_navigation
 from tracker.presentation.source import changelog_section
 
 
@@ -40,3 +41,24 @@ def test_activity_author_and_time_share_the_byline_but_failures_remain_visible()
     assert entry.heading[0].title == 'merged'
     assert [v.text for v in entry.metadata] == ['Author', '2026-01-02 03:04:05 UTC']
     assert len(entry.fields) == 2
+
+
+def test_activity_counters_link_to_package_history_with_accessible_names():
+    result = {'data': {'labels': [dict(label='PR', count=2, stale=False), dict(label='Issue', count=1, stale=True)]}}
+    values = open_links(dict(name='widget', detail_url='/packages/widget'), result)
+    assert [(v.icon, v.text, v.href) for v in values] == [
+        ('git-pull-request', '2', '/packages/widget#github-pr'),
+        ('issue-opened', '1', '/packages/widget#github-issue')]
+    assert all(v.kind == 'text' for v in values)
+    assert values[0].aria_label == 'widget: Open pull requests: 2'
+    assert values[1].aria_label == 'widget: Open issues: 1 (stale)'
+    assert values[1].tone == 'notice' and values[1].appearance is None
+    assert open_links({}, {'data': {'labels': [dict(label='PR', count=0, stale=False)]}}) == []
+
+
+def test_global_alerts_exclude_activity_totals_but_keep_external_monitor_labels():
+    choices = maintenance_navigation({'maintenance_labels': {'PR': 12, 'Issue': 8, 'NewSignal': 3}}, Links()).choices
+    counts = {choice.label: choice.count for choice in choices}
+    assert 'PR' not in counts and 'Issue' not in counts
+    assert counts['NewSignal'] == 3
+    assert counts['Outdated'] == 0

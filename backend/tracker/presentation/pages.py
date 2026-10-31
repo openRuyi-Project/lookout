@@ -1,6 +1,7 @@
 """Pages for reading documents; no collection or persistence."""
 from tracker.monitors.issues import Issue
 from tracker.monitors.model import check_failed
+from tracker.presentation.activity import open_links
 from tracker.presentation.build import build_note
 from tracker.presentation.evidence import evidence_labels
 from tracker.presentation.labels import appearance, caption, palettes, priority
@@ -62,12 +63,15 @@ def identity_cell(pkg, links, *, labels=True):
                                 href=links.condition('maintenance', Issue.OUTDATED)))
         signals.extend(check_failed_label(pkg, links, exclude_kind='version'))
         for result in pkg['monitors'].values():
-            if result['data']['kind'] in ('evidence', 'requires', 'activity'):
+            if result['data']['kind'] in ('evidence', 'requires'):
                 signals.extend(evidence_labels(result, links, counts=True))
     source = module(pkg, 'source')
     if source and source['data'].get('buildsystem'):
         identity.append(buildsystem(source['data']['buildsystem'], links))
     identity.extend(sorted(signals, key=lambda value: priority(value.appearance)))
+    activity = module(pkg, 'activity')
+    if labels and activity:
+        identity.extend(open_links(pkg, activity))
     return cell(identity)
 
 

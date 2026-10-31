@@ -117,7 +117,7 @@ def maintenance_navigation(payload, links):
     choices = [Choice(label=caption(value), count=count,
         selected=links.selected('maintenance', value), appearance=appearance(value),
         href=links.condition('maintenance', value))
-        for value, count in (dict.fromkeys(facets(), 0) | payload['maintenance_labels']).items()]
+        for value, count in facets(payload['maintenance_labels']).items()]
     choices.append(Choice(label='DepChanges', count=payload.get('version_signals', {}).get('requires', 0),
         selected=links.selected('version_signal', 'requires'), appearance=appearance('DepChanges'),
         href=links.condition('version_signal', 'requires')))

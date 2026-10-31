@@ -40,6 +40,8 @@ elif operation == 'list':
             elif data['kind'] == 'evidence':
                 dimensions.update({'findings:' + mid: ['yes'] if data['findings'] else [],
                     'maintenance': [label['label'] for label in data['labels']]})
+            elif data['kind'] == 'activity':
+                dimensions['maintenance'] = [label['label'] for label in data['labels']]
             elif data['kind'] == 'requires':
                 dims = []
                 if any(r['satisfaction'] == 'unsatisfied' or r['target_satisfaction'] == 'unsatisfied' for r in data['requirements']):

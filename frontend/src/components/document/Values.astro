@@ -7,7 +7,7 @@ const {values} = Astro.props;
 {values.map(value => {
   const href = safeHref(value.href);
   const Tag = href ? 'a' : value.kind === 'time' ? 'time' : 'span';
-  return <Tag href={href} title={value.title || undefined}
+  return <Tag href={href} title={value.title || undefined} aria-label={value.aria_label || undefined}
     class:list={['value', `value-${value.kind}`, `tone-${value.tone}`]}
     datetime={value.datetime || undefined}
     data-variant={value.kind === 'tag' ? value.variant : undefined}
