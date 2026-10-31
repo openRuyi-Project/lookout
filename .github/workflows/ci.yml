@@ -72,7 +72,7 @@ jobs:
             RELEASE_VERSION=${{ steps.build.outputs.version }}
             SYSTEM_REFRESH=${{ steps.build.outputs.system-refresh }}
           cache-from: type=gha,scope=lookout-runtime
-          cache-to: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'type=gha,scope=lookout-runtime,mode=max' || '' }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'type=gha,scope=lookout-runtime,mode=max,ignore-error=true' || '' }}
       - name: Build native test environment
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
@@ -90,7 +90,7 @@ jobs:
           cache-from: |
             type=gha,scope=lookout-runtime
             type=gha,scope=lookout-check
-          cache-to: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'type=gha,scope=lookout-check,mode=max' || '' }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && 'type=gha,scope=lookout-check,mode=max,ignore-error=true' || '' }}
       - name: Verify image identity
         env:
           VERSION: ${{ steps.build.outputs.version }}
