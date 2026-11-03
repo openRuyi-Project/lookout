@@ -7,6 +7,8 @@ from tracker.monitors.security import monitor as security
 
 
 @pytest.mark.parametrize('module,escaped', [
+    ('gocloud.dev', 'gocloud.dev'),
+    ('go4.org', 'go4.org'),
     ('example.org/widget/v3', 'example.org/widget/v3'),
     ('example.org/NewOwner/widget/v2', 'example.org/!new!owner/widget/v2'),
     ('example.org/widget/submodule', 'example.org/widget/submodule'),
@@ -26,3 +28,12 @@ def test_explicit_monitor_override_is_not_overwritten_by_catalog_identity():
         assert adapter.inputs(package, {'go': 'example.org/operator'}) == {'go': 'example.org/operator'}
     assert security.inputs(package, {'ecosystem': 'Go', 'name': 'example.org/operator'}) == {
         'ecosystem': 'Go', 'name': 'example.org/operator'}
+
+
+@pytest.mark.parametrize('module', ['gocloud.dev', 'go4.org'])
+def test_explicit_domain_root_module_reaches_registry_monitors(module):
+    package = {'version': '1.2.3'}
+    for adapter in (license, yanked, requires):
+        assert adapter.inputs(package, {'go': module}) == {'go': module}
+    assert security.inputs(package, {'ecosystem': 'Go', 'name': module}) == {
+        'ecosystem': 'Go', 'name': module}

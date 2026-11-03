@@ -2,7 +2,7 @@
 import re
 from urllib.parse import quote
 
-from tracker.identity import from_package
+from tracker.identity import from_package, valid_go_module_path
 from tracker.monitors.source.release import semver
 from tracker.providers.go_mod import retractions, version_key
 from tracker.providers.model import Release, UnsupportedRelease
@@ -13,8 +13,7 @@ HOSTS = {'api.deps.dev', 'proxy.golang.org'}
 def project(settings):
     if (not isinstance(settings, dict) or set(settings) != {'go'}
             or not isinstance(settings['go'], str) or len(settings['go']) > 512
-            or not re.fullmatch(r'[A-Za-z0-9.-]+\.[A-Za-z0-9.-]+/[A-Za-z0-9_./+~-]+', settings['go'])
-            or any(p in ('', '.', '..') for p in settings['go'].split('/'))):
+            or not valid_go_module_path(settings['go'])):
         raise ValueError('monitor requires a Go module identity')
     return settings['go']
 
