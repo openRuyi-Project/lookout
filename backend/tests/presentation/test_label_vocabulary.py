@@ -2,12 +2,16 @@
 from tests.helpers.query import conjunction, query_url, terms_in
 from tracker.presentation.labels import appearance, palettes, priority
 from copy import deepcopy
+from datetime import datetime
+from urllib.parse import urlsplit
 
 import pytest
 
 from tests.helpers.documents import client_for
+from tests.conftest import make_snapshot
 from tracker import state
 from tracker.monitors import model as monitor_model
+from tracker.readmodel.cache import ProjectionCache
 
 
 def test_labels_count_once_per_finding_without_hiding_distinct_signals():
@@ -105,6 +109,42 @@ def test_custom_fallback_keeps_its_identity_and_last_position(selected):
     assert choice.icon is None
     assert terms_in(choice.href) == ([] if selected else [('buildsystem', '_not_detected')])
     assert buildsystem('cmake', Links()).variant == 'solid'
+
+
+@pytest.mark.parametrize('mode', ['basic', 'advanced'])
+def test_declared_custom_links_do_not_select_the_fallback(config, tmp_path, monkeypatch, mode):
+    stamp = '2026-01-01T12:00:00+00:00'
+    monkeypatch.setattr(ProjectionCache, 'now', staticmethod(lambda: datetime.fromisoformat(stamp)))
+    snapshot = make_snapshot(config, stamp)
+    snapshot['specs']['foo3'] = state.success({}, {'metadata': {
+        'name': 'foo3', 'version': '3.10.0', 'summary': 'Fixture', 'license': 'MIT',
+        'url': 'https://example.org', 'description': 'Fixture', 'buildsystem': 'custom',
+    }}, stamp)
+    client, _ = client_for(snapshot, tmp_path)
+
+    def follow(href, route='/api/ui/packages'):
+        response = client.get(route + '?' + urlsplit(href).query)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def choices(document):
+        navigation, = document['table']['columns'][0]['navigation']
+        return {option['label']: option for option in navigation['choices']}
+
+    initial = choices(follow('/?' + ('advanced=1' if mode == 'advanced' else '')))
+    declared, fallback = initial['custom'], initial['❔ custom']
+    assert declared['count'] == 1 and fallback['count'] == 4
+    assert {row['name'] for row in follow(declared['href'], '/api/v2/packages')['items']} == {'foo3'}
+    assert {row['name'] for row in follow(fallback['href'], '/api/v2/packages')['items']} == {
+        'binutils', 'foo4', 'unknown', 'untracked',
+    }
+    selected = follow(declared['href'])
+    assert selected['total'] == declared['count']
+    selected_choices = choices(selected)
+    assert selected_choices['custom']['selected'] and not selected_choices['❔ custom']['selected']
+    cleared = follow(selected_choices['custom']['href'])
+    assert cleared['total'] == 5
+    assert not any(option['selected'] for option in choices(cleared).values())
 
 
 @pytest.mark.parametrize('status', ['not_declared', 'unknown'])

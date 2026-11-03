@@ -165,7 +165,8 @@ def token(condition):
         return value
     if dimension == 'version_signal' and value == 'requires':
         return 'DepChanges'
-    if dimension == 'buildsystem':
+    # The custom shorthand means unobserved; a declared custom needs the generic token.
+    if dimension == 'buildsystem' and value != 'custom':
         return 'buildsystem_' + ('custom' if value == '_not_detected' else value)
     if dimension.startswith('build:') and value in STATES:
         return dimension.removeprefix('build:') + '_' + value

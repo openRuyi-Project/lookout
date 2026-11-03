@@ -32,6 +32,25 @@ def test_advanced_ordered_roundtrip(operators):
         assert query(urlsplit(Links({'filters': parsed.model_dump()}).to()).query) == parsed
 
 
+@pytest.mark.parametrize('mode', ['basic', 'advanced'])
+@pytest.mark.parametrize('value', ['custom', '_not_detected', 'cmake'])
+def test_buildsystem_identity_survives_query_roundtrip(mode, value):
+    selected = FilterQuery(mode=mode, tail=(Condition(dimension='buildsystem', value=value),))
+    assert query(encode_parameters(selected.parameters())) == selected
+
+
+@pytest.mark.parametrize('mode', ['basic', 'advanced'])
+def test_declared_custom_and_fallback_remain_distinct_alternatives(mode):
+    selected = FilterQuery(mode=mode, tail=(
+        Condition(dimension='buildsystem', value='custom'),
+        Condition(dimension='buildsystem', value='_not_detected', logic='or' if mode == 'advanced' else 'and'),
+    ))
+    parsed = query(encode_parameters(selected.parameters()))
+    assert parsed == selected
+    index = {'buildsystem': {'custom': {0}, '_not_detected': {1, 2}}}
+    assert Evaluation(index, range(3), parsed).matches == {0, 1, 2}
+
+
 @pytest.mark.parametrize('raw,expected', [
     ('', {0, 1, 2, 3}),
     ('rva23_failed+ rva23_succeeded&Yanked', None),
