@@ -41,6 +41,16 @@ def from_package(package):
     return package_context(package)['identity']
 
 
+def valid_go_module_path(module):
+    if '/' not in module:
+        # Root modules follow Go's leading-element and Windows-name restrictions.
+        prefix = module.partition('.')[0]
+        return bool(re.fullmatch(r'[a-z0-9][a-z0-9.-]*\.[a-z0-9-]+', module)
+                    and not re.fullmatch(r'con|prn|aux|nul|com[1-9]|lpt[1-9]', prefix))
+    return bool(re.fullmatch(r'[a-zA-Z0-9.-]+\.[a-zA-Z0-9.-]+/[A-Za-z0-9_./+~-]+', module)
+                and not any(p in ('.', '..', '') for p in module.split('/')))
+
+
 def package_context(package):
     """Describe the same identity precedence used by registry monitors."""
     release = package.get('source_release')
@@ -77,7 +87,6 @@ def from_native(entry):
         if re.search(r'!(?![a-z])', escaped):
             return None
         module = re.sub(r'!([a-z])', lambda m: m[1].upper(), escaped)
-        if (re.fullmatch(r'[a-zA-Z0-9.-]+\.[a-zA-Z0-9.-]+/[A-Za-z0-9_./+~-]+', module)
-                and not any(p in ('.', '..', '') for p in module.split('/'))):
+        if valid_go_module_path(module):
             return {'ecosystem': 'Go', 'name': module}
     return None
