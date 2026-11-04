@@ -159,6 +159,16 @@ def test_newest_first_and_limit_per_package():
     assert [e['commit'] for e in out['bash']] == ['c3', 'c2']   # log order preserved, capped at 2
 
 
+def test_merge_parent_diffs_count_once_per_package_before_limit():
+    stream = (commit('merge', 'merge', ['SPECS/shared/a.spec', 'SPECS/first/a.spec'])
+              + commit('merge', 'merge', ['SPECS/shared/a.spec', 'SPECS/second/a.spec'])
+              + commit('base', 'base', ['SPECS/shared/a.spec']))
+    out = sg._bucket_log(stream, 2)
+    assert [entry['commit'] for entry in out['shared']] == ['merge', 'base']
+    assert [entry['commit'] for entry in out['first']] == ['merge']
+    assert [entry['commit'] for entry in out['second']] == ['merge']
+
+
 def test_rename_status_takes_new_path():
     # git emits "R100\told\tnew" for renames; the new path names the package.
     header = FS.join(['c1', '2026-01-01T00:00:00+00:00', 'A', 'rename', ''])

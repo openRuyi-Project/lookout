@@ -64,6 +64,56 @@ def repository(config, snapshot, tmp_path, monkeypatch):
     return repo, git, write, commit, db, poll
 
 
+@pytest.fixture(params=['first', 'second'])
+def merge_only_spec_change(repository, request, monkeypatch):
+    repo, git, write, commit, _, poll = repository
+    monkeypatch.setattr(state, 'utcnow', lambda: '2026-01-01T00:00:00+00:00')
+    git('checkout', '-qb', 'side')
+    (repo / 'side.txt').write_text('side documentation')
+    commit()
+    git('checkout', '-q', 'main')
+    (repo / 'main.txt').write_text('main documentation')
+    if request.param == 'second':
+        write('binutils', '2.0')
+    previous = commit()
+    before = poll()
+    if request.param == 'second':
+        git('checkout', '-q', 'side')
+    git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+        'merge', '--no-ff', '--no-commit', 'side' if request.param == 'first' else 'main')
+    version = '2.0' if request.param == 'first' else '1.0'
+    write('binutils', version)
+    current = commit()
+    if request.param == 'second':
+        git('checkout', '-q', 'main')
+        git('merge', '--ff-only', 'side')
+    return repo, git, previous, current, before, poll, version
+
+
+@pytest.mark.parametrize('incremental', [False, True])
+@pytest.mark.parametrize('restricted', [False, True])
+def test_changelogs_include_merge_only_spec_changes(merge_only_spec_change, incremental, restricted):
+    repo, _, previous, current, _, _, _ = merge_only_spec_change
+    history, error = source_git.changelogs(
+        str(repo), since=previous if incremental else None,
+        names=['binutils'] if restricted else None)
+    assert error is None
+    assert [entry['commit'] for entry in history.get('binutils', [])][:1] == [current]
+    assert sum(entry['commit'] == current for entry in history['binutils']) == 1
+
+
+def test_collector_refreshes_merge_only_spec_changes(merge_only_spec_change):
+    _, git, _, current, before, poll, version = merge_only_spec_change
+    assert before['specs']['binutils']['metadata']['version'] != version
+    assert git('show', f'{current}:SPECS/binutils/package.spec') == version
+    observed = poll()
+    assert observed['components']['spec_git']['mode'] == 'incremental'
+    assert observed['components']['spec_git']['error'] is None
+    assert observed['specs']['binutils']['metadata']['version'] == version
+    assert observed['specs']['binutils']['head'] == current
+    assert poll()['specs']['binutils'] == observed['specs']['binutils']
+
+
 def test_pinned_tree_counts_only_regular_direct_spec_blobs(repository):
     repo, git, write, commit, _, _ = repository
     old = git('rev-parse', 'HEAD')

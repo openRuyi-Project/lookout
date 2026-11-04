@@ -122,6 +122,7 @@ def _bucket_log(stdout, limit):
     """Pure parser: turn a `git log --name-status` stream into per-package changelogs,
     newest first, capped at `limit`. Separated from the subprocess for testability."""
     result = {}
+    seen = set()
     for record in stdout.split(RS):
         if not record.strip('\n'):
             continue
@@ -143,8 +144,10 @@ def _bucket_log(stdout, limit):
                     touched.add(seg[1])
         for name in touched:
             bucket = result.setdefault(name, [])
-            if len(bucket) < limit:
+            # Separate merge diffs may report one commit for several parents.
+            if len(bucket) < limit and (name, commit) not in seen:
                 bucket.append(entry)
+                seen.add((name, commit))
     return result
 
 
@@ -161,6 +164,7 @@ def changelogs(repo, limit=20, git='git', *, since=None, names=None):
         return {}, None
     revisions = [f'{since}..HEAD'] if since else []
     stdout, error = _git_text(['-C', repo, 'log', '--no-show-signature',
+                              '--diff-merges=separate',
                               f'--format={fmt}', '--name-status', *revisions, '--', *paths], git)
     if error is not None or stdout is None:
         return {}, error
