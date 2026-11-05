@@ -1,10 +1,14 @@
 """Authoring shorthand cannot lose monitor identity or public provenance."""
 import json
+from urllib.parse import urlsplit
 
 import pytest
 
+from tests.conftest import ProjectedClient
 from tests.helpers.config import setup_config
-from tracker import config as cfg, config_change, package
+from tracker import config as cfg
+from tracker import config_change, package, state
+from tracker.api import create_app
 from tracker.identity import from_native, request_url
 from tracker.monitors import runner
 from tracker.monitors.version.nvchecker import import_events
@@ -71,3 +75,43 @@ def test_adapter_inputs_survive_public_projection(config, snapshot, monitor):
     after = runner.plan(config, snapshot, 'binutils', monitor)['inputs']
     assert before is not None
     assert after == before
+
+
+@pytest.mark.parametrize('key', ['git', 'url'])
+@pytest.mark.parametrize('authority', [
+    '[2001:db8::1]', '[2001:db8::1]:8443', '[::1]',
+    '[::ffff:192.0.2.1]:443', '[fe80::1%25eth0]:8080', '[v1.api]:443',
+])
+def test_public_url_preserves_ip_literal_authority(key, authority):
+    entry = dict(source='git' if key == 'git' else 'jq',
+                 **{key: f'https://user:password@{authority}/releases?token=SECRET#private'})
+    public = cfg.public_source(entry)
+    expected = f'https://{authority}/releases'
+    assert public[key] == expected
+    assert urlsplit(public[key]).hostname == urlsplit(expected).hostname
+    assert urlsplit(public[key]).port == urlsplit(expected).port
+    assert all(secret not in json.dumps(public) for secret in ('user:', 'password', 'SECRET', 'token=', '#private'))
+
+
+@pytest.mark.parametrize('key', ['git', 'url'])
+def test_ipv6_public_url_survives_config_events_and_fact_api(tmp_path, key):
+    path = setup_config(tmp_path / 'config')
+    expected = 'https://[2001:db8::1]:8443/releases'
+    entry = dict(source='git' if key == 'git' else 'jq',
+                 **{key: 'https://user:password@[2001:db8::1]:8443/releases?token=SECRET#private'})
+    native = path.parent / 'native.toml'
+    native.write_text(config_change.edit_tables(native.read_text(), {'widget': entry}))
+    loaded = cfg.load(path)
+    assert package.explain(path, 'widget')['rules'][0]['source'][key] == expected
+    event = json.dumps(dict(name='widget', event='updated', version='2.0'))
+    facts, error = import_events(event, loaded['native'], {}, '2026-01-01T00:00:00+00:00')
+    assert error is None
+    assert facts['widget']['source'][key] == expected
+    snapshot = state.empty()
+    snapshot.update(generation=1, targets=loaded['targets'], tracks=facts, native_ids=['widget'])
+    db = tmp_path / 'snapshot.sqlite3'
+    state.commit(db, snapshot)
+    client = ProjectedClient(create_app(db))
+    response = client.get('/api/v2/tracks/widget')
+    assert response.status_code == 200
+    assert response.json()['source'][key] == expected

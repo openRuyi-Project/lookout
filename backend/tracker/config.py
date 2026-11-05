@@ -189,7 +189,10 @@ def public_source(entry):
                 u = urlsplit(value)
                 if u.scheme not in ('https', 'http') or not u.hostname:
                     continue
-                value = urlunsplit((u.scheme, u.hostname + (f':{u.port}' if u.port else ''), u.path, '', ''))
+                host = u.hostname
+                if u.netloc.rsplit('@', 1)[-1].startswith('['):
+                    host = f'[{host}]'
+                value = urlunsplit((u.scheme, host + (f':{u.port}' if u.port else ''), u.path, '', ''))
             except ValueError:
                 continue
         result[key] = value
