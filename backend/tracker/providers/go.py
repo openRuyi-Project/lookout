@@ -48,8 +48,13 @@ def proxy_base(name):
     return 'https://proxy.golang.org/' + quote(escaped, safe='/!')
 
 
+def proxy_version(version):
+    escaped = re.sub('[A-Z]', lambda match: '!' + match[0].lower(), version)
+    return quote(escaped, safe='!')
+
+
 def verified_version(base, version, current, io):
-    observed = io.json('GET', base + '/@v/' + quote(version, safe='') + '.info', min_interval=0.25)
+    observed = io.json('GET', base + '/@v/' + proxy_version(version) + '.info', min_interval=0.25)
     canonical = observed.get('Version')
     # Accept +incompatible only when the proxy verifies the same pre-modules tag.
     compatible = version + '+incompatible' if '+' not in version and current[0][0] >= 2 else version
@@ -67,7 +72,7 @@ def module_document(settings, version, io):
         raise UnsupportedRelease('Current source version does not establish an exact Go release.') from error
     base = proxy_base(name)
     canonical = verified_version(base, version, current, io)
-    url = base + '/@v/' + quote(canonical, safe='') + '.mod'
+    url = base + '/@v/' + proxy_version(canonical) + '.mod'
     return io.text(url, min_interval=0.25), url
 
 
@@ -93,7 +98,7 @@ def withdrawal(settings, version, io):
     else:
         latest = io.json('GET', base + '/@latest', min_interval=0.25)['Version']
         version_key(latest)
-    url = base + '/@v/' + quote(latest, safe='') + '.mod'
+    url = base + '/@v/' + proxy_version(latest) + '.mod'
     document = io.text(url, min_interval=0.25)
     ranges = retractions(document, name)
     yanked = any(low <= current <= high for low, high in ranges)
