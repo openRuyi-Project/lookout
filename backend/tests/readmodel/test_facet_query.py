@@ -122,6 +122,21 @@ def test_repeated_values_deduplicate_and_reserved_characters_roundtrip():
     assert remaining == [('q', 'a+b & c')]
 
 
+@pytest.mark.parametrize('values,expected', [
+    (['custom'], {0}),
+    (['_not_detected'], {1, 2}),
+    (['cmake'], {3}),
+    (['custom', '_not_detected'], {0, 1, 2}),
+])
+def test_declared_custom_and_fallback_remain_distinct_after_url_roundtrip(values, expected):
+    index = {'buildsystem': {'custom': {0}, '_not_detected': {1, 2}, 'cmake': {3}}}
+    selected = FilterQuery(selections={'buildsystem': values})
+    parsed, remaining = FilterQuery.extract(parse_qsl(encode_parameters(selected.parameters())))
+    assert not remaining
+    assert parsed == selected
+    assert Evaluation(index, ALL, parsed).matches == expected
+
+
 def test_unknown_and_empty_result_values_do_not_restore_the_universe():
     for value in ('future', 'EOL'):
         query = FilterQuery().toggle('maintenance', value)
