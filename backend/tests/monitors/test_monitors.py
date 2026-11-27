@@ -526,3 +526,32 @@ def test_failed_check_uses_attempt_backoff(config, snapshot, monkeypatch, tmp_pa
     monitor.collect(config,'unused',db,io=FixtureIO({}));count=len(calls)
     monitor.collect(config,'unused',db,io=FixtureIO({}))
     assert count>0 and len(calls)==count
+
+
+def test_eol_official_purl_mapping_requires_unique_product_and_cycle():
+    from datetime import date
+    from types import SimpleNamespace
+
+    purl = 'pkg:pypi/widget'
+    rows = [{'identifier': purl, 'product': {'name': 'widget'}}]
+    releases = [{'name': '1.2', 'latest': {'name': '1.2.9'}, 'eolFrom': '2025-01-01'}]
+    requests = []
+
+    def get(method, url):
+        requests.append(url)
+        return {'result': rows if url == monitor_eol.MAPPING_URL else {'releases': releases}}
+
+    io = SimpleNamespace(today=date(2026, 1, 1), json=get)
+    settings = monitor_eol.inputs({'identity': {'source': 'pypi', 'pypi': 'Widget'}}, None)
+    assert settings == {'purl': purl}
+    result = monitor_eol.check({'version': '1.2.1'}, settings, io)
+    assert result['status'] == 'ok'
+    assert result['findings'][0]['id'] == 'cycle:1.2'
+    releases.append({'name': '1', 'latest': {'name': '1.2.9'}})
+    assert monitor_eol.check({'version': '1.2.1'}, settings, io)['status'] == 'unsupported'
+    explicit = {'product': 'widget', 'cycle_parts': 2}
+    assert monitor_eol.check({'version': '1.2.1'}, explicit, io)['status'] == 'ok'
+    rows.append({'identifier': purl, 'product': {'name': 'another-widget'}})
+    requests.clear()
+    assert monitor_eol.check({'version': '1.2.1'}, settings, io)['status'] == 'unsupported'
+    assert requests == [monitor_eol.MAPPING_URL]
