@@ -519,3 +519,36 @@ def test_obs_retry_classification_respects_explicit_backpressure(config, monkeyp
         assert len(sleeps) == expected - 1
     finally:
         owner.close()
+
+
+def test_conditional_get_keeps_body_age_and_failed_validation_keeps_disk(tmp_path, monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr(monitor_io.time, 'time', lambda: clock[0])
+    replies = iter([
+        httpx.Response(200, json={'old': True}, headers={'ETag': '"one"'}),
+        httpx.Response(304),
+        httpx.Response(503),
+        httpx.Response(200, json={'new': True}, headers={'Last-Modified': 'Wed, 01 Jan 2025 00:00:00 GMT'}),
+    ])
+    validators = []
+
+    def handle(request):
+        validators.append(request.headers.get('if-none-match'))
+        return next(replies)
+
+    url = 'https://example.org/fact'
+    with httpx.Client(transport=httpx.MockTransport(handle)) as transport:
+        def read():
+            scoped = monitor_io.IO(tmp_path, client=transport, ttl=10).for_hosts({'example.org'})
+            return scoped.json('GET', url), scoped.observed_at
+
+        original = read()
+        clock[0] += 11
+        assert read() == original
+        clock[0] += 9
+        assert read() == original
+        clock[0] += 2
+        with pytest.raises(httpx.HTTPStatusError):
+            read()
+        assert read()[0] == {'new': True}
+    assert validators == [None, '"one"', '"one"', '"one"']

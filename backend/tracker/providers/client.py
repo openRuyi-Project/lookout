@@ -18,6 +18,10 @@ import httpx
 from tracker.providers.http import USER_AGENT, read_response
 
 
+def valid_validator(value):
+    return isinstance(value, str) and 0 < len(value) <= 1024 and value.isascii() and value.isprintable()
+
+
 class IO:
     """Share request results and host pacing within one collection batch.
 
@@ -129,15 +133,16 @@ class IO:
                     if path.is_file() and path.stat().st_size <= 32 * 1024 * 1024:
                         stored = json.loads(path.read_text())
                         # Disk is a disposable success cache, not persistent failure state.
-                        if (isinstance(stored, dict) and set(stored) == {'time', 'data'}
-                                and type(stored['time']) in (int, float)
-                                and math.isfinite(stored['time']) and stored['time'] >= 0):
+                        if (isinstance(stored, dict) and {'time', 'data'} <= stored.keys()
+                                and all(type(stored.get(k, stored['time'])) in (int, float)
+                                        and 0 <= stored.get(k, stored['time']) < math.inf
+                                        for k in ('time', 'validated'))):
                             cached = stored
                 except (OSError, ValueError, OverflowError):
                     # Ignore an unreadable cache entry and fetch from the provider.
                     pass
             ttl = self.ttl if max_age is None else min(self.ttl, max_age)
-            if cached and 0 <= now - cached.get('time', 0) < ttl:
+            if cached and 0 <= now - cached.get('validated', cached['time']) < ttl:
                 self.memory[key] = cached
                 if cached.get('error'):
                     raise ValueError('provider request failed earlier in this run')
@@ -148,15 +153,34 @@ class IO:
                 host = urlsplit(url).hostname
                 self.wait_for_host(host, min_interval)
                 deadline = time.monotonic() + 30
+                headers = {'User-Agent': USER_AGENT}
+                if method == 'GET' and cached and 'data' in cached:
+                    headers.update(cached.get('validators', {}) if isinstance(cached.get('validators'), dict) else {})
+                    headers = {k: v for k, v in headers.items() if k == 'User-Agent'
+                               or k in ('If-None-Match', 'If-Modified-Since') and valid_validator(v)}
+                conditional = len(headers) > 1
                 with self.connection() as client, client.stream(
                         method, url, json=body if method == 'POST' else None,
-                        headers={'User-Agent': USER_AGENT}) as response:
+                        headers=headers) as response:
                     if response.status_code in (429, 503):
                         self.defer_host(host, response.headers.get('Retry-After'))
-                    response.raise_for_status()
-                    body_bytes = read_response(response, max_bytes=512 * 1024 if text else 16 * 1024 * 1024, deadline=deadline)
-                data = body_bytes.decode('utf-8') if text else json.loads(body_bytes)
-                cached = {'time': now, 'data': data}
+                    unchanged = conditional and response.status_code == 304
+                    if not unchanged:
+                        response.raise_for_status()
+                    body_bytes = read_response(response, max_bytes=0 if unchanged else (
+                        512 * 1024 if text else 16 * 1024 * 1024), deadline=deadline)
+                    validators = {request: value for source, request in (
+                        ('ETag', 'If-None-Match'), ('Last-Modified', 'If-Modified-Since'))
+                        if method == 'GET' and valid_validator(value := response.headers.get(source))}
+                if unchanged and cached is not None:
+                    data = cached['data']
+                    cached = {**cached, 'validated': now, 'validators': {
+                        **{k: v for k, v in headers.items() if k != 'User-Agent'}, **validators}}
+                else:
+                    data = body_bytes.decode('utf-8') if text else json.loads(body_bytes)
+                    cached = {'time': now, 'data': data}
+                    if validators:
+                        cached['validators'] = validators
                 if path:
                     try:
                         path.parent.mkdir(parents=True, exist_ok=True)
