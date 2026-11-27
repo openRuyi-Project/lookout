@@ -238,7 +238,7 @@ def failed(proposed, previous, error, attempted_at):
     return history.retain(result, previous) if not old or old.get('last_result') else result
 
 
-def execute(provider, proposed, io, previous=None, *, schedule=None):
+def execute(provider, proposed, io, previous=None, *, schedule=None, prepared=None):
     previous = previous_query(provider, proposed, previous)
     if proposed['status'] != 'pending':
         if (proposed['status'] == 'unsupported' and previous
@@ -260,7 +260,9 @@ def execute(provider, proposed, io, previous=None, *, schedule=None):
         if old.get('status') in ('error', 'partial'):
             max_age = min(max_age, policy.retry_seconds)
         scoped_io = io.for_hosts(REGISTRY[provider].HOSTS, max_age=max_age)
-        output = REGISTRY[provider].check(proposed['subject'], proposed['inputs'], scoped_io)
+        adapter = REGISTRY[provider]
+        args = (proposed['subject'], proposed['inputs'], scoped_io)
+        output = adapter.check(*args) if prepared is None else adapter.check_prepared(*args, prepared)
         # Reinterpreting cached bytes is not a new upstream observation.
         observed_at = getattr(scoped_io, 'observed_at', None) or attempted_at
         expected_keys = {'status', 'findings', 'note'}
@@ -397,8 +399,14 @@ def collect(config, config_path, db, *, io=None):
                 return result
             last_published = 0.0
             unpublished = False
+            batches = defaultdict(list)
+            for _, provider, name, proposed, previous, policy in selected_jobs:
+                if getattr(REGISTRY[provider], 'prepare', None):
+                    batches[provider].append((name, proposed, previous, policy))
+            prepared = {provider: REGISTRY[provider].prepare(batch, io) for provider, batch in batches.items()}
             with ThreadPoolExecutor(max_workers=options['workers'], thread_name_prefix='monitor') as pool:
-                pending = {pool.submit(execute, provider, proposed, io, previous, schedule=policy): (name, provider)
+                pending = {pool.submit(execute, provider, proposed, io, previous, schedule=policy,
+                                       prepared=prepared.get(provider, {}).get(name)): (name, provider)
                            for _, provider, name, proposed, previous, policy in selected_jobs}
                 for future in as_completed(pending):
                     name, provider = pending[future]

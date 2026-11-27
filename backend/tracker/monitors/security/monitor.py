@@ -2,6 +2,7 @@
 
 import json
 import re
+from collections import defaultdict
 from datetime import date
 from ipaddress import ip_address
 from urllib.parse import quote, urlsplit
@@ -13,7 +14,7 @@ from tracker.monitors.schedule import Schedule
 from tracker.monitors.security import nvd
 from tracker.monitors.source.release import commit_hash, tag_matches_version
 
-__all__ = ['TITLE', 'VERSION', 'HOSTS', 'inputs', 'check', 'refresh', 'query_subject']
+__all__ = ['TITLE', 'VERSION', 'HOSTS', 'inputs', 'check', 'refresh', 'query_subject', 'prepare', 'check_prepared']
 
 
 TITLE = Issue.ADVISORY
@@ -112,6 +113,101 @@ def osv(subject, settings, io):
             break
         seen.add(token)
     raise ValueError('OSV pagination exceeds budget')
+
+
+
+OSV_BATCH_SIZE = 100
+OSV_URL = 'https://api.osv.dev/v1/'
+
+
+def osv_batch(requests, io, detail):
+    """Keep pagination and errors attached to the original query index."""
+    entries, seen = [[] for _ in requests], [set() for _ in requests]
+    pending = dict(enumerate(requests))
+    for _ in range(20):
+        response = io.json('POST', OSV_URL + 'querybatch', {'queries': list(pending.values())})
+        results = response['results']
+        if not isinstance(results, list) or len(results) != len(pending):
+            raise ValueError('OSV batch response does not match the queries')
+        next_page = {}
+        for index, result in zip(pending, results, strict=True):
+            if not isinstance(result, dict) or result.keys() - {'vulns', 'next_page_token'}:
+                raise ValueError('Invalid OSV batch result')
+            rows, token = result.get('vulns', []), result.get('next_page_token')
+            if not isinstance(rows, list) or token is not None and not isinstance(token, str):
+                raise ValueError('Invalid OSV batch pagination')
+            for row in rows:
+                identity, modified = row['id'], row['modified']
+                if not isinstance(identity, str) or not identity or not isinstance(modified, str) or not modified:
+                    raise ValueError('Invalid OSV advisory identity')
+                item = detail(identity, modified)
+                if not item.get('withdrawn'):
+                    entries[index].append(item)
+            if token:
+                if token in seen[index]:
+                    raise ValueError('Repeated OSV page token')
+                seen[index].add(token)
+                next_page[index] = {**requests[index], 'page_token': token}
+        if not next_page:
+            return entries
+        pending = next_page
+    raise ValueError('OSV batch pagination exceeds budget')
+
+
+def prepare(jobs, owner):
+    """Batch only due OSV queries that share the same cache-age policy."""
+    by_age = defaultdict(lambda: defaultdict(list))
+    for name, proposed, previous, policy in jobs:
+        settings, subject = proposed['inputs'], proposed['subject']
+        if 'vendor' in settings:
+            continue
+        try:
+            request = query(subject, settings)
+        except (ValueError, KeyError, TypeError):
+            continue  # execute() records invalid individual inputs.
+        if request is not None:
+            age = min(policy.interval_seconds, policy.retry_seconds) if previous.get('status') in (
+                'error', 'partial') else policy.interval_seconds
+            by_age[age][json.dumps(request, sort_keys=True)].append(name)
+    prepared = {}
+    for age, identities in by_age.items():
+        keys = list(identities)
+        # A single identity costs one query without detail fan-out.
+        if len(keys) < 2:
+            continue
+        details = {}
+        for start in range(0, len(keys), OSV_BATCH_SIZE):
+            chunk = keys[start:start + OSV_BATCH_SIZE]
+            scoped = owner.for_hosts(HOSTS, max_age=age)
+
+            def detail(identity, modified):
+                key = (identity, modified)
+                if key not in details:
+                    item = scoped.json('GET', OSV_URL + 'vulns/' + quote(identity, safe=''),
+                                       cache_version=modified)
+                    if item.get('id') != identity or item.get('modified') != modified:
+                        raise ValueError('OSV detail does not match queried advisory revision')
+                    details[key] = item, tuple(scoped.observed[-1:])
+                item, times = details[key]
+                scoped.observed.extend(times)
+                return item
+
+            try:
+                results = osv_batch([json.loads(key) for key in chunk], scoped, detail)
+            except Exception as error:
+                results = [error] * len(chunk)
+            for key, result in zip(chunk, results, strict=True):
+                for name in identities[key]:
+                    prepared[name] = (result, tuple(scoped.observed))
+    return prepared
+
+
+def check_prepared(subject, settings, io, prepared):
+    entries, observed = prepared
+    if isinstance(entries, Exception):
+        raise entries
+    io.observed.extend(observed)
+    return render(subject, settings, io, entries)
 
 
 def group_aliases(entries):
@@ -245,6 +341,10 @@ def check(subject, settings, io):
         entries = nvd.read(subject, settings, io)
     else:
         entries = osv(subject, settings, io)
+    return render(subject, settings, io, entries)
+
+
+def render(subject, settings, io, entries):
     if entries is None:
         return {"status": "unsupported", "findings": [], "note": "Upstream version identity is not established."}
     provider = "NVD" if "vendor" in settings else "OSV"

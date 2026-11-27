@@ -119,10 +119,12 @@ class IO:
     def text(self, url, *, max_age=None, min_interval=0):
         return self._read('GET', url, None, max_age=max_age, min_interval=min_interval, text=True)
 
-    def _read(self, method, url, body, *, max_age, min_interval, text=False, observed=None, accept=None):
+    def _read(self, method, url, body, *, max_age, min_interval, text=False, observed=None, accept=None, cache_version=None):
         identity = [method, url, body] + (['text'] if text else [])
         if accept is not None:
             identity.append(accept)
+        if cache_version is not None:
+            identity.extend(('version', cache_version))
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         with self.guard:
             lock = self.locks[key]
@@ -224,10 +226,10 @@ class ProviderIO:
             return datetime.fromtimestamp(min(self.observed), UTC).isoformat(timespec='seconds')
         return None
 
-    def json(self, method, url, body=None, *, min_interval=0, accept=None):
+    def json(self, method, url, body=None, *, min_interval=0, accept=None, cache_version=None):
         self.validate(method, url)
         return self.owner._read(method, url, body, max_age=self.max_age,
-                                min_interval=min_interval, observed=self.observed, accept=accept)
+                                min_interval=min_interval, observed=self.observed, accept=accept, cache_version=cache_version)
 
     def text(self, url, *, min_interval=0):
         self.validate('GET', url)
