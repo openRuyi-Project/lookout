@@ -146,8 +146,9 @@ def test_checks_keep_exact_status_in_rows_and_detail(snapshot, tmp_path):
     reset = page['controls']['reset']
     destination = parse_qs(urlsplit(reset).query)
     assert 'select' not in destination and destination['monitor'] == ['fixture']
-    assert destination['q'] == ['binutils']
-    assert client.get('/api/ui/packages?' + urlsplit(reset).query).json()['total'] == 1
+    assert 'q' not in destination
+    assert client.get('/api/ui/packages?' + urlsplit(reset).query).json()['total'] == client.get(
+        '/api/ui/packages?monitor=fixture&section=coverage').json()['total']
     detail = client.get('/api/ui/packages/binutils').json()
     checks = next(section for section in detail['sections'] if section['id'] == 'checks')
     assert 'Partial evidence' in str(checks)

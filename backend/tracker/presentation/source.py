@@ -15,10 +15,7 @@ def source_sections(result, links):
             title='Not declared' if data['buildsystem_status'] == 'not_declared' else 'Not observed')))
     description = meta.get('description')
     notes = [description] if description and description != meta.get('summary') else []
-    sections = [Section(placement='lead', id=result['id'], title='', fields=fields)] if fields else []
-    if notes:
-        sections.append(Section(id=result['id'] + '-description', title='Description', notes=notes))
-    return sections
+    return [Section(placement='lead', id=result['id'], title='', fields=fields, notes=notes)] if fields or notes else []
 
 
 def repository_link(url, kind, ref):

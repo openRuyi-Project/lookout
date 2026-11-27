@@ -106,10 +106,8 @@ def test_source_v2_fields_and_detail_provenance_remain_available(client):
     assert document['subtitle'] == 'Fixture summary'
     assert sum(section['id'] == 'source' for section in document['sections']) == 1
     context = next(section for section in document['sections'] if section['id'] == 'source')
-    assert context['notes'] == []
-    description = next(section for section in document['sections'] if section['id'] == 'source-description')
-    assert description['placement'] == 'flow'
-    assert description['notes'] == ['Fixture long description']
+    assert context['placement'] == 'lead'
+    assert context['notes'] == ['Fixture long description']
     assert next(field for field in context['fields'] if field['label'] == 'License')['values'][0]['text'] == 'Fixture-License'
     assert any(link['href'] == raw['data']['source_url'] for link in document['links'])
     assert any(link['href'] == 'https://upstream.example/fixture' for link in document['links'])
@@ -157,7 +155,7 @@ def test_selected_zero_count_menus_remain_visible_and_removable(prepared):
     payload['build_statuses'][target] = [{'value': 'failed', 'label': 'CheckFailed', 'count': 0}]
     query = {'filters': conjunction({'buildsystem': 'fixture-system', 'maintenance': 'FixtureSignal', 'build:' + target: 'failed'}).model_dump()}
     page = presentation_pages.listing(payload, query)
-    choice = page.table.columns[3].navigation[0].choices[0]
+    choice = page.table.columns[2].navigation[0].choices[0]
     assert choice.selected and choice.count == 0
     assert 'build:' + target not in dict(terms_in(choice.href))
     assert ('maintenance', 'FixtureSignal') in terms_in(choice.href)
@@ -269,11 +267,11 @@ def test_upgrade_arrow_does_not_substitute_for_evidence_freshness(relation, stal
 
 def test_aggregate_columns_and_target_filters_share_the_query(client):
     doc = client.get('/api/ui/packages').json()
-    assert [column['title'] for column in doc['table']['columns'][:3]] == ['Package', 'Current', 'Candidate']
+    assert [column['title'] for column in doc['table']['columns'][:2]] == ['Package', 'Current → Candidate']
     row = next(row for row in doc['table']['rows'] if row['key'] == 'binutils')
     assert row['cells'][1]['lines'][0][0]['text'] == '3.9.0'
     assert len(row['cells']) == len(doc['table']['columns'])
-    for column in doc['table']['columns'][3:]:
+    for column in doc['table']['columns'][2:]:
         assert len(column['navigation']) == 1
         menu = column['navigation'][0]
         assert menu['label'] == column['title']
@@ -281,7 +279,7 @@ def test_aggregate_columns_and_target_filters_share_the_query(client):
             selected = client.get('/api/ui/packages' + '?' + urlsplit(choice['href']).query).json()
             assert not choice['selected']
             assert selected['total'] == choice['count']
-    assert not any(row['label'] in [column['title'] for column in doc['table']['columns'][3:]]
+    assert not any(row['label'] in [column['title'] for column in doc['table']['columns'][2:]]
                    for row in doc['controls']['choice_rows'])
 
 
@@ -289,7 +287,23 @@ def test_detail_version_values_have_one_place_and_checks_remain_last(client):
     doc = client.get('/api/ui/packages/binutils').json()
     version = next(section for section in doc['sections'] if section['id'] == 'version')
     assert version['placement'] == 'lead' and version['title'] == ''
-    current = next(field for field in version['fields'] if field['label'] == 'Current')
+    current = next(field for field in version['fields'] if field['label'] == 'Current → Candidate')
     assert current['values'][0]['text'] == '3.9.0'
     assert all(value['text'] != '3.9.0' for value in doc['identity'])
     assert doc['sections'][-1]['id'] == 'checks' and doc['sections'][-1]['collapsible']
+
+
+def test_listing_and_detail_share_the_version_pair(client):
+    listing = client.get('/api/ui/packages').json()
+    for row in listing['table']['rows']:
+        detail = client.get('/api/ui/packages/' + row['key']).json()
+        section = next(s for s in detail['sections'] if s['id'] == 'version')
+        values = next(f['values'] for f in section['fields'] if f['label'] == 'Current → Candidate')
+        compact = row['cells'][1]['lines'][0]
+        assert [(v['text'], v['kind'], v['tone']) for v in values] == [
+            (v['text'], v['kind'], v['tone']) for v in compact]
+        assert sum(v['text'] == '→' for v in values) <= 1
+        for i, value in enumerate(values):
+            if value['text'] == '→':
+                assert values[i + 1]['href'] == '/packages/' + row['key'] + '#version'
+                assert values[i + 1]['tone'] == 'normal'

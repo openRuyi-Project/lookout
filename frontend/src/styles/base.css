@@ -12,6 +12,8 @@
   --blue: light-dark(#245fc2, #9bbdff);
   --focus: var(--blue);
   --control: light-dark(#d1d7df, #45505f);
+  --selected: light-dark(#283847, #dce5ef);
+  --on-selected: light-dark(#fff, #1e2b37);
   --mono: ui-monospace, "DejaVu Sans Mono", "Liberation Mono", monospace;
 }
 

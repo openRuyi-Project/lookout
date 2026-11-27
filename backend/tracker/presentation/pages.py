@@ -39,7 +39,7 @@ from tracker.presentation.values import (
     module,
     stamp,
     text,
-    version_parts,
+    version_value,
 )
 from tracker.presentation.version import version_annotations
 
@@ -68,11 +68,10 @@ def identity_cell(pkg, links, *, labels=True):
     source = module(pkg, 'source')
     if source and source['data'].get('buildsystem'):
         identity.append(buildsystem(source['data']['buildsystem'], links))
-    identity.extend(sorted(signals, key=lambda value: priority(value.appearance)))
     activity = module(pkg, 'activity')
     if labels and activity:
         identity.extend(open_links(pkg, activity))
-    return cell(identity)
+    return cell(identity, sorted(signals, key=lambda value: priority(value.appearance)))
 
 
 def check_failed_label(pkg, *, exclude_kind=None):
@@ -149,7 +148,7 @@ def _results_table(payload, focus, links, title):
     columns = [Column(title='Package', role='identity')]
     for descriptor in descriptors:
         if not focus and descriptor['kind'] == 'version':
-            columns.extend([Column(title='Current'), Column(title='Candidate')])
+            columns.append(Column(title='Current → Candidate'))
             continue
         columns_for = presenter(descriptor).columns
         assert columns_for is not None
@@ -170,12 +169,11 @@ def _result_row(pkg, descriptors, aggregate, links):
         result = pkg['monitors'][descriptor['id']]
         column = len(cells)
         if aggregate and descriptor['kind'] == 'version':
-            current, candidate, annotations = version_parts(pkg, links=links)
-            cells.extend([cell(current), cell(candidate + annotations)])
+            cells.append(cell(version_value(pkg, links=links)))
             for related in sorted(pkg['monitors'].values(), key=lambda m: m['id'] == 'eol'):
                 preview = presenter({'kind': related['data']['kind']}).preview
                 if preview:
-                    notes.extend(RowNote(column=0, span=column + 2, values=line)
+                    notes.extend(RowNote(column=0, span=column + 1, values=line)
                                  for line in preview(pkg, related, links))
         else:
             cells_for = presenter(descriptor).cells
@@ -196,7 +194,7 @@ def detail(pkg, collection=None, *, presentation=None):
     requirements = module(pkg, 'requires')
     if requirements:
         signals.extend(evidence_labels(requirements, links, counts=True))
-    identity.extend(sorted(signals, key=lambda value: priority(value.appearance)))
+    signals.sort(key=lambda value: priority(value.appearance))
     shortcuts = [text('/' + data['source_path'], href=data.get('source_url'))] if data.get('source_path') else []
     if meta.get('url'):
         shortcuts.append(text(meta['url'], href=meta['url']))
@@ -209,10 +207,7 @@ def detail(pkg, collection=None, *, presentation=None):
         destination = sections if adapter.has_results else context
         rendered = adapter.sections(result, links)
         if kind == 'version':
-            current, candidate, annotations = version_parts(pkg)
-            fields = [field('Current', *current)]
-            if candidate or annotations:
-                fields.append(field('Candidate', *candidate, *annotations))
+            fields = [field('Current → Candidate', *version_value(pkg))]
             if not rendered:
                 rendered = [Section(id=result['id'], title='')]
             rendered[0].placement = 'lead'
@@ -238,7 +233,7 @@ def detail(pkg, collection=None, *, presentation=None):
     context = []
     sections.append(Section(id='checks', title='Checks', collapsible=True, table=Table(label='Collection checks', columns=[
         Column(title='Monitor'), Column(title='Observation'), Column(title='Last checked')], rows=checks)))
-    return DetailDocument(theme_revision=theme(presentation or {})['revision'], title=pkg['name'], subtitle=meta.get('summary'), identity=identity,
+    return DetailDocument(theme_revision=theme(presentation or {})['revision'], title=pkg['name'], subtitle=meta.get('summary'), identity=identity, signals=signals,
                           links=shortcuts, context=context, sections=sections)
 
 

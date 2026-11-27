@@ -142,6 +142,7 @@ class DetailDocument(DocumentModel):
     title: str
     subtitle: str | None = None
     identity: list[Text] = []
+    signals: list[Text] = []
     links: list[Text] = []
     context: list[Section] = []
     sections: list[Section]

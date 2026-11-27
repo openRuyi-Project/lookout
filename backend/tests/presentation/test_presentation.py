@@ -189,7 +189,7 @@ def test_version_display_uses_decision_not_independent_comparison(snapshot):
     build['source_success'] = False
     values = presentation_values.version_value(pkg)
     assert [value.text for value in values] == ['source.version', '→', 'target.version']
-    assert values[0].tone == 'negative' and values[2].tone == 'positive'
+    assert values[0].tone == 'negative' and values[2].tone == 'normal'
     for relation in ('ahead', 'current', 'unknown', 'not_applicable'):
         version['relation'] = relation
         assert [value.text for value in presentation_values.version_value(pkg)] == ['source.version']
@@ -341,8 +341,8 @@ def test_package_context_and_changelog_remain_visible_without_empty_sections(sna
                            'date': '2026-09-19T01:00:00Z', 'signed_off_by': ['Packager']}]
     document = presentation_pages.detail(pkg)
     context = next(s for s in document.sections if s.id == 'source')
-    assert context.notes == []
-    assert next(s for s in document.sections if s.id == 'source-description').notes == ['Useful description']
+    assert context.placement == 'lead'
+    assert context.notes == ['Useful description']
     assert context.fields[0].values[0].text == 'MIT'
     changelog = next(s for s in document.sections if s.title == 'Changelog')
     assert changelog.entries[0].metadata[0].text == 'Packager'

@@ -1,12 +1,12 @@
 ---
 import {safeHref, type Controls} from '../../lib/document';
-interface Props {controls: Controls}
-const {controls} = Astro.props;
+interface Props {controls: Controls; clear: boolean}
+const {controls, clear} = Astro.props;
 ---
 <form method="get" action={safeHref(controls.action)} class="search-form" role="search">
   {controls.hidden.map(parameter => <input type="hidden" name={parameter.name} value={parameter.value}/>)}
   <label class="sr-only" for="search">Search packages</label>
   <input id="search" type="search" name="q" value={controls.query} placeholder="Search packages" maxlength="100"/>
   <button type="submit">Search</button>
-  <a class="filter-clear" href={safeHref(controls.reset)}>Reset filters</a>
+  {clear && <a class="filter-clear" href={safeHref(controls.reset)}>Clear</a>}
 </form>

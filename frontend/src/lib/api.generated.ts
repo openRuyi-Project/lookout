@@ -103,6 +103,11 @@ export interface components {
              */
             identity: components["schemas"]["Text"][];
             /**
+             * Signals
+             * @default []
+             */
+            signals: components["schemas"]["Text"][];
+            /**
              * Links
              * @default []
              */

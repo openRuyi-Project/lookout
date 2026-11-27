@@ -92,7 +92,7 @@ def version_parts(pkg, *, compact=True, links=None):
                        title=f"{value['current']} · {current}")]
         candidate = []
         if value['relation'] == 'changed':
-            candidate = [text(dated_commit(latest, revision['latest_committed_at'], current), kind='code', tone='positive', href=links['latest'],
+            candidate = [text(dated_commit(latest, revision['latest_committed_at'], current), kind='code', href=links['latest'],
                             title=revision['branch'] + ' · ' + latest)]
         return values, candidate, annotation
     values = [text(value['current'], kind='code', tone=tone, title=title)]
@@ -104,7 +104,7 @@ def version_parts(pkg, *, compact=True, links=None):
                  else '(' + qualifier + ')')
         values.append(text(label, kind='code', tone='muted',
                            href=release['url'], title='Exact Source0 release'))
-    candidate = [text(value['latest'], kind='code', tone='positive')] if value['relation'] == 'outdated' else []
+    candidate = [text(value['latest'], kind='code', href=pkg.get('detail_url', '') + '#' + result.get('id', 'version'))] if value['relation'] == 'outdated' else []
     return values, candidate, annotation
 
 

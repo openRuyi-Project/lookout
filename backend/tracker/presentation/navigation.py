@@ -155,4 +155,4 @@ def listing_controls(payload, query, focus, links):
     active.extend(Choice(label=_condition_label(c, payload), href=links.toggle(*c.identity))
         for c in links.filters.conditions if c.identity not in visible)
     return Controls(query=query.get('q', ''), hidden=hidden, choice_rows=rows, navigation=navigation,
-        active=active, reset=links.to(filters={}))
+        active=active, reset=links.to(filters={}, q=''))

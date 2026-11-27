@@ -465,7 +465,7 @@ try {
   assert.match(listing, /href="https:\/\/build.example.org\/">BuildService<\/a>/);
   assert.match(listing, /href="https:\/\/github.com\/fixture\/repo\/tree\/stable%2F3">stable\/3<\/a>/);
   assert.match(listing, /href="https:\/\/github.com\/fixture\/repo\/commit\/abcdef0123456789abcdef0123456789abcdef01"[^>]*>abcdef<\/a>/);
-  assert.equal((listing.match(/<table\b[^]*?<\/table>/)[0].match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 6);
+  assert.equal((listing.match(/<table\b[^]*?<\/table>/)[0].match(/<col(?:\s[^>]*)?\s*\/?>/g)||[]).length, 5);
   assert.equal((listing.match(/role="search"/g) || []).length, 1);
   const packageMenu = listing.match(/<div class="choice-rows"[^]*?<div class="results-toolbar"/)[0];
   const filterForms = html => [...html.matchAll(/<form[^>]*class="selection-form"[^]*?<\/form>/g)]
@@ -509,12 +509,12 @@ try {
   const untrackedRow = listing.match(/<tr data-key="untracked"[^]*?<\/tr>/)[0];
   const untrackedCells = [...untrackedRow.matchAll(/<t[hd]\b[^>]*>([^]*?)<\/t[hd]>/g)].map(match => match[1]);
   assert.match(untrackedCells[1], />2\.0</);
-  assert.doesNotMatch(untrackedCells[1], /value-tag/);
-  assert.match(untrackedCells[2], /label%3AUntracked[^>]*>Untracked/);
+  assert.match(untrackedCells[1], />2\.0<[^]*?label%3AUntracked[^>]*>Untracked/);
+  assert.doesNotMatch(untrackedCells[0], />Untracked</);
   const failedRow = listing.match(/<tr data-key="check-error"[^]*?<\/tr>/)[0];
   const failedCells = [...failedRow.matchAll(/<t[hd]\b[^>]*>([^]*?)<\/t[hd]>/g)].map(match => match[1]);
-  assert.doesNotMatch(failedCells[0] + failedCells[1], />CheckFailed</);
-  assert.match(failedCells[2], /href="\/packages\/check-error#check-version"[^>]*>CheckFailed</);
+  assert.doesNotMatch(failedCells[0], />CheckFailed</);
+  assert.match(failedCells[1], /href="\/packages\/check-error#check-version"[^>]*>CheckFailed</);
 
   const errorPage = await read('/packages/check-error');
   for (const page of [listing, errorPage]) {
@@ -546,7 +546,7 @@ try {
   for (const link of pagerLinks(topPager)) {
     assert.equal(new URL(link.replaceAll('&amp;', '&'), 'http://fixture').searchParams.get('per_page'), '3');
   }
-  assert.match(listing, /class="results-toolbar"[^]*?class="result-count"[^]*?<form[^>]*role="search"/);
+  assert.match(listing, /class="results-toolbar"[^]*?<form[^>]*role="search"[^]*?class="result-count"/);
   assert.match(listing, /rel="icon" type="image\/svg\+xml" href="\/openruyi.svg"/);
   assert.match(listing, /<img src="\/openruyi.svg" width="38" height="28" alt=""/);
   assert.match(await read('/openruyi.svg'), /<svg/);
@@ -583,7 +583,7 @@ try {
   assert.doesNotMatch(focused, /data-key="success"/);
   const coverage = await read(filtered([[['check:yanked', 'ok']]], {monitor: 'yanked', section: 'coverage'}));
   assert.match(coverage, />Version<\/th>/);
-  assert.match(coverage, /Reset filters/);
+  assert.match(coverage, />Clear</);
   const unknownPort = await read('/packages/yanked');
   assert.match(unknownPort, /Release withdrawn/);
   assert.match(unknownPort, />Files<\/dt>/);
@@ -607,6 +607,7 @@ try {
   assert.deepEqual(rowKeys(await read(formURL(errorChoice))), rowKeys(listing));
   const packageRows = name => listing.match(new RegExp(`<tr data-key="${name}"[^]*?</tbody>`))?.[0] ?? '';
   const row = name => listing.match(new RegExp(`<tr data-key="${name}"[^]*?</tr>`))?.[0] ?? '';
+  assert.match(row('success'), /class="column-value"[^]*?>2\.0<[^]*?>→<[^]*?href="\/packages\/success#version"[^]*?tone-normal[^]*?>2\.1</);
   assert.match(row('success'), /data-appearance="buildsystem%3Acustom"/);
   assert.doesNotMatch(row('success'), /#build/);
   const successfulBuilds = [...row('success').matchAll(/<td class="column-status">[^]*?<\/td>/g)];
@@ -651,11 +652,14 @@ try {
   assert.doesNotMatch(listing, / style=/);
   const sourceContext = await read('/packages/success');
   assert.match(sourceContext, /Fixture package/);
+  assert.equal((sourceContext.match(/Fixture source description/g) || []).length, 1);
+  assert.ok(sourceContext.indexOf('aria-label="Page sections"') < sourceContext.indexOf('class="detail-overview"'));
+  assert.match(sourceContext, /Current → Candidate/);
   assert.doesNotMatch(sourceContext, /<h2><\/h2>|href="#source"/);
   assert.match(sourceContext, /class="detail-aside"[^]*?<section[^>]*id="build"/);
   assert.match(sourceContext, /class="detail-lead"[^]*?<section[^>]*id="source"/);
   assert.ok(sourceContext.indexOf('class="document-sections"') > sourceContext.indexOf('class="detail-aside"'));
-  assert.match(sourceContext, /class="document-sections"[^]*?id="source-description"[^]*?Fixture source description/);
+  assert.match(sourceContext, /class="detail-lead"[^]*?id="source"[^]*?Fixture source description/);
   assert.ok(sourceContext.indexOf('class="package-heading"') < sourceContext.indexOf('class="detail-overview"'));
   assert.match(sourceContext, />MIT<\/span>/);
   assert.match(sourceContext, />\/SPECS\/success<\/a>/);
@@ -673,6 +677,14 @@ try {
   assert.match(detail, /Last successful version/);
   assert.match(detail, /2026-09-19 11:00:00 UTC/);
   const security = await read('/packages/security');
+  const signals = security.match(/<nav class="package-signals"[^]*?<\/nav>/)[0];
+  assert.match(signals, /href="#security"[^]*?>Advisory 8</);
+  const detailNavigation = security.match(/<div class="detail-navigation"[^]*?<\/div>/)[0];
+  assert.ok(detailNavigation.includes('aria-label="Page sections"'));
+  assert.ok(detailNavigation.includes(signals));
+  assert.ok(security.indexOf(signals) < security.indexOf('class="detail-workspace"'));
+  assert.ok(security.indexOf(signals) < security.indexOf('id="build"'));
+  assert.doesNotMatch(security.match(/<header class="package-heading"[^]*?<\/header>/)[0], /Advisory/);
   assert.equal((security.match(/Local patches, bundled dependencies and binary artifacts are not evaluated/g) || []).length, 1);
   assert.match(security, /0\.396%/);
   assert.match(security, /Reported fixes/);
@@ -736,7 +748,7 @@ try {
   const requirementChecks = requiresList.match(/<div[^>]*role="group" aria-label="Checks"[^]*?<\/div>/)[0];
   assert.match(requirementChecks, />Checked<\/span>/);
   const requiresFiltered = await read(filtered([[['maintenance', 'DepMismatch']]], {monitor: 'requires', per_page: '1'}));
-  assert.match(requiresFiltered, /Reset filters/);
+  assert.match(requiresFiltered, />Clear</);
   const selectedMismatch = filterForms(requiresFiltered).find(form => form.includes('id="select-Dependencies-DepMismatch"'));
   assert.match(selectedMismatch, /aria-pressed="true"/);
   assert.doesNotMatch(requiresFiltered, /aria-label="Remove DepMismatch"/);
@@ -772,8 +784,8 @@ try {
   assert.match(buildList, /nothing provides &lt;fixture-dependency&gt;/);
   assert.doesNotMatch(buildList, /worker:\/\//);
   const aggregateReason = packageRows('build-reason');
-  assert.match(aggregateReason, /colspan="3" aria-hidden="true"/);
-  assert.match(aggregateReason, /colspan="1"[^]*?headers="row-Packages-\d+ column-Packages-3"[^]*?nothing provides &lt;fixture-dependency&gt;/);
+  assert.match(aggregateReason, /colspan="2" aria-hidden="true"/);
+  assert.match(aggregateReason, /colspan="1"[^]*?headers="row-Packages-\d+ column-Packages-2"[^]*?nothing provides &lt;fixture-dependency&gt;/);
   const aggregateRuntime = packageRows('requires-upgrade');
   assert.match(aggregateRuntime, /RuntimeDeps:[^]*?libwidget/);
   assert.doesNotMatch(aggregateRuntime, /Python|Optional library|platform_python_implementation/);

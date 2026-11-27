@@ -53,7 +53,8 @@ def build_cell(build, current, detail_url, *, show_reason=False):
     glyph = icon(status)
     values = [text(status, kind='icon' if glyph and icon_only(status) else 'text', icon=glyph,
                    href=build.get('log_url'), title=title, appearance=appearance(status),
-                   tone={'error': 'negative', 'muted': 'muted', 'pending': 'notice'}.get(build['kind'], 'normal'))]
+                   tone='muted' if build['raw_status'] == 'succeeded' else
+                        {'error': 'negative', 'muted': 'muted', 'pending': 'notice'}.get(build['kind'], 'normal'))]
     previous = ([text(last['version'], kind='code', href=detail_url + '#build',
                       title='Last successful version: ' + stamp(last['time']).text)]
                 if not compact and last and last.get('version') else [])

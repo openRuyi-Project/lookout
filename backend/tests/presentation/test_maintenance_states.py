@@ -34,16 +34,16 @@ def values(row, column):
 def test_version_labels_follow_the_same_selection_in_their_own_columns(client):
     page = document(client, {})
     rows = {row['key']: row for row in page['table']['rows']}
-    for view, label, column in [('untracked', 'Untracked', 2)]:
+    for view, label, column in [('untracked', 'Untracked', 1)]:
         selected = {row['key'] for row in document(client, dict(conjunction({'view': view}).parameters()))['table']['rows']}
         tagged = {name for name, row in rows.items() if any(v['text'] == label for v in values(row, column))}
         assert selected == tagged
-    assert [v['text'] for v in values(rows['untracked'], 1)] == ['1.0']
-    assert [v['text'] for v in values(rows['unknown'], 1)] == ['—']
-    assert not any(v['text'] == 'Untracked' for v in values(rows['foo3'], 2))
+    assert [v['text'] for v in values(rows['untracked'], 1)] == ['1.0', 'Untracked']
+    assert [v['text'] for v in values(rows['unknown'], 1)] == ['—', 'Untracked']
+    assert not any(v['text'] == 'Untracked' for v in values(rows['foo3'], 1))
     assert not any(v['text'] == 'Untracked' for v in values(rows['untracked'], 0))
     for row in rows.values():
-        identity, = row['cells'][0]['lines']
+        identity = row['cells'][0]['lines'][0]
         assert identity[0]['text'] == row['key']
         systems = [i for i, value in enumerate(identity) if value['size'] == 'small']
         assert not systems or systems == [1]
@@ -53,10 +53,9 @@ def test_errors_aggregate_packages_and_link_to_the_failed_check(client):
     page = document(client, dict(conjunction({'maintenance': 'CheckFailed'}).parameters()))
     assert {row['key'] for row in page['table']['rows']} == {'binutils', 'foo3'}
     for row in page['table']['rows']:
-        column = 2 if row['key'] == 'foo3' else 0
+        column = 1 if row['key'] == 'foo3' else 0
         badge, = [v for v in values(row, column) if v['text'] == 'CheckFailed']
-        assert not any(v['text'] == 'CheckFailed' for v in values(row, 1))
-        if column == 2:
+        if column == 1:
             assert badge['href'] == '/packages/foo3#check-version'
             assert not any(v['text'] == 'CheckFailed' for v in values(row, 0))
         else:
@@ -71,7 +70,7 @@ def test_errors_aggregate_packages_and_link_to_the_failed_check(client):
 
 
 def test_version_issue_counts_and_row_links_have_one_authority(client):
-    for view, label, column in [('updates', 'Outdated', 0), ('untracked', 'Untracked', 2)]:
+    for view, label, column in [('updates', 'Outdated', 0), ('untracked', 'Untracked', 1)]:
         version_view = client.get('/api/v2/packages', params=dict(conjunction({'view': view}).parameters())).json()
         filtered = client.get('/api/v2/packages', params=dict(conjunction({'maintenance': label}).parameters())).json()
         assert version_view['items'] == filtered['items']
@@ -126,20 +125,22 @@ def test_multiple_failed_monitors_count_once_and_checks_keep_each_error(snapshot
     assert {row['id'] for row in errors} == {'check-version', 'check-build'}
 
 
-def test_detail_keeps_version_status_out_of_current(client):
+def test_detail_keeps_version_status_after_current(client):
     for name, label, current in [('untracked', 'Untracked', '1.0'), ('foo3', 'CheckFailed', '3.10.0')]:
         detail = client.get('/api/ui/packages/' + name).json()
         version = next(section for section in detail['sections'] if section['id'] == 'version')
         fields = {field['label']: field['values'] for field in version['fields']}
-        assert [value['text'] for value in fields['Current']] == [current]
-        assert label in [value['text'] for value in fields['Candidate']]
+        version_values = fields['Current → Candidate']
+        assert version_values[0]['text'] == current
+        assert version_values[0]['kind'] == 'code'
+        assert label in [value['text'] for value in version_values[1:]]
         assert not any(value['text'] == label for value in detail['identity'])
 
 
 def test_candidate_error_does_not_absorb_other_monitor_failures(client):
     page = document(client, {})
     rows = {row['key']: row for row in page['table']['rows']}
-    assert 'CheckFailed' not in [value['text'] for value in values(rows['binutils'], 2)]
+    assert 'CheckFailed' not in [value['text'] for value in values(rows['binutils'], 1)]
     assert 'CheckFailed' in [value['text'] for value in values(rows['binutils'], 0)]
 
 
@@ -150,7 +151,9 @@ def test_watch_failure_keeps_the_successful_candidate(snapshot, tmp_path, monkey
     client, _ = client_for(snapshot, tmp_path)
     rows = document(client, {})['table']['rows']
     row = next(row for row in rows if row['key'] == 'foo3')
-    assert [value['text'] for value in values(row, 1)] == ['3.10.0']
-    assert [value['text'] for value in values(row, 2)] == ['3.11.0', 'CheckFailed']
-    badge = values(row, 2)[1]
+    assert [value['text'] for value in values(row, 1)] == ['3.10.0', '→', '3.11.0', 'CheckFailed']
+    candidate = values(row, 1)[2]
+    assert candidate['tone'] == 'normal'
+    assert candidate['href'] == '/packages/foo3#version'
+    badge = values(row, 1)[3]
     assert badge['href'] == '/packages/foo3#check-version'

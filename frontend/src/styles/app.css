@@ -1,6 +1,6 @@
 /* The renderer styles document roles, never provider or monitor identities. */
 .shell {
-  max-width: 1600px;
+  max-width: 1360px;
   margin: auto;
   padding: 0 28px;
 }
@@ -131,14 +131,14 @@
 .search-form {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 .search-form input {
   min-width: 0;
-  width: 205px;
+  width: 230px;
 }
 .search-form button {
-  font-size: 12px;
+  font-size: 13px;
 }
 .choice-rows {
   display: flex;
@@ -146,7 +146,7 @@
   gap: 8px 16px;
   margin: 0 0 8px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
 }
 .choice-row {
   display: flex;
@@ -269,7 +269,7 @@
   text-align: left;
 }
 .data-table th, .data-table td {
-  padding: 10px 14px;
+  padding: 15px 12px;
   vertical-align: top;
   font-weight: 400;
 }
@@ -289,17 +289,17 @@
   background: var(--hover);
 }
 .data-table .column-identity {
-  width: 35.25%;
+  width: 38%;
 }
 .data-table .column-status {
   text-align: center;
-  width: 108px;
+  width: 90px;
 }
 .data-table .column-status .value-line {
   justify-content: center;
 }
 .data-table.wide {
-  min-width: 900px;
+  min-width: 820px;
 }
 .data-table.status-matrix .column-identity {
   width: 28%;
@@ -318,7 +318,7 @@
   gap: 5px 7px;
 }
 .value-line + .value-line {
-  margin-top: 4px;
+  margin-top: 7px;
 }
 .value {
   overflow-wrap: anywhere;
@@ -333,6 +333,11 @@
   font-family: var(--mono);
   font-size: 1em;
 }
+a.value-code.tone-normal {
+  color: var(--blue);
+  text-decoration: none;
+}
+a.value-code.tone-normal:hover { text-decoration: underline; }
 .data-table tr[id], .document-section {
   scroll-margin-top: 16px;
 }
@@ -386,15 +391,21 @@ a.value-tag {
   border-color: var(--appearance-background, #626b75);
 }
 .value-tag[data-size="small"] {
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 400;
   padding: 0 4px;
   min-height: 0;
+  background: transparent;
+  color: light-dark(var(--appearance-background, var(--muted)),
+    color-mix(in srgb, var(--appearance-background, var(--muted)) 35%, var(--fg)));
+  border-color: color-mix(in srgb, var(--appearance-background, var(--muted)) 30%, var(--line));
 }
 .column-identity a.value-code {
-  font-weight: 500;
+  color: var(--fg);
+  font-weight: 600;
   text-decoration: none;
 }
+.value-icon.tone-muted { color: var(--muted); }
 .column-status a {
   text-decoration: none;
 }
@@ -402,14 +413,22 @@ a.value-tag {
   font-size: 12px;
 }
 .results-toolbar {
-  container-type: inline-size;
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 12px;
-  padding: 8px 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 8px 0 14px;
   font-size: 13px;
 }
+.results-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  margin-left: auto;
+}
+.results-toolbar > .pagination { margin-left: auto; }
 .result-count {
   color: var(--muted);
   white-space: nowrap;
@@ -473,52 +492,73 @@ a.value-tag {
 .package-heading {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 22px;
+  gap: 10px 18px;
   align-items: baseline;
   margin-top: 10px;
 }
 .package-heading h1 {
-  font-size: 27px;
+  font-size: 26px;
   letter-spacing: -.7px;
   margin: 0;
   overflow-wrap: anywhere;
 }
 .identity {
-  font-size: 19px;
+  font-size: 15px;
 }
 .package-subtitle {
-  margin: 4px 0 8px;
-  color: var(--muted);
+  margin: 8px 0 10px;
+  max-width: 90ch;
 }
 .package-links {
   display: flex;
-  gap: 20px;
+  gap: 10px 20px;
   flex-wrap: wrap;
   margin: 8px 0 14px;
-  font-size: 12px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .detail-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 30px;
+  gap: 24px;
 }
-.detail-overview {
+.detail-overview, .detail-navigation {
   display: grid;
-  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
-  gap: 30px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 36px;
   align-items: start;
+}
+.detail-navigation {
+  align-items: center;
+  margin: 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
 }
 .detail-lead { grid-column: 1; }
 .detail-aside { grid-column: 2; }
 .detail-lead, .detail-aside { min-width: 0; }
+.package-signals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-width: 0;
+  margin: 0;
+}
+.detail-lead .fields.compact { display: grid; gap: 12px; margin: 0 0 14px; }
+.detail-lead .fields.compact > div { display: grid; gap: 4px; }
+.detail-lead .fields dd .value-code { font-size: 16px; }
+.detail-lead .section-note { font-size: 14px; line-height: 1.75; color: var(--fg); margin: 0; }
+.detail-lead .document-section { padding: 16px 0 0; border: 0; }
+.detail-lead .document-section:first-child { padding-top: 0; }
+.detail-aside .data-table { min-width: 480px; font-size: 13px; }
+.detail-aside .data-table th, .detail-aside .data-table td { padding: 10px; }
 .section-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 22px;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
-  margin-bottom: 14px;
-  font-size: 12px;
+  gap: 8px 18px;
+  min-width: 0;
+  font-size: 13px;
 }
 .section-nav a {
   text-decoration: none;
@@ -529,7 +569,7 @@ a.value-tag {
 }
 .document-section {
   border-top: 1px solid var(--line);
-  padding: 18px 0;
+  padding: 24px 0;
   scroll-margin-top: 12px;
 }
 .document-section:first-child {
@@ -549,7 +589,7 @@ a.value-tag {
 }
 .section-note {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   max-width: 76ch;
   white-space: pre-line;
 }
@@ -560,7 +600,7 @@ a.value-tag {
 }
 .entries > li {
   border-top: 1px solid var(--line);
-  padding: 10px 0;
+  padding: 14px 0;
 }
 .entries > li:first-child {
   border-top: 0;
@@ -575,7 +615,7 @@ a.value-tag {
 .entry-heading > .value:first-child {
   font-weight: 550;
 }
-@media (max-width: 1100px) {
+@media (max-width: 1000px) {
   .shell {
     padding: 0 18px;
   }
@@ -583,7 +623,7 @@ a.value-tag {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
-  .detail-overview {
+  .detail-overview, .detail-navigation {
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
@@ -619,6 +659,7 @@ a.value-tag {
     flex: 1 1 160px;
     min-width: 160px;
   }
+  .results-summary { width: 100%; margin-left: 0; justify-content: space-between; }
   .data-table.wide .column-identity {
     width: 250px;
   }
@@ -649,8 +690,11 @@ a.value-tag {
 
 .data-table .row-note td {
   padding-top: 0;
-  font-size: 11px;
+  padding-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.7;
 }
+.data-table tbody:has(.row-note) > tr:first-child > :is(th, td) { padding-bottom: 9px; }
 .data-table .row-note td[aria-hidden] {
   padding: 0;
 }
@@ -758,35 +802,39 @@ a.value-tag {
   gap: 8px 24px;
 }
 
-.selection-nav { gap: 3px; }
+.selection-nav { gap: 7px; }
 .selection-form { display: contents; }
 .selection-nav button {
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
-  min-height: 28px;
-  padding: 3px 7px;
+  gap: 9px;
+  min-height: 32px;
+  padding: 4px 9px;
   font-size: 13px;
   background: transparent;
-  border: 1px solid transparent;
-  color: var(--muted);
+  border: 1px solid var(--control);
+  color: var(--fg);
   border-radius: 3px;
 }
-.selection-nav button[data-appearance] {
+.selection-nav button[data-appearance] b {
   color: light-dark(var(--appearance-background, var(--fg)),
     color-mix(in srgb, var(--appearance-background, var(--fg)) 35%, var(--fg)));
 }
 .selection-nav button[aria-pressed="true"] {
-  background: var(--head);
-  border-color: var(--control);
-  border-bottom: 2px solid currentColor;
-  padding-bottom: 2px;
+  background: var(--selected);
+  color: var(--on-selected);
+  border-color: var(--selected);
   font-weight: 600;
 }
-.selection-nav button:enabled:hover { background: var(--hover); border-color: var(--control); }
+.selection-nav button[aria-pressed="true"] b { color: inherit; }
+.selection-nav button[aria-pressed="false"]:enabled:hover { background: var(--hover); border-color: var(--muted); }
 .selection-nav button b { font-weight: inherit; font-variant-numeric: tabular-nums; }
 .navigation-menu .selection-nav { flex-direction: column; }
+@media (pointer: coarse) {
+  .selection-nav button, .navigation-menu-trigger { min-height: 44px; }
+  .search-form input { font-size: 16px; }
+}
 @media (forced-colors: active) {
   .selection-nav button[aria-pressed="true"] { border: 2px solid Highlight; }
 }
