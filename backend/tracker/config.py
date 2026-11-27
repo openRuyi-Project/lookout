@@ -196,7 +196,7 @@ def public_source(entry):
                 host = u.hostname
                 if u.netloc.rsplit('@', 1)[-1].startswith('['):
                     host = f'[{host}]'
-                value = urlunsplit((u.scheme, host + (f':{u.port}' if u.port else ''), u.path, '', ''))
+                value = urlunsplit((u.scheme, host + (f':{u.port}' if u.port is not None else ''), u.path, '', ''))
             except ValueError:
                 continue
         result[key] = value

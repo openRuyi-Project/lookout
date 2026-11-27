@@ -115,3 +115,12 @@ def test_ipv6_public_url_survives_config_events_and_fact_api(tmp_path, key):
     response = client.get('/api/v2/tracks/widget')
     assert response.status_code == 200
     assert response.json()['source'][key] == expected
+
+
+@pytest.mark.parametrize('authority', ['example.org:0', '127.0.0.1:0', '[::1]:0'])
+def test_public_source_preserves_explicit_zero_port(authority):
+    source = f'https://user:password@{authority}/release?token=SECRET#private'
+    public = cfg.public_source({'source': 'git', 'git': source})
+    assert public['git'] == f'https://{authority}/release'
+    assert urlsplit(public['git']).port == 0
+    assert cfg.public_source(public) == public
