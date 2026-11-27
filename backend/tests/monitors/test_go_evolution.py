@@ -160,3 +160,49 @@ def test_observed_go_tag_spelling_requires_matching_identity(config, snapshot, c
     observed = release.from_source(source, identity)
     assert observed.version == tag.removeprefix('v')
     assert release.from_source(source) is None
+
+
+@pytest.mark.parametrize('major', [2, 12])
+@pytest.mark.parametrize('provider', ['requires', 'yanked', 'license', 'security'])
+def test_major_module_source_tag_preserves_identity_and_rpm_version(config, snapshot, major, provider):
+    rpm_version = f'{major}.0.1+patch7'
+    upstream_version = f'{major}.0.1-patch-7'
+    setup(config, snapshot, version=rpm_version, tag='v' + upstream_version)
+    snapshot['tracks']['binutils']['version'] = f'{major}.1.0'
+    module = f'github.com/example/module/v{major}'
+    rule = {'source': 'go_proxy', 'url': f'https://proxy.golang.org/{module}/@latest'}
+    config['native']['binutils'] = rule
+    snapshot['tracks']['binutils']['source'] = deepcopy(rule)
+    proposal = runner.plan(config, snapshot, 'binutils', provider)
+    assert proposal['status'] == 'pending'
+    assert proposal['subject']['version'] == upstream_version
+    assert proposal['inputs'] == ({'ecosystem': 'Go', 'name': module}
+                                 if provider == 'security' else {'go': module})
+    assert compare.evaluate(snapshot, 'binutils').source['version'] == rpm_version
+
+
+@pytest.mark.parametrize('module', [
+    'github.com/example/module/v0', 'github.com/example/module/v1',
+    'github.com/example/module/v02', 'github.com/example/module/v3',
+    'github.com/example/other/v2', 'github.com/example/module/sub/v2',
+])
+def test_major_module_source_tag_rejects_mismatched_identity(config, snapshot, module):
+    source = setup(config, snapshot, version='2.0.1+patch7', tag='v2.0.1-patch-7')
+    assert release.from_source(source, {'ecosystem': 'Go', 'name': module}) is None
+
+
+@pytest.mark.parametrize('provider', ['requires', 'yanked', 'license', 'security'])
+def test_major_module_release_projection_invalidates_old_query(config, snapshot, monkeypatch, provider):
+    setup(config, snapshot, version='2.0.1+patch7', tag='v2.0.1-patch-7')
+    rule = {'source': 'go_proxy', 'url': 'https://proxy.golang.org/github.com/example/module/v2/@latest'}
+    config['native']['binutils'] = rule
+    snapshot['tracks']['binutils']['source'] = deepcopy(rule)
+    with monkeypatch.context() as old:
+        old.setattr(release, 'go_source_release', lambda *args: None)
+        previous = runner.plan(config, snapshot, 'binutils', provider)
+    current = runner.plan(config, snapshot, 'binutils', provider)
+    assert previous['subject']['version'] == '2.0.1+patch7'
+    assert current['subject']['version'] == '2.0.1-patch-7'
+    assert current['query_fingerprint'] != previous['query_fingerprint']
+    assert current['fingerprint'] != previous['fingerprint']
+    assert not runner.same_release_inputs(current, previous, 'current')

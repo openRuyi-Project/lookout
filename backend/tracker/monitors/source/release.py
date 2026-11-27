@@ -144,11 +144,17 @@ def go_source_release(source, identity):
         return None
     match = re.fullmatch(r'/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/archive/refs/tags/'
                          r'v([0-9A-Za-z.+-]+)\.(?:tar\.gz|zip)', url.path)
-    if not match or identity.get('name') != 'github.com/' + match[1]:
+    if not match:
         return None
     version = match[2]
     parsed = semver(version)
     if not parsed:
+        return None
+    repository = 'github.com/' + match[1]
+    major = parsed['base'].split('.', 1)[0]
+    # Root repository tags omit the module's /vN suffix.
+    if identity.get('name') != repository and not (
+            int(major) >= 2 and identity.get('name') == repository + '/v' + major):
         return None
     current = source.get('version')
     patch = re.fullmatch(r'([A-Za-z]+)-([0-9]+)', parsed['preview'] or '')
