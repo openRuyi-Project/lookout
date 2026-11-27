@@ -35,10 +35,10 @@ def check(subject, settings, io):
     yanked = metadata.yanked
     if type(yanked) is not bool:
         return {"status": "unsupported", "findings": [],
-                "note": "Registry did not provide a release-level yanked assertion."}
+                "note": "Registry did not provide a yanked assertion."}
     findings = []
     if yanked:
-        facts = [evidence("Release " + metadata.withdrawal_field, True, source, url, code="release_yanked")]
+        facts = [evidence(("File yanked" if metadata.withdrawal_field == "file yanked" else "Release " + metadata.withdrawal_field), True, source, url, code="release_yanked")]
         reason = metadata.yanked_reason
         if reason is not None and not isinstance(reason, str):
             raise ValueError("Registry yanked reason is not text")

@@ -311,3 +311,31 @@ def test_pypi_release_keeps_equivalent_identity_and_literal_evidence(version, ob
     result, url = release('upstream-fixture', version, MetadataIO())
     assert result is info
     assert url == f'https://pypi.org/pypi/upstream-fixture/{version.replace("+", "%2B")}/json'
+
+
+def test_exact_source_distribution_evidence_and_dynamic_fields():
+    from types import SimpleNamespace
+
+    import pytest
+
+    from tracker.providers import pypi
+    from tracker.providers.model import UnsupportedRelease
+
+    url = 'https://files.pythonhosted.org/packages/aa/widget-1.0.tar.gz'
+    settings = pypi.inputs({'source_release': {
+        'ecosystem': 'PyPI', 'name': 'widget', 'version': '1.0',
+        'url': 'https://files.pythonhosted.org/packages/source/w/widget/widget-1.0.tar.gz',
+    }}, {'pypi': 'widget'})
+    row = {'url': url, 'filename': 'widget-1.0.tar.gz', 'core-metadata': True, 'yanked': 'withdrawn'}
+    io = SimpleNamespace(json=lambda *args, **kwargs: {'files': [row]},
+                         text=lambda _: 'Metadata-Version: 2.4\nName: widget\nVersion: 1.0\n'
+                                        'Requires-Dist: actual>=2\nLicense-Expression: MIT\n')
+    assert pypi.metadata(settings, '1.0', io).license_expression == 'MIT'
+    assert pypi.withdrawal(settings, '1.0', io).yanked_reason == 'withdrawn'
+    assert pypi.declarations(settings, '1.0', io, {'requires-dist'}) == (
+        {'requires_dist': ['actual>=2']}, url + '.metadata')
+    body = io.text(url)
+    io.text = lambda _: body + 'Dynamic: Requires-Dist\n'
+    with pytest.raises(UnsupportedRelease, match='static'):
+        pypi.declarations(settings, '1.0', io, {'requires-dist'})
+    assert pypi.withdrawal(settings, '1.0', io).yanked is True

@@ -119,8 +119,10 @@ class IO:
     def text(self, url, *, max_age=None, min_interval=0):
         return self._read('GET', url, None, max_age=max_age, min_interval=min_interval, text=True)
 
-    def _read(self, method, url, body, *, max_age, min_interval, text=False, observed=None):
+    def _read(self, method, url, body, *, max_age, min_interval, text=False, observed=None, accept=None):
         identity = [method, url, body] + (['text'] if text else [])
+        if accept is not None:
+            identity.append(accept)
         key = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         with self.guard:
             lock = self.locks[key]
@@ -159,6 +161,8 @@ class IO:
                     headers = {k: v for k, v in headers.items() if k == 'User-Agent'
                                or k in ('If-None-Match', 'If-Modified-Since') and valid_validator(v)}
                 conditional = len(headers) > 1
+                if accept is not None:
+                    headers['Accept'] = accept
                 with self.connection() as client, client.stream(
                         method, url, json=body if method == 'POST' else None,
                         headers=headers) as response:
@@ -175,7 +179,7 @@ class IO:
                 if unchanged and cached is not None:
                     data = cached['data']
                     cached = {**cached, 'validated': now, 'validators': {
-                        **{k: v for k, v in headers.items() if k != 'User-Agent'}, **validators}}
+                        **{k: v for k, v in headers.items() if k in ('If-None-Match', 'If-Modified-Since')}, **validators}}
                 else:
                     data = body_bytes.decode('utf-8') if text else json.loads(body_bytes)
                     cached = {'time': now, 'data': data}
@@ -220,10 +224,10 @@ class ProviderIO:
             return datetime.fromtimestamp(min(self.observed), UTC).isoformat(timespec='seconds')
         return None
 
-    def json(self, method, url, body=None, *, min_interval=0):
+    def json(self, method, url, body=None, *, min_interval=0, accept=None):
         self.validate(method, url)
         return self.owner._read(method, url, body, max_age=self.max_age,
-                                min_interval=min_interval, observed=self.observed)
+                                min_interval=min_interval, observed=self.observed, accept=accept)
 
     def text(self, url, *, min_interval=0):
         self.validate('GET', url)

@@ -10,8 +10,8 @@ from packaging.utils import canonicalize_name
 from tracker.monitors.requires.markers import all_of, any_of, fold
 from tracker.monitors.requires.model import Requirement, UnsupportedRequirements
 from tracker.providers.pypi import HOSTS as HOSTS
+from tracker.providers.pypi import declarations
 from tracker.providers.pypi import inputs as inputs
-from tracker.providers.pypi import project, release
 
 __all__ = ['HOSTS', 'inputs', 'read']
 
@@ -105,7 +105,7 @@ def read(version, settings, io):
     Markers and extras stay attached to facts; optional-feature classification
     does not evaluate the monitor host or a target environment.
     """
-    info, url = release(project(settings), version, io)
+    info, url = declarations(settings, version, io, {'requires-python', 'requires-dist'})
     result = []
     declaration = info.get("requires_python")
     if declaration is not None:
@@ -130,6 +130,6 @@ def read(version, settings, io):
                 parsed = replace(existing, declaration=declaration, comparison=combined)
             clauses[key] = parsed
         result.extend(clauses.values())
-    if not result:
+    if not result and not url.endswith('.metadata'):
         raise UnsupportedRequirements("Comparable upstream runtime requirement declarations are missing.")
     return result

@@ -21,12 +21,13 @@ def pypi_source(config, snapshot, *, current='1.2.3~post4', upstream='1.2.3.post
 
 @pytest.mark.parametrize('provider', ['security', 'yanked', 'license', 'requires'])
 def test_shared_source_projection_preserves_rpm_display(config, snapshot, provider):
-    pypi_source(config, snapshot, target='1.2.3.post5')
+    source = pypi_source(config, snapshot, target='1.2.3.post5')
     result = runner.plan(config, snapshot, 'binutils', provider)
     assert result['status'] == 'pending'
     assert result['subject']['version'] == '1.2.3.post4'
     assert result['inputs'] == ({'ecosystem': 'PyPI', 'name': 'widget-name'} if provider == 'security'
-                                else {'pypi': 'widget-name'})
+                                else {'pypi': {'name': 'widget-name', 'version': '1.2.3.post4',
+                                               'url': source['metadata']['sources'][0]['url']}})
     assert compare.evaluate(snapshot, 'binutils').source['version'] == '1.2.3~post4'
 
 
@@ -76,12 +77,14 @@ def test_identity_conflict_still_blocks_all_monitor_queries(config, snapshot):
         assert runner.plan(config, snapshot, 'binutils', provider)['status'] == 'unsupported'
 
 
-def test_unchanged_normal_release_reuses_query_fingerprint(config, snapshot):
+def test_source_file_scope_changes_only_distribution_fingerprints(config, snapshot):
     source = pypi_source(config, snapshot, current='1.2.3', upstream='1.2.3', target='1.2.4')
     projected = {p: runner.plan(config, snapshot, 'binutils', p)['fingerprint']
                  for p in ['security', 'yanked', 'license', 'requires']}
     source['metadata']['sources'] = []
-    assert projected == {p: runner.plan(config, snapshot, 'binutils', p)['fingerprint'] for p in projected}
+    for provider, prior in projected.items():
+        fallback = runner.plan(config, snapshot, 'binutils', provider)['fingerprint']
+        assert (prior == fallback) == (provider == 'security')
 
 
 @pytest.mark.parametrize('version', ['1.2.3+git20260101.abcdef0', '1.2.3+downstream.1'])
