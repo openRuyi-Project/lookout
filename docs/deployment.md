@@ -1,6 +1,6 @@
 # Deployment
 
-Use Fedora with Rootless Podman and user-level Quadlet.
+Use Rootless Podman and user-level Quadlet on a supported Linux host.
 Lookout runs the website, API and collectors in one container. The host schedules updates and backups.
 The web port binds to loopback by default. A separate proxy handles HTTPS, authentication and external access.
 
@@ -77,6 +77,8 @@ Private GHCR packages require engine registry credentials, not a GitHub API key.
 
 ### 3. Install
 
+For LAN access or a GitHub token, set the [listener and credentials](#listener-and-github-credentials) before installation.
+
 ```sh
 python3 "$TOOLS/install.py" \
   --engine podman --image "$IMAGE_ID" --name "$NAME" \
@@ -99,59 +101,15 @@ $UNIT                   application Quadlet
 ~/.config/systemd/user/$NAME-{update,backup}.{service,timer}
 ```
 
-The image update timer checks GitHub every five minutes, with jitter: about
-12 requests/hour, below the 60/hour anonymous limit for an unshared address.
-Only a successful manual **Release** (`checks.yml`) run on `main` selects its
-published `sha-<commit>` image. Ordinary pushes run CI without publishing images. No new revision means no GHCR requests, pulls or restarts. If GitHub returns an error or rate limit, the updater leaves the service unchanged.
-The updater saves the retry deadline in `backups/publication.json`. Timer events before that deadline make no GitHub request.
-Authentication failures remain distinct from quota waits. A successful response clears the wait.
-Unattended GHCR `main`/`latest` updates require access to the publication workflow.
-The backup timer runs daily. The application schedules its collectors.
+Installation enables image checks every five minutes and a daily backup.
+Only successful manual releases trigger updates. Ordinary pushes do not.
+The container schedules collection. See [Host automation](#host-automation) for
+update selection and failure handling.
 
 To adopt existing state, stop its writer. Back up the data. Add
 `--data /absolute/existing/data --config /absolute/reviewed/config` to installation.
 The installer reuses that data without copying it. Use image upgrades, not installation,
 for subsequent releases.
-
-### Listener and GitHub credentials
-
-`--port` selects the host port. The container web port remains 8080.
-For direct LAN access, add `--bind-address 10.230.50.181 --port 18730` during installation,
-using the server's actual IP. Restrict inbound access with the host or network firewall.
-This option does not configure DNS, HTTPS or authentication. Avoid `0.0.0.0` unless all interfaces are intended.
-Image upgrades retain the listener. For Podman, edit `PublishPort` in the installed `.container` file,
-then run `systemctl --user daemon-reload` and restart that service.
-
-For authenticated GitHub reads, create a dedicated, public-read-only fine-grained PAT with an expiry date.
-Store it outside the source, configuration and backup directories:
-
-```sh
-CREDENTIAL="$HOME/.config/lookout/github.env"
-install -d -m 700 "$(dirname "$CREDENTIAL")"
-test ! -e "$CREDENTIAL"
-(umask 077; read -rsp 'GitHub token: ' TOKEN; printf '\n' >&2
- printf 'LOOKOUT_GITHUB_TOKEN=%s\n' "$TOKEN" > "$CREDENTIAL")
-```
-
-Add `--github-env-file "$CREDENTIAL"` to installation. The file must contain only that assignment,
-be owned by the service account, and have mode 0600 or 0400. Symlinks are rejected.
-Both the collector and host updater use it. No additional repository write permission is needed.
-Environment credentials remain visible to the container owner and root. Do not share engine access.
-
-For an existing Podman instance, add `EnvironmentFile=/absolute/path/github.env` under `[Container]`,
-reload the user manager and restart the service. Use tools from a release that supports this option.
-When rotating the token, replace the file with the same owner and permissions, then restart the application.
-The updater reads it on its next eligible check. Never include the file in support reports.
-For organization-managed credentials, evaluate a GitHub App instead of a person's PAT.
-App installation-token renewal is not implemented by these tools.
-
-A rejected GitHub token falls back to the public API for one hour. The updater
-and activity collector retain this cooldown across restarts. At the next heartbeat
-after it expires, they try the token without advancing the anonymous schedule.
-A successful probe resumes authenticated requests; a rejected probe leaves the
-anonymous delay and cursor unchanged. Rate-limit responses
-do not switch credentials: each client waits until GitHub permits another request.
-Anonymous access uses the server IP quota, which other applications can also consume.
 
 ### 4. Check the service and take the first backup
 
@@ -257,10 +215,46 @@ The container publishes only web port 8080 on host loopback. API port 18731 stay
 [Caddy example](../deploy/Caddyfile.example) is for a host proxy. Port or ingress
 changes do not require a frontend rebuild.
 
-Security queries public OSV and NVD APIs. It needs no scanner or local vulnerability database. Reviewed CPE identities are in `packages.toml`.
-Provider errors remain errors, not a claim of no advisories. The existing monitor
-heartbeat refreshes unchanged versions too. Operators can override refresh timing
-in `[monitors.refresh.security]` without changing query identities.
+Security uses public OSV and NVD APIs, without a local scanner or vulnerability
+database. `[monitors.refresh.security]` changes refresh timing, not query identity.
+Checks also refresh unchanged versions. Configure identities through
+[monitor settings](../config/README.md#other-monitor-identities).
+
+### Listener and GitHub credentials
+
+`--port` selects the host port. The container web port remains 8080.
+For direct LAN access, add `--bind-address SERVER_IP --port 18730` during installation,
+replacing `SERVER_IP` with the server's address. Restrict inbound access with the host or network firewall.
+This option does not configure DNS, HTTPS or authentication. Avoid `0.0.0.0` unless all interfaces are intended.
+Image upgrades retain the listener. For Podman, edit `PublishPort` in the installed `.container` file,
+then run `systemctl --user daemon-reload` and restart that service.
+
+For authenticated GitHub reads, create a dedicated, public-read-only fine-grained PAT with an expiry date.
+Store it outside the source, configuration and backup directories:
+
+```sh
+CREDENTIAL="$HOME/.config/lookout/github.env"
+install -d -m 700 "$(dirname "$CREDENTIAL")"
+test ! -e "$CREDENTIAL"
+(umask 077; read -rsp 'GitHub token: ' TOKEN; printf '\n' >&2
+ printf 'LOOKOUT_GITHUB_TOKEN=%s\n' "$TOKEN" > "$CREDENTIAL")
+```
+
+Add `--github-env-file "$CREDENTIAL"` to installation. The file must contain only that assignment,
+be owned by the service account, and have mode 0600 or 0400. Symlinks are rejected.
+Both the collector and host updater use it. No additional repository write permission is needed.
+Environment credentials remain visible to the container owner and root. Do not share engine access.
+
+For an existing Podman instance, add `EnvironmentFile=/absolute/path/github.env` under `[Container]`,
+reload the user manager and restart the service. Use tools from a release that supports this option.
+When rotating the token, replace the file with the same owner and permissions, then restart the application.
+The updater reads it on its next eligible check. Never include the file in support reports.
+For organization-managed credentials, evaluate a GitHub App instead of a person's PAT.
+App installation-token renewal is not implemented by these tools.
+
+Rejected tokens temporarily fall back to anonymous reads. Quota and network errors
+keep their own retry schedule. See [GitHub collection](design.md#github-collection)
+for cooldowns and retry rules. Anonymous reads share the server IP quota.
 
 ### Copied catalog migration
 
@@ -369,12 +363,28 @@ done
 
 ### Host automation
 
-Scheduled updates and backups execute `$ROOT/automation/current`, an atomic
-pointer to a complete versioned tool directory. A successful image upgrade
-selects that image's tools. Failed upgrades keep the previous pointer. Previous tool directories remain available for review.
+The update timer checks GitHub every five minutes, with jitter: about 12 requests
+per hour. Anonymous access allows 60 per hour for an unshared address. Only a
+successful manual **Release** (`checks.yml`) run on `main` selects its published
+`sha-<commit>` image. Unchanged revisions cause no GHCR requests, pulls or restarts.
+The backup timer runs daily.
 
-Trusting the image channel authorizes its host-side upgrade code. No container
-receives the engine socket. Changing the tool pointer does not change application configuration, data, port or proxy settings.
+GitHub errors and rate limits leave the service unchanged. The updater saves its
+retry deadline in `backups/publication.json`. Earlier timer events make no request.
+A successful response clears the wait. Authentication failures and quota waits
+remain distinct. Automatic GHCR `main`/`latest` updates need access to the
+publication workflow.
+
+Updates and backups run from `$ROOT/automation/current`, an atomic pointer to a
+complete versioned tool directory. A successful upgrade selects the new image's
+tools. A failed upgrade keeps the previous pointer. Old tool directories remain
+available for review.
+
+Trusting an image channel also authorizes its host-side upgrade code. The container
+receives no engine socket. A tool-pointer change does not alter application config,
+data, ports or proxy settings.
+
+Maintainers publish images through the [Release workflow](../CONTRIBUTING.md#publish-a-release).
 
 ### Restore into a separate instance
 
@@ -511,27 +521,3 @@ Each runner needs the labels `linux`, `lookout-disposable` and either `fedora` o
 plus the prerequisites above. Use disposable machines, not production servers.
 Supply a GHCR digest. An unconfigured or queued runner is not a passing host check.
 Reboot and different-image upgrade acceptance remain separate operator checks.
-
-## Publish a release
-
-Release notes list commits since the previous stable tag, grouped by type, with
-commit links and a full diff. `cliff.toml` controls the categories and format.
-
-
-In GitHub Actions, select **Release → Run workflow**, choose `main`, and select
-`patch` (default), `minor`, or `major`. Use `patch` for compatible fixes,
-`minor` for features, and `major` for a new major version.
-The workflow increments the highest version from the project declaration and
-stable release tags. It shows the selected version in the publication job title and run summary.
-The workflow pins the selected commit, runs the complete image checks, and
-publishes that same image as `v<VERSION>` and `sha-<commit>`. The container's OCI
-version label records the release version. A commit can be released only once.
-
-The workflow creates the tag and release. Do not create them in advance.
-Production consumers follow successful Release runs. The `main` and `latest`
-image tags advance only during releases, not on ordinary pushes.
-Configuration and persistent data remain on the host.
-
-A failed run does not authorize an automatic upgrade. Inspect its logs and any
-draft release before retrying. Do not move a published version tag or reuse its
-version. Use a new version and commit for corrections.

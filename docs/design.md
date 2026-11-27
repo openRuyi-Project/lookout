@@ -30,65 +30,80 @@ types against OpenAPI. [Porting](monitor-porting.md) describes extension contrac
 
 ## Persistence and publication
 
-Collectors fetch outside the writer lock, then merge onto the latest snapshot.
-`state.merge` rejects fields outside a phase's ownership. A complete Git tree of regular
-`SPECS/*/*.spec` files defines the package catalog. It includes packages whose SPEC
-parsing failed and packages absent from OBS. If a refresh fails, Lookout retains the
-confirmed catalog. OBS inventories describe build objects. They cannot add or remove
-source packages. OBS status and history share an identity but not ownership:
+### Write ownership
+
+Collectors fetch outside the writer lock. Under the lock, they merge onto the
+latest snapshot. `state.merge` rejects fields outside the phase's ownership.
+
+The confirmed Git tree of regular `SPECS/*/*.spec` files owns the package catalog.
+It includes failed parses and packages absent from OBS. OBS supplies build objects,
+not source-package membership. These phases own separate fields, even when they
+share a record:
 
 | Phase | Writes |
 |---|---|
 | `builds` | Project-wide `_result` status, errors and poll timestamps |
 | `obs` | Inventory, source identity and successful-build history |
+| `github` | `github_items`, `github_links` and repository checkpoints, independent of version-monitor invalidation |
 
-On a SPEC parse failure, Lookout retains the last successful metadata, revision and
-observation time. It records the error and attempt time. Invalid shared macros reject
-the whole batch.
+`state.BUILD_FIELDS` prevents slow history responses from overwriting newer status.
+A target repository or architecture change invalidates that scope's evidence and
+pending responses.
 
-SPEC invalidation compares the old and new Git trees, including merge resolutions.
-Changelogs are display history, not cache keys. Reads use a pinned commit. Cached
-metadata requires matching SPEC bytes, macro and auxiliary-input identities, and
-resolver version. Installed RPM versions, system macro files and parser code identify
-the immutable runtime. A changed selector or runtime identity requires a full SPEC pass.
+### SQLite transactions
 
-If Git fetch fails, Lookout can retry parsing the confirmed local revision. This does
-not advance the remote observation time or clear the fetch error. Source check failures
-make readiness degraded, but do not fail the HTTP liveness probe.
+SQLite stores observations as keyed rows. Each transaction writes changed rows,
+deletions and the snapshot header. Equal rows retain their revision. Storage
+compares payload digests with database rows, not mutable caller objects.
 
-`state.BUILD_FIELDS` prevents slow history responses from overwriting newer status. A
-change to the target repository or architecture invalidates old evidence and pending
-responses for that scope.
+Every commit to an existing database must match the base storage revision and
+heartbeat. Heartbeat writes use the same compare-and-swap check. A commit without
+a base can only initialize a database. Imports get a new storage identity even
+when content is unchanged.
 
-SQLite stores source, track, SPEC, build and monitor observations as keyed rows.
-GitHub collection separately owns `github_items`, `github_links` and repository checkpoints.
-Its records do not use version-monitor invalidation.
-Transactions write changed rows, deletions and the snapshot header. Equal rows retain
-their storage revision. Payload digests are compared with SQLite rows, not mutable caller objects. Existing databases require a matching base revision and heartbeat for every commit. Omitting the base permits initialization only. Heartbeat updates use the same compare-and-swap condition. `state.read_cached` captures header, clock and row revisions in one transaction,
-then decodes changed JSON outside the lock. Borrowed unchanged data is read-only.
+A complete successful OBS poll with unchanged facts updates `snapshot_clock`, not
+content generation or every build row. Partial or failed polls cannot refresh
+missing observations this way. Other phase merges preserve the latest clock.
 
-A complete successful OBS poll with identical facts updates `snapshot_clock`, not
-content generation or all build records. Partial or failed polls cannot update
-timestamps for missing observations this way. Independent phase merges preserve the
-latest clock. Imports get a new storage identity, even when their content is unchanged.
+`state.read_cached` reads the header, clock and row revisions in one transaction.
+It decodes changed JSON after the transaction. Reused nested data is read-only.
+API connections cannot write.
 
-Storage `user_version` is independent of public snapshot `schema`. Writers require the
-current format. The migration tool backs up the database, migrates it in a transaction
-and compares observations. It rejects unknown formats. Compatible image upgrades retain data and evidence. Operational commands and rollback limits are in
-[Deployment](deployment.md#image-upgrades).
+### Failure and recovery
 
-Writes use rollback journals and `synchronous=FULL`. API connections are read-only.
-Startup recovery holds the writer lock while SQLite recovers a hot journal. It never
-removes journals or replaces corrupt data. Standalone preflight does not write an
-existing database.
+A failed refresh retains the confirmed catalog. A failed SPEC parse retains the
+last successful metadata, revision and observation time, with a new error and
+attempt time. Invalid shared macros reject the whole batch.
+
+SPEC invalidation compares Git trees, including merge resolutions. Reads use a
+pinned commit. Changelogs are display history, not cache keys. Cached metadata
+requires matching SPEC bytes, macro and auxiliary inputs, and resolver version.
+Installed RPM versions, system macros and parser code identify the runtime.
+A changed selector or runtime identity requires a full SPEC pass.
+
+After a Git fetch failure, Lookout can parse the confirmed local revision again.
+This does not advance the remote observation time or clear the fetch error.
+Source failures degrade readiness but do not fail HTTP liveness.
+
+Writes use rollback journals and `synchronous=FULL`. Startup recovery holds the
+writer lock while SQLite recovers a hot journal. It never removes journals or
+replaces corrupt data. Standalone preflight does not write an existing database.
+
+Storage `user_version` and public snapshot `schema` are separate. Writers require
+the current storage format. Migration backs up the database, changes it in one
+transaction and compares observations. Unknown formats are rejected. Compatible
+image upgrades retain data and evidence. See [Deployment](deployment.md#image-upgrades)
+for upgrade and rollback procedures.
 
 ### Prepared reads
 
-A background task checks storage once per second. It rebuilds the projection and index
-when data changes, a freshness deadline expires or the clock moves backward. Fresh
-clock-only updates reuse unchanged facets and monitor search text. Changed build
-timestamps remain searchable. The task prepares status aggregates once per publication.
-Refresh-failure notices remain live. Publication atomically replaces the model while existing readers retain the previous model.
+A background task checks storage once per second. It rebuilds the projection and
+index when data changes, a freshness deadline expires or the clock moves backward.
+Fresh clock-only updates reuse unchanged facets and monitor search text. Changed
+build timestamps remain searchable.
+
+The task prepares status aggregates once per publication. It replaces the model
+atomically. Existing requests keep their model. Refresh-failure notices remain live.
 
 Readiness fails until the background task publishes the first model. If a refresh fails or is overdue,
 Lookout retains the last model, shows a notice and reports degraded readiness. Liveness
@@ -106,9 +121,9 @@ full-list and batch limits bound response work. Request and response models gene
 Each package counts once. Pagination follows selection.
 
 An empty query returns all packages. Each selected value is a positive predicate:
-values within a facet form a union; different facets intersect. Removing the last
-value removes that facet. Counts apply the search text and every other facet;
-prefix/suffix intersections compute these scopes once per request.
+values within a facet form a union. Different facets intersect. Removing the last
+value removes that facet. Counts apply the search text and every other facet.
+Prefix/suffix intersections compute these scopes once per request.
 
 Maintenance filters select observed findings. Collection checks are independent:
 a failed refresh can coexist with retained findings, and an empty finding list
@@ -165,9 +180,10 @@ upgrade checks. Upgrade-only adapters need a confirmed comparable newer release.
 Current-version security checks do not.
 
 The runner schedules and stores checks. Adapters define inputs and interpretation.
-Query identity excludes file paths and image revisions, so unrelated catalog changes preserve evidence. Changed fingerprints queue work. Unchanged inputs wait for their refresh
-interval. The refresh policy limits failure retries and HTTP cache age. A heartbeat does not write unchanged observations or settings. It can still
-publish changes to input eligibility or catalog information.
+Query identity excludes file paths and image revisions. Unrelated catalog changes
+preserve evidence. Changed fingerprints queue work. Unchanged inputs wait for their
+refresh interval. The refresh policy bounds retries and HTTP cache age.
+A heartbeat writes only changed observations, eligibility, settings or catalog data.
 
 A failed replacement retains one `last_result`, not a history chain. Only evidence for
 the same query can reappear. Incompatible interpretations remain stale. A completed
@@ -206,6 +222,52 @@ NVD's CVE API with the current source version. NVD matches version ranges. Git a
 tags come only from confined Source0 evidence consistent with RPM Version. Floating
 branches and unresolved versions do not become release identities. Lookout spaces NVD requests 6.5 seconds apart per host. Failure retries back off from 15 minutes to one hour.
 
+## GitHub collection
+
+GitHub activity has its own identity and checkpoint. Package version changes do
+not invalidate issues or pull requests. SQLite retains both open and closed items.
+
+### Polls and checkpoints
+
+Incremental polls use `updated_at`, a two-minute overlap and ETags. They reuse
+unchanged records and PR paths. Weekly reconciliation detects missing records and
+rechecks open PR revisions. Each list page processes issues before PRs. Matching
+uses changed paths first, then bounded package-name searches in text.
+
+A batch starts at most `request_budget` requests within 120 seconds. Requests run
+serially, at least one second apart. Anonymous batches start at most every ten
+minutes and use at most 60 requests. Quota headers can stop a batch sooner.
+The client reserves 50 authenticated or two anonymous requests for other consumers.
+
+A completed anonymous poll with no changes adds one interval to the next delay.
+Changes reset it. Errors and unfinished batches do not count as empty polls.
+Authenticated polls use the configured fixed interval. The freshness deadline
+grows with the idle delay.
+
+The next due time, list page and PR file-page progress survive restarts. File lists
+are published only after checking that the base and head revisions still match.
+GitHub returns at most 3,000 files per PR. Incomplete lists remain explicit, not
+empty matches.
+
+### Authentication and backoff
+
+The activity collector and host updater retain authentication cooldowns across
+restarts. HTTP 401 or an explicit token permission failure retries the public
+endpoint once without credentials, then pauses token use for one hour.
+
+The next heartbeat after that hour probes authentication. The probe preserves the
+anonymous delay, quota wait and cursor. Only a successful authenticated request
+resumes authenticated work immediately. Rate limits and network failures do not
+trigger anonymous retries. Provider cooldowns take precedence over the schedule.
+
+### Activity reads
+
+`/api/v2/packages/NAME/activity?kind=pr` (or `issue`) returns records newest-updated
+first. The default page has 20 records, with `per_page` capped at 50. `next_cursor`
+identifies the next page and binds the package, record kind and history revision.
+Treat it as opaque. Changed history returns HTTP 409: restart without the cursor.
+Unrelated collection heartbeats do not invalidate cursors. Invalid cursors return 422.
+
 ## Native and network boundaries
 
 SPEC shell/Lua macros execute code. Each parse uses a new Linux worker, clean
@@ -241,13 +303,9 @@ conditionally revalidated.
 Target IDs must be nonempty strings. Their `build:` facet names allow at most
 100 characters and cannot contain `=`. Facet values can contain `=`.
 
-Activity cursors identify a package, record kind and history revision. A changed
-history returns HTTP 409; restart without the cursor. Unrelated collection
-heartbeats do not invalidate activity cursors.
-
 JSON export streams packages in index order from one prepared snapshot. It does
 not construct a second full response model in memory. A serialization or transport
-failure terminates the download; consumers must reject incomplete JSON. Export is
+failure terminates the download. Consumers must reject incomplete JSON. Export is
 not a database backup.
 
 List `total` and `counts.all` both report the selected result count. Other entries

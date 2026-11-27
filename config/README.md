@@ -166,6 +166,25 @@ from a fresh inventory. PEP 508 conditions use the configured target, never the
 collector host. Dynamic CPAN prerequisites and ambiguous metadata stay unsupported.
 Adapter-specific fields and new backends are in [Monitor porting](../docs/monitor-porting.md).
 
+### Multi-module Go sources
+
+For packages with a Go identity, the requirements monitor discovers submodules
+from saved GitHub Source tag archives (`module/path/vX.Y.Z`). It reads the module
+identity and Go minimum from each upstream `go.mod`. Established single-module
+identities keep the proxy path, including upgrade checks. Source numbers and download
+filenames are not association keys. New or removed archives change the query.
+
+For a bundled module without its own source tag, set
+`monitors.requires.go.include` to `{module, from_module, path}` entries.
+`from_module` names a discovered module whose source archive contains `path/go.mod`.
+The declared module identity must match. Duplicate identities or missing anchors
+fail the observation. The monitor does not select the highest or first version.
+
+The result covers discovered source-tag modules and explicit includes, not every
+module present in a repository or installed RPM. All must validate before their
+highest Go minimum is published. Current archives cannot describe an upgrade or
+establish independent component versions for Security or Yanked queries.
+
 ## Add a package
 
 The SPEC catalogue supplies package rows. OBS supplies build observations. Offline `setup`
@@ -221,7 +240,7 @@ All three inputs must reference the same release catalog. Catalog drift requires
 ## SPEC inputs
 
 Failed repository refreshes retain confirmed SPEC revisions and their collection
-times. Overdue refreshes mark results as retained; elapsed time alone does not
+times. Overdue refreshes mark results as retained. Elapsed time alone does not
 invalidate version comparisons or exact-release monitor inputs. Changed inputs,
 identity conflicts and parse failures still invalidate affected conclusions.
 
@@ -254,50 +273,12 @@ PR changed paths (including renamed paths), exact title/body names and
 names and `ambiguous_names` require a code span, title prefix or package label.
 Aliases must identify one existing package.
 
-SQLite retains open and closed records independently of package versions. Incremental polls use `updated_at`, a two-minute overlap and ETags.
-Weekly reconciliation detects missing records. Polls reuse unchanged records and PR paths. Weekly reconciliation rechecks open PR revisions.
-Each list page processes issues before PRs. Association checks use PR file paths first, then bounded package-name matching in text.
+A read-only token enables the configured request budget and interval. Anonymous
+collection starts at most every ten minutes and shares the server IP quota.
+Initial history can take days. See [credentials](../docs/deployment.md#listener-and-github-credentials)
+for token setup and [GitHub collection](../docs/design.md#github-collection) for
+polling, reconciliation and failure handling.
 
-Each batch starts at most `request_budget` requests within a 120-second window. Requests run
-serially, at least one second apart. Anonymous batches start at most every ten
-minutes and cannot exceed 60 requests; response quota headers can stop them earlier. A completed poll with no changes adds one interval to the
-next delay. Changes reset it. Errors and incomplete batches never count as an
-empty poll. Authenticated polls retain the configured fixed interval. The next due time, list page and PR file-page progress survive
-restarts. The collector publishes file lists only after checking that the base/head revisions did not change. A growing idle delay also extends the freshness deadline.
-
-With a read-only token, polls use the configured budget and interval.
-See [deployment credentials](../docs/deployment.md#listener-and-github-credentials) for secure injection and rotation.
-Quota headers reserve 50 authenticated or two anonymous requests for other consumers.
-GitHub cooldowns override the schedule. A rejected token (401 or explicit token
-permission failure) retries the public endpoint once without credentials. The
-collector records a one-hour authentication cooldown; restarts retain it.
-An authentication probe does not reset the anonymous poll delay, quota wait or cursor.
-Only a successful authenticated request resumes authenticated collection immediately.
-Rate limits and network failures do not trigger anonymous retries. Anonymous access shares the host
-IP quota, so initial history may take days. GitHub returns at most 3,000 files
-per PR. Incomplete paths remain explicit rather than becoming an empty match.
-
-Credentials are not written to observations. Homepage counts show packages.
-Package badges count available open issues and open or draft pull requests.
-History includes closed and merged records. `/api/v2/packages/NAME/activity?kind=pr` (or `issue`) returns
-20 records, newest updated first, with `next_cursor`. `per_page` is at most 50.
-Treat cursors as opaque. On HTTP 409, restart without the cursor. Invalid cursors return 422.
-
-### Multi-module Go sources
-
-For packages with a Go identity, the requirements monitor discovers submodules
-from saved GitHub Source tag archives (`module/path/vX.Y.Z`). It reads the module
-identity and Go minimum from each upstream `go.mod`. Established single-module
-identities keep the proxy path, including upgrade checks. Source numbers and download
-filenames are not association keys. New or removed archives change the query.
-
-For a bundled module without its own source tag, set
-`monitors.requires.go.include` to `{module, from_module, path}` entries.
-`from_module` names a discovered module whose source archive contains `path/go.mod`.
-The declared module identity must match. Duplicate identities or missing anchors
-fail the observation; the monitor does not select the highest or first version.
-
-The result covers discovered source-tag modules and explicit includes, not every
-module present in a repository or installed RPM. All must validate before their
-highest Go minimum is published. Current archives cannot describe an upgrade or
-establish independent component versions for Security or Yanked queries.
+Credentials never enter observations. Homepage counts show packages. Package
+badges count available open issues and open or draft pull requests. History also
+includes closed and merged records. See the site's `/api` page for activity queries.

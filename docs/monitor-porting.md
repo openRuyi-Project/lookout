@@ -13,12 +13,16 @@
 
 Use [EOL](../backend/tracker/monitors/eol.py) for current-release evidence,
 [License](../backend/tracker/monitors/license.py) for upgrade evidence, or
-[Yanked](../backend/tracker/monitors/yanked.py) for registry reuse. Evidence adapters reuse the catalog, API, facets and detail renderer.
+[Yanked](../backend/tracker/monitors/yanked.py) for registry reuse.
+
+The adapter resolves identity and returns facts. The runner schedules checks and
+saves results. Readers build API responses, filters and detail views from those
+saved facts. Standard findings need no adapter-specific storage or frontend code.
 
 ## Add an evidence adapter
 
 1. Implement the [Adapter contract](../backend/tracker/monitors/contract.py) in
-   `monitors/ID.py`. Use a package only if the adapter needs separate files.
+   `monitors/ID.py`. Use a package only when separate files are needed.
 2. Register the trusted module in `REGISTRY` and enable it in config. The batch collectors reserve `source`, `version` and `build`. These names cannot identify per-package adapters.
 3. Resolve identity with `identity.from_package()`, letting explicit monitor
    settings override saved Source0/native-rule identity. Put package exceptions
@@ -29,8 +33,38 @@ Use [EOL](../backend/tracker/monitors/eol.py) for current-release evidence,
 4. Fetch through the supplied `io`. Return attributed facts with `finding()` and
    `evidence()` from `monitors.model`. Reuse existing provider protocols.
    `providers.model.resolve_inputs()` selects explicit registry identities or the first inferred match.
-5. Test the runner → storage → API path. Inspect a sample result.
-   Release the code and configuration together.
+5. Run the [port checks](#check-the-port) and inspect a result.
+   Release code and configuration together.
+
+## Check the port
+
+Adapt the [integration test](../backend/tests/monitors/test_monitor_porting.py).
+It mocks HTTP and checks runner → SQLite → API, including catalog, projection and facets.
+
+| Fixture | Required result |
+|---|---|
+| Valid response, with/without a finding | Attributed fact / completed empty result |
+| Missing identity, unsupported metadata, timeout | Distinct states. Another package still progresses |
+| Same query and facts | Check time advances, evidence revision stays stable |
+| New query or in-flight source change | Old evidence cannot become a fresh result for another subject |
+| Retry/refresh boundary and cached bytes | Effective schedule and original evidence age preserved |
+| Stale or changed upgrade target | No new upgrade check or misplaced finding |
+| Partial scope/provider failure | CheckFailed membership agrees with per-monitor filtering and detail Checks |
+
+Inspect offline, then check against a snapshot copy (network allowed, no snapshot
+or disk-cache writes):
+
+```sh
+PYTHONPATH=backend python -m tracker.monitors explain PACKAGE --monitor ID \
+  --config config/tracker.toml --format human
+PYTHONPATH=backend python -m tracker.monitors check PACKAGE --monitor ID \
+  --config config/tracker.toml --db /path/to/snapshot-copy.sqlite3
+```
+
+`explain --db` adds saved context/due status. Run [development checks](../CONTRIBUTING.md#run-checks).
+Measure identity coverage, eligible checks, successful checks and findings on the same snapshot.
+
+## Adapter reference
 
 ### Module contract
 
@@ -65,14 +99,15 @@ The overall status can also be `error`. Findings identify their scope and
 target. Successful current results survive a failed target check. Unsupported
 metadata does not become a transport failure.
 
-Combined scope is for exact upstream releases. `runner.same_release_inputs` matches the adapter implementation version,
-resolved inputs and release versions, **not** source revision. Checks
-sensitive to local patches must retain source context and use a single scope.
+Combined scope is for exact upstream releases. `runner.same_release_inputs` matches
+adapter version, resolved inputs and release versions, not source revision.
+A local-patch-sensitive check must retain source context and use a single scope.
 
 ### Facts
 
-Use the ingestion models. Keep finding IDs stable across polls. Labels/tags classify assertions, not urgency or
-maintainer actions. Each evidence field carries a provider and public HTTPS URL:
+Use the ingestion models. Keep finding IDs stable across polls. Labels and tags
+classify assertions, not urgency or maintainer actions. Each evidence field names
+its provider and public HTTPS URL:
 
 ```python
 facts = [evidence('Support ended', True, 'Provider', url, code='support_ended')]
@@ -80,8 +115,8 @@ return {'status': 'ok', 'findings': [finding('cycle:3', 'EOL', '3.x', facts, url
         'note': None}
 ```
 
-`key` is display text. Use `code` for stable machine identification. Missing values are null with `unavailable`, `not_applicable` or `not_evaluated`,
-never false. Reuse issue names from `monitors/issues.py`. Declare styles in
+`key` is display text. `code` is a stable machine identifier. Missing values are
+null with `unavailable`, `not_applicable` or `not_evaluated`, never false. Reuse issue names from `monitors/issues.py`. Declare styles in
 `presentation/labels.toml`.
 
 ### IO and scheduling
@@ -115,34 +150,6 @@ identity only when the omitted field cannot affect a query or its meaning:
 
 Fixed security tags must match the queried version. Fixed commits must agree with confined Source0.
 
-## Check the port
-
-[Integration example](../backend/tests/monitors/test_monitor_porting.py) mocks
-provider HTTP while exercising runner, SQLite, catalog, projection and facets.
-
-| Fixture | Required result |
-|---|---|
-| Valid response, with/without a finding | Attributed fact / completed empty result |
-| Missing identity, unsupported metadata, timeout | Distinct states. Another package still progresses |
-| Same query and facts | Check time advances, evidence revision stays stable |
-| New query or in-flight source change | Old evidence cannot become a fresh result for another subject |
-| Retry/refresh boundary and cached bytes | Effective schedule and original evidence age preserved |
-| Stale or changed upgrade target | No new upgrade check or misplaced finding |
-| Partial scope/provider failure | CheckFailed membership agrees with per-monitor filtering and detail Checks |
-
-Inspect offline, then check against a snapshot copy (network allowed, no snapshot
-or disk-cache writes):
-
-```sh
-PYTHONPATH=backend python -m tracker.monitors explain PACKAGE --monitor ID \
-  --config config/tracker.toml --format human
-PYTHONPATH=backend python -m tracker.monitors check PACKAGE --monitor ID \
-  --config config/tracker.toml --db /path/to/snapshot-copy.sqlite3
-```
-
-`explain --db` adds saved context/due status. Run [development checks](../CONTRIBUTING.md#run-checks).
-Measure identity coverage, eligible checks, successful checks and findings on the same snapshot.
-
 ## Add a Requires backend
 
 Implement `HOSTS`, `inputs(package, configured)` and `read(version, settings, io)`
@@ -164,7 +171,7 @@ another provider request.
 | PyPI `Requires-Python` / `Requires-Dist` | Markers/extras and target environment, not collector host. Unknown variables remain unknown |
 | Optional vs platform condition | Feature selection vs applicability. False target conditions are `not_applicable` |
 | crates.io `rust-version` | Build requirement, not runtime dependency |
-| Go `go` directive | Exact-release build minimum; `toolchain` is only a suggestion. Build facts do not enter runtime mismatch counts |
+| Go `go` directive | Exact-release build minimum. `toolchain` is only a suggestion. Build facts do not enter runtime mismatch counts |
 | CPAN prerequisites | Static `dynamic_config=false`, with distinct requires/recommends/suggests clauses |
 | CPAN module versions | Distribution versions cannot substitute for component versions |
 
