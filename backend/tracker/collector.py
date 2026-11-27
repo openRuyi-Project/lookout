@@ -342,7 +342,7 @@ def check_specs(config, db, describe=native_spec.describe):
                 except native_spec.MacroInputError as failure:
                     runtime, error = None, str(failure)
                 fingerprint = cfg.track_fingerprint({
-                    'resolver': native_spec.RESOLVER, 'runtime': runtime, 'selection': 'tree-diff-v1',
+                    'resolver': native_spec.RESOLVER, 'runtime': runtime, 'selection': 'tree-diff-v1', 'history_version': spec_git.HISTORY_VERSION,
                     **{key: spec.get(key) for key in ('url', 'branch', 'source_url_template',
                                                      'macro_package', 'extra_macro_packages', 'local_sources', 'changelog_limit')},
                 })
