@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 from contextlib import suppress
+from functools import cache
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.parse import quote
@@ -24,6 +25,25 @@ _TIMEOUT = 5.0
 _MAX_OUTPUT = 256 * 1024
 _MAX_STDERR = 16 * 1024
 _WORKERS = threading.BoundedSemaphore(4)
+
+
+@cache
+def runtime_identity():
+    """Identity of the immutable image's parser packages, macros and worker code."""
+    try:
+        packages = subprocess.run(['rpm', '-qa', '--qf', '%{NAME} %{EVR}.%{ARCH}\n'],
+                                  capture_output=True, check=True, timeout=10).stdout
+        digest = hashlib.sha256(b'\n'.join(sorted(packages.splitlines())))
+        roots = (Path('/usr/lib/rpm'), Path('/etc/rpm'))
+        files = [path for root in roots if root.exists() for path in root.rglob('*') if path.is_file()]
+        files.extend(Path(__file__).with_name(name) for name in ('rpm.py', 'spec_worker.py', 'spec_sandbox.py'))
+        for path in sorted(files):
+            digest.update(str(path).encode() + b'\0')
+            with path.open('rb') as stream:
+                digest.update(hashlib.file_digest(stream, 'sha256').digest())
+        return digest.hexdigest()
+    except (OSError, subprocess.SubprocessError) as error:
+        raise MacroInputError('Native parser runtime identity unavailable') from error
 
 
 def macro_paths(settings, project, index):

@@ -62,11 +62,21 @@ def is_ancestor(repo, previous, current, git='git'):
     return error is None
 
 
+def changed_packages(repo, previous, current, git='git'):
+    """Compare trees, including merge resolutions and both sides of renames."""
+    paths, error = _git_text(['-C', repo, 'diff', '--name-only', '-z', '--no-renames',
+                              previous, current, '--', 'SPECS'], git)
+    if error or paths is None:
+        return set(), error or 'SPEC tree comparison unavailable'
+    return {path.split('/')[1] for path in paths.split('\0')
+            if path.startswith('SPECS/') and len(path.split('/')) >= 3}, None
+
+
 def _git_text(args, git='git', timeout: float = 300):
     """Run git and capture text stdout; return (stdout, error). Never surface URLs,
     credentials, or raw stderr."""
     operation = args[2] if len(args) > 2 and args[0] == '-C' else args[0] if args else 'command'
-    if operation not in ('fetch', 'rev-parse', 'merge-base', 'log', 'ls-tree'):
+    if operation not in ('fetch', 'rev-parse', 'merge-base', 'log', 'ls-tree', 'diff'):
         operation = 'command'
     try:
         p = subprocess.run([git, *args], capture_output=True, text=True, timeout=timeout, check=False)
@@ -92,10 +102,18 @@ def _git_text(args, git='git', timeout: float = 300):
 
 def _git_bytes(args, git='git', timeout=60):
     """Run git and capture raw bytes stdout (for blob content), or None on failure."""
+    deadline = time.monotonic() + timeout
     try:
-        p = subprocess.run([git, *args], capture_output=True, timeout=timeout, check=False)
-        return p.stdout if p.returncode == 0 else None
-    except (subprocess.TimeoutExpired, OSError):
+        size = subprocess.run([git, *args[:-2], '-s', args[-1]], capture_output=True,
+                              timeout=timeout, check=False)
+        if size.returncode != 0 or not 0 <= int(size.stdout.strip()) <= _SIZE_LIMIT:
+            return None
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        p = subprocess.run([git, *args], capture_output=True, timeout=remaining, check=False)
+        return p.stdout if p.returncode == 0 and len(p.stdout) <= _SIZE_LIMIT else None
+    except (subprocess.TimeoutExpired, OSError, ValueError):
         return None
 
 
@@ -148,18 +166,18 @@ def _bucket_log(stdout, limit):
     return result
 
 
-def changelogs(repo, limit=20, git='git', *, since=None, names=None):
+def changelogs(repo, limit=20, git='git', *, since=None, names=None, revision='HEAD'):
     """Bucket one Git traversal by package; optionally restrict commits or paths.
 
     Bootstrap/reconciliation walks the full history once. `since` limits ordinary
     polling to new commits. `names` fills history for newly observed packages in one
-    batch. Each package's newest entry also identifies its metadata revision.
+    batch. History is display data; tree comparisons determine parser invalidation.
     """
     fmt = f'{RS}%H{FS}%aI{FS}%an{FS}%s{FS}%(trailers:key=Signed-off-by,valueonly,unfold,separator={GS})'
     paths = [f':(literal)SPECS/{name}' for name in names] if names is not None else ['SPECS']
     if not paths:
         return {}, None
-    revisions = [f'{since}..HEAD'] if since else []
+    revisions = [f'{since}..{revision}' if since else revision]
     stdout, error = _git_text(['-C', repo, 'log', '--no-show-signature',
                               f'--format={fmt}', '--name-status', *revisions, '--', *paths], git)
     if error is not None or stdout is None:
@@ -167,34 +185,34 @@ def changelogs(repo, limit=20, git='git', *, since=None, names=None):
     return _bucket_log(stdout, limit), None
 
 
-def read_spec(repo, name, git='git'):
-    """Current SPEC bytes for a package, read from the bare clone via cat-file (offline)."""
-    listing, error = _git_text(['-C', repo, 'ls-tree', '--name-only', f'HEAD:SPECS/{name}'], git)
+def read_spec(repo, name, git='git', *, revision='HEAD'):
+    """SPEC bytes at the pinned revision, read from the bare clone (offline)."""
+    listing, error = _git_text(['-C', repo, 'ls-tree', '--name-only', f'{revision}:SPECS/{name}'], git)
     if error is not None or listing is None:
         return None
     specs = sorted(f for f in listing.splitlines() if f.endswith('.spec'))
     if not specs:
         return None
     chosen = f'{name}.spec' if f'{name}.spec' in specs else specs[0]
-    data = _git_bytes(['-C', repo, 'cat-file', '-p', f'HEAD:SPECS/{name}/{chosen}'], git)
+    data = _git_bytes(['-C', repo, 'cat-file', '-p', f'{revision}:SPECS/{name}/{chosen}'], git)
     if data is None or len(data) > _SIZE_LIMIT:
         return None
     return data
 
 
-def read_macros(repo, macro_package, git='git'):
-    """Every macro file shipped by the macro package at HEAD, as (provenance, bytes)
+def read_macros(repo, macro_package, git='git', *, revision='HEAD'):
+    """Every macro file shipped at the pinned revision, as (provenance, bytes)
     pairs ready for native_spec's hash-checked parser. Never return a partial set."""
     if not macro_package:
         return []
-    listing, error = _git_text(['-C', repo, 'ls-tree', '--name-only', f'HEAD:SPECS/{macro_package}'], git)
+    listing, error = _git_text(['-C', repo, 'ls-tree', '--name-only', f'{revision}:SPECS/{macro_package}'], git)
     if error is not None or listing is None:
         raise MacroReadError('SPEC macro directory unavailable')
     macros = []
     for filename in sorted(listing.splitlines()):
         if not filename.startswith('macros'):
             continue
-        data = _git_bytes(['-C', repo, 'cat-file', '-p', f'HEAD:SPECS/{macro_package}/{filename}'], git)
+        data = _git_bytes(['-C', repo, 'cat-file', '-p', f'{revision}:SPECS/{macro_package}/{filename}'], git)
         if data is None:
             raise MacroReadError('SPEC macro file unavailable')
         if len(data) > _SIZE_LIMIT:
@@ -208,15 +226,15 @@ def macro_packages(spec):
     return ([spec['macro_package']] if spec.get('macro_package') else []) + spec.get('extra_macro_packages', [])
 
 
-def read_local_sources(repo, package, names, git='git'):
+def read_local_sources(repo, package, names, git='git', *, revision='HEAD'):
     """Explicit auxiliary inputs from the same Git tree; no downloads or symlinks."""
     result = []
     for name in names:
         path = f'SPECS/{package}/{name}'
-        listing, error = _git_text(['-C', repo, 'ls-tree', 'HEAD', '--', path], git)
+        listing, error = _git_text(['-C', repo, 'ls-tree', revision, '--', path], git)
         if error or not listing or not listing.startswith('100644 blob '):
             raise ValueError('configured local SPEC source is not a regular Git file')
-        data = _git_bytes(['-C', repo, 'cat-file', '-p', 'HEAD:' + path], git)
+        data = _git_bytes(['-C', repo, 'cat-file', '-p', revision + ':' + path], git)
         if data is None or len(data) > _SIZE_LIMIT:
             raise ValueError('configured local SPEC source unavailable or exceeds size limit')
         result.append(({'path': path, 'name': name, 'sha256': hashlib.sha256(data).hexdigest()}, data))

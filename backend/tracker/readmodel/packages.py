@@ -87,7 +87,7 @@ class PackageList:
                                     if not monitor or mid == monitor)}
         coverage = Evaluation(self.index, scope, filters)
         findings = self.index.get('findings:' + monitor, {}).get('yes', frozenset())
-        selection = (Evaluation(self.index, scope & findings, filters)
+        selection = (coverage.restrict(findings)
                      if findings_only else coverage)
         selected = sorted(selection.matches)
         total = len(selected)

@@ -1,5 +1,6 @@
 """Package activity joins and bounded history; no collection on HTTP requests."""
 import base64
+import hashlib
 import json
 import math
 from datetime import datetime
@@ -8,7 +9,7 @@ from heapq import nlargest
 
 def linked(snapshot, name):
     repositories = set(snapshot.get('github_repositories', []))
-    for link in snapshot.get('github_links', {}).get(name, {}).values():
+    for _, link in sorted(snapshot.get('github_links', {}).get(name, {}).items()):
         repo = link['repository']
         if repo in repositories:
             item = snapshot.get('github_items', {}).get(repo, {}).get(link['id'])
@@ -20,22 +21,39 @@ def order(item):
     return datetime.fromisoformat(item['updated_at']).timestamp(), item['repository'], item['id']
 
 
+class ActivityChanged(ValueError):
+    """The history changed between pages; restart rather than omit records."""
+
+
+def revision(snapshot, name, kind):
+    digest = hashlib.sha256()
+    for item, evidence in linked(snapshot, name):
+        if item['kind'] == kind:
+            digest.update(json.dumps([item, evidence], sort_keys=True,
+                                     separators=(',', ':')).encode())
+            digest.update(b'\n')
+    return digest.hexdigest()
+
+
 def page(snapshot, name, kind, cursor=None, per_page=20):
     if kind not in ('pr', 'issue') or not 1 <= per_page <= 50:
         raise ValueError('Activity requires kind=pr|issue and per_page=1..50')
+    version = revision(snapshot, name, kind)
     after = None
     if cursor:
         try:
             if len(cursor) > 1024:
                 raise ValueError
             decoded = json.loads(base64.urlsafe_b64decode(cursor.encode('ascii')))
-            if (not isinstance(decoded, list) or len(decoded) != 5 or decoded[:2] != [name, kind]
+            if (not isinstance(decoded, list) or len(decoded) != 6 or decoded[:2] != [name, kind]
                     or type(decoded[2]) not in (float, int) or not math.isfinite(decoded[2])
                     or not all(isinstance(value, str) for value in decoded[3:])):
                 raise ValueError
-            after = tuple(decoded[2:])
+            after = tuple(decoded[2:5])
         except (ValueError, UnicodeError, TypeError, OverflowError) as error:
             raise ValueError('Invalid activity cursor') from error
+        if decoded[5] != version:
+            raise ActivityChanged('Activity changed; restart pagination without a cursor')
     total = 0
 
     def candidates():
@@ -53,7 +71,7 @@ def page(snapshot, name, kind, cursor=None, per_page=20):
     selected = [dict(item, association=evidence) for _, item, evidence in window[:per_page]]
     next_cursor = None
     if len(window) > per_page:
-        next_cursor = base64.urlsafe_b64encode(json.dumps([name, kind, *order(selected[-1])]).encode()).decode()
+        next_cursor = base64.urlsafe_b64encode(json.dumps([name, kind, *order(selected[-1]), version]).encode()).decode()
     # Bodies and changed-file lists are indexed server-side, not repeated in history responses.
     fields = ('id', 'repository', 'number', 'kind', 'title', 'url', 'status', 'updated_at',
               'available', 'paths_complete', 'association', 'author')

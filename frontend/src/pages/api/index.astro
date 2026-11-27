@@ -20,10 +20,13 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
         <tr><td><code>/packages:batchGet</code></td>
           <td>Full observations for 1–20 unique packages. Repeat <code>names</code> to specify request order.
             Any missing name fails the batch.</td></tr>
+        <tr><td><code>/packages/{'{name}'}/activity</code></td>
+          <td><code>kind=pr|issue</code>. History, newest updated first.
+            <code>per_page</code>: default 20, max 50. Continue with <code>next_cursor</code>.</td></tr>
         <tr><td><a href="/api/v2/tracks/meson"><code>/tracks/{'{id}'}</code></a></td><td>Saved version-track observation.</td></tr>
         <tr><td><a href="/api/v2/targets"><code>/targets</code></a></td><td>OBS target identities.</td></tr>
         <tr><td><a href="/api/v2/status"><code>/status</code></a></td><td>Collection freshness, per-monitor coverage and grouped failures.</td></tr>
-        <tr><td><a href="/api/v2/export"><code>/export</code></a></td><td>Complete, unpaginated snapshot, schema 2.</td></tr>
+        <tr><td><a href="/api/v2/export"><code>/export</code></a></td><td>Streamed, unpaginated snapshot, schema 2. Reject incomplete JSON. Not a database backup.</td></tr>
       </tbody>
     </table>
 
@@ -37,8 +40,10 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
       <li>Omit a facet to leave it unrestricted. Empty values are invalid.</li>
       <li><code>maintenance</code> selects findings such as <code>Advisory</code> or <code>DepMismatch</code>.
         Collection status uses separate <code>check:MONITOR</code> facets.</li>
-      <li>Counts apply the search text and all other facets. Results count each package once.</li>
+      <li>Facet counts apply the search text and all other facets. Results count each package once.</li>
     </ul>
+    <p><code>total</code> and <code>counts.all</code> both count selected results.
+      Other <code>counts</code> entries exclude the view selection.</p>
     <p><a href={filteredURL}>Build alternatives intersected with advisory matches</a>:</p>
     <pre><code>{filteredURL}</code></pre>
     <p>Use <code>select=check:security=error</code> for a collection-check predicate. The response includes the normalized query and
@@ -49,6 +54,8 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
     <p>Fetch known packages:</p>
     <pre><code><a href={batch}>{batch}</a></code></pre>
 
+    <p>Activity cursors are opaque and identify a history revision.
+      On <code>409</code>, restart without the cursor. Invalid cursors return <code>422</code>.</p>
     <p><code>404</code> missing resource · <code>422</code> invalid package query · <code>503</code> no snapshot.<br />
       Preserve <code>check</code> and <code>stale</code>. Null means unknown.
       One snapshot per response, not across pages.</p>

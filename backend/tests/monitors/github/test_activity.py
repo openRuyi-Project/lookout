@@ -692,3 +692,38 @@ def test_auth_probe_preserves_public_schedule_until_recovery(config, snapshot, t
     else:
         assert observed == {**checkpoint, 'auth_retry_at': 4600, 'authenticated': False}
         assert calls == [True]
+
+
+def test_history_cursor_rejects_changed_records_but_not_unrelated_heartbeats(snapshot):
+    populated(snapshot, count=3)
+    items = snapshot['github_items'][REPO]
+    first = activity.page(snapshot, 'foo3', 'issue', per_page=1)
+    snapshot['generation'] += 1
+    second = activity.page(snapshot, 'foo3', 'issue', first['next_cursor'], per_page=1)
+    assert second['items'][0]['id'] != first['items'][0]['id']
+    moved = next(item for item in items.values() if item['id'] == second['items'][0]['id'])
+    moved['updated_at'] = '2026-02-01T12:00:00+00:00'
+    with pytest.raises(activity.ActivityChanged):
+        activity.page(snapshot, 'foo3', 'issue', first['next_cursor'], per_page=1)
+    restarted = activity.page(snapshot, 'foo3', 'issue', per_page=1)
+    assert restarted['items'][0]['id'] == second['items'][0]['id']
+
+
+def test_activity_conflict_exposes_restart_in_existing_ui_primitives(snapshot, tmp_path):
+    from tests.conftest import ProjectedClient
+    from tracker.api import create_app
+    populated(snapshot)
+    db = tmp_path / 'activity.db'
+    state.commit(db, snapshot)
+    with ProjectedClient(create_app(db)) as client:
+        path = '/api/v2/packages/foo3/activity'
+        first = client.get(path, params={'kind': 'issue'}).json()
+        snapshot['github_items'][REPO]['1']['title'] = 'changed title'
+        state.commit(db, snapshot)
+        params = {'kind': 'issue', 'cursor': first['next_cursor']}
+        assert client.get(path, params=params).status_code == 409
+        response = client.get('/api/ui/packages/foo3/activity', params=params)
+        assert response.status_code == 200
+        section = response.json()
+        assert section['more'] is None
+        assert section['entries'][0]['heading'][1]['href'] == '/packages/foo3/activity?kind=issue'

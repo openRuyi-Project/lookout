@@ -198,8 +198,9 @@ GitHub repository defaults follow the release distribution catalog. An explicit
 `[github]` in `tracker.toml` takes precedence, including an empty repository map
 to disable collection. See [GitHub activity configuration](../config/README.md#github-activity).
 
-SQLite stays in the same data directory. Compatible updates reuse observations
-and indexes. Before a supported storage-format change, the upgrader backs up the database.
+SQLite stays in the same data directory. Compatible updates retain saved observations
+and storage indexes. Each process builds its in-memory projection at startup.
+Before a supported storage-format change, the upgrader backs up the database.
 It then migrates the data. If the storage-format change is unsupported, the upgrader refuses the upgrade.
 
 | Setting | Entry point |
@@ -280,11 +281,19 @@ Keep active config and rollback copies when cleaning backups. Resume paused time
 
 ### Image upgrades
 
-`main` and `latest` name the same successful CI build. Registry transport failures
+`main` and `latest` select the most recent successfully published release. Registry transport failures
 (EOF/reset/timeout) receive at most three attempts within the original request
 budget. Authorization failures stop retries. A release tag `vX.Y.Z`, a
 `sha-<full-commit>` tag, or `@sha256:<registry-digest>` selects a published build.
 Unchanged images do not restart the application. A changed image requires a short **service interruption**.
+
+SPEC collection compares its saved input identity with the running parser and selector.
+A changed identity schedules a full SPEC pass. Unchanged identities permit incremental collection.
+Saved observations remain readable during collection. Failed parses retain their previous successful evidence and record the failure.
+Upstream monitors reuse evidence only while their query identities match. Do not delete the database or caches to apply an image update.
+
+Target IDs must satisfy the [configuration limits](../config/README.md#obs-targets).
+The upgrade preflight rejects invalid configuration and attempts to resume the previous image and configuration.
 
 For a fixed image, enter its published release, commit tag or digest reference:
 

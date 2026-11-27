@@ -57,6 +57,13 @@ PYTHONPATH=backend python -m tracker.monitors explain openssl --monitor eol \
 Add `--db /path/to/snapshot-copy.sqlite3` to monitor explain for saved Source0,
 check and due-time context. Edit provider code via [Contributing](../CONTRIBUTING.md#where-to-edit).
 
+## OBS targets
+
+Configure exactly three targets with distinct `id` strings in `tracker.toml`.
+Each ID must contain 1–94 characters and cannot contain `=`.
+The query facet adds the `build:` prefix within its 100-character limit.
+Changing a target repository or architecture invalidates build evidence for that scope.
+
 ## Version rules
 
 Use one native inline table per track. Quoted keys retain dots and `@` in names:
@@ -271,8 +278,10 @@ IP quota, so initial history may take days. GitHub returns at most 3,000 files
 per PR. Incomplete paths remain explicit rather than becoming an empty match.
 
 Credentials are not written to observations. Homepage counts show packages.
-Package badges count linked records across all states. `/api/v2/packages/NAME/activity?kind=pr` (or `issue`) returns
+Package badges count available open issues and open or draft pull requests.
+History includes closed and merged records. `/api/v2/packages/NAME/activity?kind=pr` (or `issue`) returns
 20 records, newest updated first, with `next_cursor`. `per_page` is at most 50.
+Treat cursors as opaque. On HTTP 409, restart without the cursor. Invalid cursors return 422.
 
 ### Multi-module Go sources
 

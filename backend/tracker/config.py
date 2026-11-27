@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, quote, urlsplit, urlunsplit
 
 from tracker import catalog
 from tracker.catalog import read_input
-from tracker.identity import request_url
+from tracker.identity import facet_name, request_url
 from tracker.monitors.github.model import settings as github_settings
 
 
@@ -83,6 +83,10 @@ def _distribution_settings(config):
 
 def _target_bindings(config):
     ids = [t['id'] for t in config['targets']]
+    for target in ids:
+        if not isinstance(target, str) or not target:
+            raise ValueError('target id must be a nonempty string')
+        facet_name('build:' + target)
     identities = [(t['repository'], t['architecture']) for t in config['targets']]
     if len(ids) != 3 or len(set(ids)) != 3 or len(set(identities)) != 3:
         raise ValueError('exactly three distinct target identities are required')

@@ -1,6 +1,7 @@
 """A bounded, single-writer collection command, independent of HTTP request handling."""
 import argparse
 import concurrent.futures
+import hashlib
 import json
 from copy import deepcopy
 from datetime import datetime
@@ -232,24 +233,15 @@ def merge_upstreams(config, latest, tracks, error, now, selected=None):
 
 
 def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.describe, *, observed_at=None, tree_head=None):
-    """Rebuild per-package SPEC entries from one already-computed changelog map.
-
-    `logs` is spec_git.changelogs() output: every package's changelog from a single
-    history traversal. Each package's head is its newest bucketed commit; when it is
-    unchanged and metadata already parsed cleanly, the librpm parse is skipped (the
-    only real per-package cost). Changed or previously failed packages are re-read and
-    re-parsed. Resolver and macro provenance changes also invalidate cached metadata;
-    keeping a commit fixed is not enough to prove the parser environment is unchanged.
-    If history is unavailable, tree_head identifies the verified input tree while
-    logs retain earlier history. Per-package parse failures remain explicit.
-    """
+    """Parse pinned inputs; cache identity is independent of display history."""
     spec = config['spec']
     repo, git = spec['repo'], spec.get('git', 'git')
     if not repo:
         return old_specs
     macros = [item for package in spec_git.macro_packages(spec)
-              for item in spec_git.read_macros(repo, package, git=git)]
+              for item in spec_git.read_macros(repo, package, git=git, revision=tree_head or 'HEAD')]
     native_spec.validate_macros(macros)
+    runtime = native_spec.runtime_identity()
     origin = {k: spec.get(k) for k in ('url', 'branch', 'source_url_template')}
     observed_at = observed_at or now
     result = {}
@@ -257,24 +249,26 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
         previous = old_specs.get(name, {})
         entries = logs.get(name, [])
         head = tree_head or (entries[0]['commit'] if entries else None)
-        previous_context = previous.get('native_query', {}).get('context', {})
         source_names = spec.get('local_sources', {}).get(name, [])
-        same_parser = (previous_context.get('resolver') == native_spec.RESOLVER
-                       and previous_context.get('additional_macros') == [provenance for provenance, _ in macros]
-                       and [p['name'] for p in previous_context.get('local_sources', [])] == source_names)
-        if (head is not None and previous.get('head') == head and same_parser
-                and previous.get('metadata') is not None and not previous.get('error')):
-            # SPECS/<name> unchanged since last observation: refresh changelog only, skip parsing.
-            result[name] = state.success(previous, {'head': head, 'changelog': entries,
-                                                     'metadata': previous['metadata'], 'source_origin': origin}, observed_at)
-            result[name]['attempted_at'] = now
-            continue
-        data = spec_git.read_spec(repo, name, git=git)
+        data = spec_git.read_spec(repo, name, git=git, revision=tree_head or 'HEAD')
+        input_fingerprint = None
         try:
-            inputs = {'local_sources': spec_git.read_local_sources(repo, name, source_names, git)} if source_names else {}
+            inputs = {'local_sources': spec_git.read_local_sources(repo, name, source_names, git, revision=tree_head or 'HEAD')} if source_names else {}
         except ValueError:
             described = {'metadata': None, 'metadata_error': 'Configured local SPEC inputs unavailable or invalid'}
         else:
+            input_fingerprint = cfg.track_fingerprint({
+                'resolver': native_spec.RESOLVER, 'runtime': runtime,
+                'spec': hashlib.sha256(data).hexdigest() if data is not None else None,
+                'macros': [provenance for provenance, _ in macros],
+                'local_sources': [provenance for provenance, _ in inputs.get('local_sources', [])],
+            })
+            if (data is not None and previous.get('input_fingerprint') == input_fingerprint
+                    and previous.get('metadata') is not None and not previous.get('error')):
+                result[name] = state.success(previous, {'head': head, 'changelog': entries,
+                                                         'source_origin': origin}, observed_at)
+                result[name]['attempted_at'] = now
+                continue
             try:
                 described = describe(data, macros=macros, **inputs) if data is not None else {
                     'metadata': None, 'metadata_error': 'SPEC not found in clone'}
@@ -293,7 +287,7 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
             entry = state.success(previous, {'head': head, 'changelog': entries,
                                             'metadata': described['metadata'],
                                             'native_query': described.get('native_query', {}),
-                                            'source_origin': origin}, observed_at)
+                                            'input_fingerprint': input_fingerprint, 'source_origin': origin}, observed_at)
             entry['attempted_at'] = now
         result[name] = entry
     return result
@@ -343,8 +337,12 @@ def check_specs(config, db, describe=native_spec.describe):
                 else:
                     names, error = spec_git.packages(repo, head, git)
                 names = names if names is not None else []
+                try:
+                    runtime = native_spec.runtime_identity()
+                except native_spec.MacroInputError as failure:
+                    runtime, error = None, str(failure)
                 fingerprint = cfg.track_fingerprint({
-                    'resolver': native_spec.RESOLVER,
+                    'resolver': native_spec.RESOLVER, 'runtime': runtime, 'selection': 'tree-diff-v1',
                     **{key: spec.get(key) for key in ('url', 'branch', 'source_url_template',
                                                      'macro_package', 'extra_macro_packages', 'local_sources', 'changelog_limit')},
                 })
@@ -352,14 +350,16 @@ def check_specs(config, db, describe=native_spec.describe):
                                and prior.get('input_fingerprint') == fingerprint
                                and spec_git.is_ancestor(repo, prior.get('head'), head, git))
                 logs = {}
+                changed = set()
                 history_error = None
                 if not error and incremental and prior['head'] != head:
+                    changed, error = spec_git.changed_packages(repo, prior['head'], head, git)
                     logs, history_error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
-                                                             since=prior['head'])
-                if incremental and any(package in logs for package in spec_git.macro_packages(spec)):
+                                                             since=prior['head'], revision=head)
+                if incremental and any(package in changed for package in spec_git.macro_packages(spec)):
                     incremental = False
                 if not error and not incremental:
-                    logs, history_error = spec_git.changelogs(repo, spec['changelog_limit'], git=git)
+                    logs, history_error = spec_git.changelogs(repo, spec['changelog_limit'], git=git, revision=head)
                     selected = set(names)
                 else:
                     added = set(names) - specs.keys()
@@ -369,9 +369,9 @@ def check_specs(config, db, describe=native_spec.describe):
                         history_names = added | retry
                         history, history_error = spec_git.changelogs(
                             repo, spec['changelog_limit'], git=git,
-                            names=None if history_names == set(names) else sorted(history_names))
+                            names=None if history_names == set(names) else sorted(history_names), revision=head)
                         logs.update(history)
-                    selected = (set(logs) | added | retry) & set(names)
+                    selected = (changed | set(logs) | added | retry) & set(names)
                     for name in selected - added:
                         combined = {entry['commit']: entry for entry in
                                     logs.get(name, []) + specs.get(name, {}).get('changelog', [])}
@@ -385,7 +385,7 @@ def check_specs(config, db, describe=native_spec.describe):
                     try:
                         refreshed = refresh_specs(config, specs, sorted(selected), logs, now, describe,
                                                   observed_at=prior['fetched_at'] if offline else now,
-                                                  tree_head=head if history_error else None)
+                                                  tree_head=head)
                     except (spec_git.MacroReadError, native_spec.MacroInputError) as failure:
                         error = str(failure)
                     else:

@@ -132,3 +132,20 @@ def test_unknown_and_empty_result_values_do_not_restore_the_universe():
 def test_selecting_every_known_issue_does_not_include_packages_without_issues():
     query = FilterQuery(selections={'maintenance': tuple(INDEX['maintenance'])})
     assert Evaluation(INDEX, ALL, query).matches == {0, 1, 2}
+
+
+def test_restricted_evaluation_matches_rebuilding_for_all_small_queries():
+    for first, second, allowed in product([(), ('a',), ('b',), ('a', 'b')],
+                                          [(), ('a',), ('b',)], [set(), {0, 1}, ALL]):
+        index = {'one': {'a': {0, 1}, 'b': {1, 2}}, 'two': {'a': {0, 2}, 'b': {1, 3}}}
+        query = FilterQuery(selections={'one': first, 'two': second})
+        original = Evaluation(index, ALL, query)
+        prior = original.matches
+        restricted = original.restrict(allowed)
+        rebuilt = Evaluation(index, ALL & allowed, query)
+        assert restricted.matches == rebuilt.matches
+        assert original.matches == prior
+        for dimension, options in index.items():
+            for value in (*options, 'missing'):
+                condition = Condition(dimension=dimension, value=value)
+                assert restricted.count(condition) == rebuilt.count(condition)
