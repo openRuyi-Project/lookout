@@ -157,8 +157,12 @@ def osv_batch(requests, io, detail):
 def prepare(jobs, owner):
     """Batch only due OSV queries that share the same cache-age policy."""
     by_age = defaultdict(lambda: defaultdict(list))
+    jobs_by_age = defaultdict(list)
     for name, proposed, previous, policy in jobs:
         settings, subject = proposed['inputs'], proposed['subject']
+        age = min(policy.interval_seconds, policy.retry_seconds) if previous.get('status') in (
+            'error', 'partial') else policy.interval_seconds
+        jobs_by_age[age].append((name, subject, settings))
         if 'vendor' in settings:
             continue
         try:
@@ -166,8 +170,6 @@ def prepare(jobs, owner):
         except (ValueError, KeyError, TypeError):
             continue  # execute() records invalid individual inputs.
         if request is not None:
-            age = min(policy.interval_seconds, policy.retry_seconds) if previous.get('status') in (
-                'error', 'partial') else policy.interval_seconds
             by_age[age][json.dumps(request, sort_keys=True)].append(name)
     prepared = {}
     for age, identities in by_age.items():
@@ -199,15 +201,52 @@ def prepare(jobs, owner):
             for key, result in zip(chunk, results, strict=True):
                 for name in identities[key]:
                     prepared[name] = (result, tuple(scoped.observed))
+    for age, items in jobs_by_age.items():
+        if len(items) < 2:
+            continue
+        cves, package_cves = set(), {}
+        for name, subject, settings in items:
+            if name not in prepared:
+                scoped = owner.for_hosts(HOSTS, max_age=age)
+                try:
+                    entries = load_entries(subject, settings, scoped)
+                except Exception as error:
+                    entries = error
+                prepared[name] = (entries, tuple(scoped.observed))
+            entries, observed = prepared[name]
+            if isinstance(entries, list):
+                try:
+                    package_cves[name] = cve_ids(entries)
+                except (KeyError, TypeError, ValueError) as error:
+                    prepared[name] = (error, observed)
+                else:
+                    cves.update(package_cves[name])
+        scored, failed = {}, {}
+        for batch in epss_batches(cves):
+            scoped = owner.for_hosts(HOSTS, max_age=age)
+            try:
+                scores = epss_scores(batch, scoped)
+                scored.update({cve: (scores.get(cve), tuple(scoped.observed)) for cve in batch})
+            except Exception as error:
+                failed.update(dict.fromkeys(batch, type(error).__name__))
+        for name, _, _ in items:
+            entries, times = prepared[name]
+            if not isinstance(entries, list):
+                continue
+            ids = package_cves[name]
+            scores = {cve: scored[cve][0] for cve in ids if cve in scored and scored[cve][0] is not None}
+            observed = {stamp for cve in ids if cve in scored for stamp in scored[cve][1]}
+            errors = sorted({failed[cve] for cve in ids if cve in failed})
+            prepared[name] = (entries, (*times, *sorted(observed)), (scores, errors))
     return prepared
 
 
 def check_prepared(subject, settings, io, prepared):
-    entries, observed = prepared
+    entries, observed, *enrichment = prepared
     if isinstance(entries, Exception):
         raise entries
     io.observed.extend(observed)
-    return render(subject, settings, io, entries)
+    return render(subject, settings, io, entries, *enrichment)
 
 
 def group_aliases(entries):
@@ -336,15 +375,55 @@ def bounded_facts(facts, provider, advisory_url):
     return ordered
 
 
+
+def cve_ids(entries):
+    return {value for row in entries for value in (row['id'], *row.get('aliases', []))
+            if CVE.fullmatch(value)}
+
+
+def epss_batches(cves):
+    batch, length = [], 0
+    for cve in sorted(set(cves)):
+        if len(cve) > 2000:
+            # An invalid upstream identifier cannot fit into the provider protocol.
+            yield [cve]
+            continue
+        if len(batch) == 100 or length + len(cve) + bool(batch) > 2000:
+            yield batch
+            batch, length = [], 0
+        length += len(cve) + bool(batch)
+        batch.append(cve)
+    if batch:
+        yield batch
+
+
+def epss_scores(batch, io):
+    parameter = ','.join(batch)
+    if len(parameter) > 2000:
+        raise ValueError('EPSS identifier exceeds query budget')
+    data = io.json('GET', 'https://api.first.org/data/v1/epss?cve=' + parameter)
+    rows = data['data']
+    if not isinstance(rows, list) or data.get('total', len(rows)) not in (len(rows), str(len(rows))):
+        raise ValueError('Incomplete EPSS response')
+    result = {}
+    requested = set(batch)
+    for row in rows:
+        cve, day, probability = row['cve'], row['date'], float(row['epss'])
+        if cve not in requested or cve in result or not 0 <= probability <= 1 or date.fromisoformat(day).isoformat() != day:
+            raise ValueError('Invalid EPSS score')
+        result[cve] = (probability, day)
+    return result
+
+
+def load_entries(subject, settings, io):
+    return nvd.read(subject, settings, io) if 'vendor' in settings else osv(subject, settings, io)
+
+
 def check(subject, settings, io):
-    if "vendor" in settings:
-        entries = nvd.read(subject, settings, io)
-    else:
-        entries = osv(subject, settings, io)
-    return render(subject, settings, io, entries)
+    return render(subject, settings, io, load_entries(subject, settings, io))
 
 
-def render(subject, settings, io, entries):
+def render(subject, settings, io, entries, enrichment=None):
     if entries is None:
         return {"status": "unsupported", "findings": [], "note": "Upstream version identity is not established."}
     provider = "NVD" if "vendor" in settings else "OSV"
@@ -369,16 +448,15 @@ def render(subject, settings, io, entries):
             kev_ok = True
         except Exception as error:
             errors.append("KEV: " + type(error).__name__)
-        try:
-            for start in range(0, len(cves), 100):
-                data = io.json("GET", "https://api.first.org/data/v1/epss?cve=" + ",".join(cves[start : start + 100]))
-                for row in data["data"]:
-                    probability = float(row["epss"])
-                    if not 0 <= probability <= 1:
-                        raise ValueError("invalid EPSS probability")
-                    epss[row["cve"]] = (probability, row["date"])
-        except Exception as error:
-            errors.append("EPSS: " + type(error).__name__)
+        if enrichment is not None:
+            epss, failed = enrichment
+            errors.extend('EPSS: ' + reason for reason in failed)
+        else:
+            for batch in epss_batches(cves):
+                try:
+                    epss.update(epss_scores(batch, io))
+                except Exception as error:
+                    errors.append('EPSS: ' + type(error).__name__)
     findings = []
     for aliases, members in sorted(groups, key=lambda group: min(group[0])):
         members = sorted(members, key=lambda item: (item["id"], json.dumps(item, sort_keys=True)))

@@ -262,7 +262,7 @@ def execute(provider, proposed, io, previous=None, *, schedule=None, prepared=No
         scoped_io = io.for_hosts(REGISTRY[provider].HOSTS, max_age=max_age)
         adapter = REGISTRY[provider]
         args = (proposed['subject'], proposed['inputs'], scoped_io)
-        output = adapter.check(*args) if prepared is None else adapter.check_prepared(*args, prepared)
+        output = adapter.check(*args) if prepared is None else getattr(adapter, 'check_prepared')(*args, prepared)
         # Reinterpreting cached bytes is not a new upstream observation.
         observed_at = getattr(scoped_io, 'observed_at', None) or attempted_at
         expected_keys = {'status', 'findings', 'note'}
@@ -403,7 +403,7 @@ def collect(config, config_path, db, *, io=None):
             for _, provider, name, proposed, previous, policy in selected_jobs:
                 if getattr(REGISTRY[provider], 'prepare', None):
                     batches[provider].append((name, proposed, previous, policy))
-            prepared = {provider: REGISTRY[provider].prepare(batch, io) for provider, batch in batches.items()}
+            prepared = {provider: getattr(REGISTRY[provider], 'prepare')(batch, io) for provider, batch in batches.items()}
             with ThreadPoolExecutor(max_workers=options['workers'], thread_name_prefix='monitor') as pool:
                 pending = {pool.submit(execute, provider, proposed, io, previous, schedule=policy,
                                        prepared=prepared.get(provider, {}).get(name)): (name, provider)
