@@ -12,7 +12,6 @@ HOSTS = {'api.deps.dev', 'proxy.golang.org'}
 
 def project(settings):
     if (not isinstance(settings, dict) or set(settings) != {'go'}
-            or not isinstance(settings['go'], str) or len(settings['go']) > 512
             or not valid_go_module_path(settings['go'])):
         raise ValueError('monitor requires a Go module identity')
     return settings['go']

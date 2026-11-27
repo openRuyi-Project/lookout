@@ -51,6 +51,8 @@ def from_package(package):
 
 
 def valid_go_module_path(module):
+    if not isinstance(module, str) or not 1 <= len(module) <= 512:
+        return False
     if '/' not in module:
         # Root modules follow Go's leading-element and Windows-name restrictions.
         prefix = module.partition('.')[0]

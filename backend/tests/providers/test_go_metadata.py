@@ -57,3 +57,16 @@ def test_go_module_identity_keeps_rejecting_invalid_paths(module):
     with pytest.raises(ValueError, match='Go module identity'):
         go.project({'go': module})
     assert from_native({'source': 'go_proxy', 'url': f'https://proxy.golang.org/{module}/@latest'}) is None
+
+
+@pytest.mark.parametrize('length', [512, 513])
+def test_inferred_and_explicit_go_identity_share_size_limit(length):
+    module = 'example.org/' + 'a' * (length - len('example.org/'))
+    entry = {'source': 'go_proxy', 'url': f'https://proxy.golang.org/{module}/@latest'}
+    if length == 512:
+        assert go.project({'go': module}) == module
+        assert from_native(entry) == {'ecosystem': 'Go', 'name': module}
+    else:
+        with pytest.raises(ValueError, match='Go module identity'):
+            go.project({'go': module})
+        assert from_native(entry) is None
