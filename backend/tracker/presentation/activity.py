@@ -54,6 +54,12 @@ def section(name, kind, page):
                    entries=entries, more=more)
 
 
+def restart(name, kind):
+    href = '/packages/' + quote(name, safe='') + '/activity?' + urlencode({'kind': kind})
+    return Section(id='github-' + kind, title='PR' if kind == 'pr' else 'Issue',
+                   entries=[Entry(heading=[text('Activity changed.'), text('Reload history', href=href)])])
+
+
 def sections(result, links):
     # History is joined from the snapshot only for a requested detail page.
     return []

@@ -1,4 +1,6 @@
 
+import pytest
+
 from tests.helpers.query import query_url
 from tests.conftest import ProjectedClient
 from tracker import state
@@ -92,3 +94,20 @@ def test_status_projects_health_without_exposing_collector_checkpoint(tmp_path, 
         key: component[key] for key in ('attempted_at', 'error', 'next_poll_at', 'page')}
     assert len(response.content) < 100000
     assert state.read(db) == before
+
+
+def test_export_stream_matches_model_and_keeps_borrowed_snapshot(tmp_path, snapshot, monkeypatch):
+    import asyncio
+    import json
+    from tracker.api import MonitorExport
+    c, _ = client(tmp_path, snapshot)
+    c.app.state.projection.refresh()
+    snap, index, collection = c.app.state.projection.read()
+    expected = MonitorExport(collection=collection, targets=snap['targets'], packages=index.rows)
+    endpoint = next(route.endpoint for route in c.app.routes if getattr(route, 'path', None) == '/api/v2/export')
+    response = endpoint()
+    # A later publication must not mix rows into the already opened download.
+    monkeypatch.setattr(c.app.state.projection, 'read', lambda: pytest.fail('borrowed twice'))
+    async def consume():
+        return b''.join([chunk async for chunk in response.body_iterator])
+    assert json.loads(asyncio.run(consume())) == expected.model_dump(mode='json', by_alias=True)

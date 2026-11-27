@@ -217,3 +217,15 @@ def test_complete_macros_keep_deterministic_provenance(monkeypatch):
     assert sg.read_macros('/repo', 'package') == [
         ({'path': 'SPECS/package/' + name, 'sha256': hashlib.sha256(data).hexdigest()}, data)
         for name, data in sorted(blobs.items())]
+
+
+@pytest.mark.parametrize('size', [sg._SIZE_LIMIT + 1, -1])
+def test_oversized_blob_is_rejected_before_content_allocation(monkeypatch, size):
+    calls = []
+    def run(args, **kwargs):
+        calls.append(args)
+        assert args[-2] == '-s'
+        return subprocess.CompletedProcess(args, 0, str(size).encode(), b'')
+    monkeypatch.setattr(sg.subprocess, 'run', run)
+    assert sg._git_bytes(['-C', '/repo', 'cat-file', '-p', 'fixed:SPECS/pkg/pkg.spec']) is None
+    assert len(calls) == 1

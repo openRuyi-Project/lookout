@@ -1,9 +1,7 @@
 # SPDX-FileCopyrightText: (C) 2026 Institute of Software, Chinese Academy of Sciences (ISCAS)
 # SPDX-FileCopyrightText: (C) 2026 openRuyi Project Contributors
 # SPDX-License-Identifier: MulanPSL-2.0
-"""refresh_specs: the single-clone core driven by one changelog map. Metadata is
-re-parsed only where a package's head commit changed (or a prior parse failed); every
-other package refreshes its changelog and reuses stored metadata. Fakes, no repo."""
+"""Pinned SPEC input caching and failure preservation. Fakes, no repo."""
 import hashlib
 
 import pytest
@@ -20,8 +18,8 @@ def config():
 
 @pytest.fixture(autouse=True)
 def fakes(monkeypatch):
-    monkeypatch.setattr(spec_git, 'read_spec', lambda repo, name, git='git': b'spec-' + name.encode())
-    monkeypatch.setattr(spec_git, 'read_macros', lambda repo, pkg, git='git': [])
+    monkeypatch.setattr(spec_git, 'read_spec', lambda repo, name, git='git', **kwargs: b'spec-' + name.encode())
+    monkeypatch.setattr(spec_git, 'read_macros', lambda repo, pkg, git='git', **kwargs: [])
 
 
 def cl(commit, subject='s'):
@@ -44,12 +42,12 @@ def test_unchanged_head_skips_parse_but_refreshes_changelog(config):
     calls = []
     def describe(spec, macros=()):
         calls.append(spec); return {'metadata': {'name': 'x'}, 'metadata_error': None}
-    old = {'bash': {'head': 'cB2', 'metadata': {'name': 'bash'}, 'changelog': [cl('cB2', 'newer')], 'error': None}}
-    old['bash']['native_query'] = {'context': {'resolver': native_spec.RESOLVER, 'additional_macros': []}}
+    old = collector.refresh_specs(config, {}, ['bash'], {'bash': [cl('cB2')]}, 'before', describe)
+    calls.clear()
     specs = collector.refresh_specs(config, old, ['bash'], logs, 'now', describe)
-    assert calls == []                                     # head unchanged -> no parse
-    assert specs['bash']['metadata'] == {'name': 'bash'}   # reused
-    assert len(specs['bash']['changelog']) == 2            # changelog still refreshed
+    assert calls == []
+    assert specs['bash']['metadata'] == old['bash']['metadata']
+    assert len(specs['bash']['changelog']) == 2
 
 
 def test_changed_head_reparses(config):
@@ -100,8 +98,8 @@ def test_configured_inputs_are_loaded_without_package_specific_code(config, monk
     macro = ({'path': 'extra/macros', 'sha256': hashlib.sha256(b'macro').hexdigest()}, b'macro')
     source = ({'path': 'bash/series', 'name': 'series', 'sha256': 'fixture'}, b'include')
     seen = []
-    monkeypatch.setattr(spec_git, 'read_macros', lambda repo, package, git: [macro] if package == 'extra' else [])
-    monkeypatch.setattr(spec_git, 'read_local_sources', lambda *args: [source])
+    monkeypatch.setattr(spec_git, 'read_macros', lambda repo, package, git, **kwargs: [macro] if package == 'extra' else [])
+    monkeypatch.setattr(spec_git, 'read_local_sources', lambda *args, **kwargs: [source])
     def describe(data, macros=(), local_sources=()):
         seen.append((data, macros, local_sources))
         return {'metadata': {'version': '1'}, 'metadata_error': None}
@@ -111,7 +109,7 @@ def test_configured_inputs_are_loaded_without_package_specific_code(config, monk
 
 def test_missing_configured_source_fails_only_its_package(config, monkeypatch):
     config['spec']['local_sources'] = {'bash': ['series']}
-    def missing(*args):
+    def missing(*args, **kwargs):
         raise ValueError('missing')
     monkeypatch.setattr(spec_git, 'read_local_sources', missing)
     result = collector.refresh_specs(config, {}, ['bash', 'gcc'], {}, 'now',

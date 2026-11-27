@@ -46,6 +46,12 @@ On a SPEC parse failure, Lookout retains the last successful metadata, revision 
 observation time. It records the error and attempt time. Invalid shared macros reject
 the whole batch.
 
+SPEC invalidation compares the old and new Git trees, including merge resolutions.
+Changelogs are display history, not cache keys. Reads use a pinned commit. Cached
+metadata requires matching SPEC bytes, macro and auxiliary-input identities, and
+resolver version. Installed RPM versions, system macro files and parser code identify
+the immutable runtime. A changed selector or runtime identity requires a full SPEC pass.
+
 If Git fetch fails, Lookout can retry parsing the confirmed local revision. This does
 not advance the remote observation time or clear the fetch error. Source check failures
 make readiness degraded, but do not fail the HTTP liveness probe.
@@ -147,7 +153,8 @@ The process-local HTML cache uses document content, URL and cookies as its key.
 It stores at most 64 pages and 8 MiB of body/key/header bytes. Errors cannot reuse cached success.
 Restarting clears the cache. Changed application assets require full navigation.
 The browser disables response scripts and dynamic evaluation.
-Activity pages read counts and cursor pages from one snapshot, initially showing 20 records per kind.
+Each activity response reads one snapshot and defaults to 20 records per kind.
+Cursors bind subsequent pages to that history revision.
 Loading more pauses replacement until navigation resumes. Provider bodies and diffs are never rendered as HTML.
 
 ## Observation identity and time
@@ -224,3 +231,20 @@ Caller-injected clients remain caller-owned. The operator proxy applies only to 
 HTTP. Browser CSP permits same-origin styles and list-page scripts, not inline or
 external scripts. Other pages disable scripts. BuildSystem CSS is same-origin and
 conditionally revalidated.
+
+### Query and export boundaries
+
+Target IDs must be nonempty strings. Their `build:` facet names allow at most
+100 characters and cannot contain `=`. Facet values can contain `=`.
+
+Activity cursors identify a package, record kind and history revision. A changed
+history returns HTTP 409; restart without the cursor. Unrelated collection
+heartbeats do not invalidate activity cursors.
+
+JSON export streams packages in index order from one prepared snapshot. It does
+not construct a second full response model in memory. A serialization or transport
+failure terminates the download; consumers must reject incomplete JSON. Export is
+not a database backup.
+
+List `total` and `counts.all` both report the selected result count. Other entries
+in `counts` are view alternatives that exclude the view selection itself.

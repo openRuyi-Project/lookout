@@ -8,6 +8,15 @@ from urllib.parse import unquote, urlsplit
 
 from packaging.utils import canonicalize_name
 
+FACET_NAME_LIMIT = 100
+
+
+def facet_name(value):
+    """Facet names must survive select=FACET=VALUE without changing identity."""
+    if not isinstance(value, str) or not 1 <= len(value) <= FACET_NAME_LIMIT or '=' in value:
+        raise ValueError(f'facet names require 1..{FACET_NAME_LIMIT} characters without =')
+    return value
+
 
 def request_url(entry):
     """Registry identity or explicit transport URL, never two authoring points.
