@@ -4,6 +4,9 @@ from urllib.parse import parse_qsl
 
 import pytest
 from pydantic import ValidationError
+from hypothesis import given, settings, strategies as st
+from tracker.presentation.navigation import Links
+from urllib.parse import urlsplit
 
 from tracker.api import ListingQuery
 from tracker.readmodel.query import MAX_QUERY_NODES, Condition, Evaluation, FilterQuery, encode_parameters
@@ -149,3 +152,44 @@ def test_restricted_evaluation_matches_rebuilding_for_all_small_queries():
             for value in (*options, 'missing'):
                 condition = Condition(dimension=dimension, value=value)
                 assert restricted.count(condition) == rebuilt.count(condition)
+
+
+TEXT = st.text(st.characters(blacklist_categories=('Cs',)), min_size=1, max_size=12)
+VALUES = st.one_of(st.sampled_from(['custom', '_not_detected', 'x+y', 'a=b', 'a&b', '日本語']), TEXT)
+DIMENSIONS = st.one_of(st.sampled_from(['buildsystem', 'maintenance', 'build:rva23']),
+                      TEXT.filter(lambda text: '=' not in text))
+QUERIES = st.dictionaries(DIMENSIONS, st.lists(VALUES, max_size=5), max_size=4).map(
+    lambda selections: FilterQuery(selections=selections))
+
+
+@settings(max_examples=300, derandomize=True, database=None)
+@given(QUERIES, QUERIES)
+def test_query_encoding_is_reversible_and_injective(first, second):
+    encoded = encode_parameters(first.parameters())
+    assert FilterQuery.extract(parse_qsl(encoded, keep_blank_values=True)) == (first, [])
+    assert (encoded == encode_parameters(second.parameters())) == (first == second)
+
+
+@settings(max_examples=300, derandomize=True, database=None)
+@given(QUERIES, DIMENSIONS, VALUES)
+def test_link_toggle_matches_query_and_can_be_undone(query, dimension, value):
+    href = Links({'filters': query.model_dump()}).toggle(dimension, value)
+    parsed, remaining = FilterQuery.extract(parse_qsl(urlsplit(href).query, keep_blank_values=True))
+    assert not remaining
+    assert parsed == query.toggle(dimension, value)
+    assert parsed.toggle(dimension, value) == query
+
+
+@settings(max_examples=300, derandomize=True, database=None)
+@given(st.sets(st.integers(0, 3)), st.sets(st.integers(0, 3)), st.sets(st.integers(0, 3)),
+       st.sets(st.sampled_from(['custom', '_not_detected'])))
+def test_distinct_identities_preserve_membership_and_counts(declared, missing, scope, values):
+    index = {'buildsystem': {'custom': declared, '_not_detected': missing}}
+    query = FilterQuery(selections={'buildsystem': values})
+    parsed, _ = FilterQuery.extract(parse_qsl(encode_parameters(query.parameters())))
+    expected = {package for package in scope
+                if not values or any(package in index['buildsystem'][value] for value in values)}
+    result = Evaluation(index, scope, parsed)
+    assert result.matches == expected
+    for value, members in index['buildsystem'].items():
+        assert result.count(Condition(dimension='buildsystem', value=value)) == len(scope & members)
