@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Back up and migrate a stopped instance's SQLite state without replacing it."""
 import argparse
+from hashlib import file_digest
 from contextlib import closing
 from pathlib import Path
 import runpy
 import sqlite3
 import sys
+from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
@@ -23,7 +25,18 @@ def migrate(db, backup, timeout=30):
         if version not in (0, 2):
             raise ValueError('unsupported database storage version; no migration performed')
         create_backup = runpy.run_path(str(ROOT / 'deploy/backup-snapshot.py'))['backup']
-        create_backup(path, backup, timeout)
+        saved = Path(backup)
+        if saved.is_symlink() or (saved.exists() and (not saved.is_file() or saved.samefile(path))):
+            raise ValueError('expected an independent backup file')
+        if saved.exists():
+            # Compare two Backup API images, not the source file: committed pages may live in WAL.
+            with TemporaryDirectory(dir=saved.parent) as directory:
+                reference = create_backup(path, Path(directory) / 'reference', timeout)
+                with reference.open('rb') as new, saved.open('rb') as old:
+                    if file_digest(new, 'sha256').digest() != file_digest(old, 'sha256').digest():
+                        raise ValueError('existing backup differs from the stopped database')
+        else:
+            create_backup(path, saved, timeout)
         if state.read(backup) != before:
             raise ValueError('backup does not match the stopped database')
         storage.migrate(path)

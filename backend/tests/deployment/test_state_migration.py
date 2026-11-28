@@ -56,3 +56,30 @@ def test_preflight_refuses_implicit_migration(tmp_path, snapshot, monkeypatch):
     assert db.read_bytes() == before
     storage.migrate(db)
     assert runtime_checks.check_runtime({'collector': {}, 'spec': {}}, db)
+
+
+def test_resume_after_backup_before_migration(tmp_path, snapshot, monkeypatch):
+    db, backup = tmp_path / 'db', tmp_path / 'backup'
+    legacy(db, snapshot)
+    with monkeypatch.context() as patch:
+        def interrupted(_):
+            raise InterruptedError('power loss')
+        patch.setattr(storage, 'migrate', interrupted)
+        with pytest.raises(InterruptedError):
+            migrate['migrate'](db, backup)
+    saved = backup.read_bytes()
+    assert migrate['migrate'](db, backup)
+    assert backup.read_bytes() == saved
+    assert state.read(db) == state.read(backup)
+
+
+def test_same_facts_with_different_clock_cannot_resume(tmp_path, snapshot):
+    source, backup = tmp_path / 'db', tmp_path / 'backup'
+    legacy(source, snapshot)
+    create = runpy.run_path(str(ROOT / 'deploy/backup-snapshot.py'))['backup']
+    create(source, backup, 30)
+    with closing(sqlite3.connect(source)) as conn, conn:
+        conn.execute("UPDATE snapshot_clock SET revision='different'")
+    before = source.read_bytes(), backup.read_bytes()
+    assert migrate['main'](['--db', str(source), '--backup', str(backup)]) == 2
+    assert (source.read_bytes(), backup.read_bytes()) == before
