@@ -12,6 +12,7 @@ import hashlib
 import re
 import subprocess
 import time
+from pathlib import Path
 
 from tracker.monitors.schedule import Schedule
 
@@ -206,6 +207,10 @@ def read_spec(repo, name, git='git', *, revision='HEAD'):
     return data
 
 
+def declared_checks(data):
+    return sorted({m.decode() for m in re.findall(rb'^%buildsystem_([a-z0-9_-]+)_check\(', data, re.MULTILINE)})
+
+
 def read_macros(repo, macro_package, git='git', *, revision='HEAD'):
     """Every macro file shipped at the pinned revision, as (provenance, bytes)
     pairs ready for native_spec's hash-checked parser. Never return a partial set."""
@@ -223,9 +228,39 @@ def read_macros(repo, macro_package, git='git', *, revision='HEAD'):
             raise MacroReadError('SPEC macro file unavailable')
         if len(data) > _SIZE_LIMIT:
             raise MacroReadError('SPEC macro file exceeds size limit')
-        macros.append(({'path': f'SPECS/{macro_package}/{filename}',
-                        'sha256': hashlib.sha256(data).hexdigest()}, data))
+        path = f'SPECS/{macro_package}/{filename}'
+        provenance: dict[str, str | list[str]] = {'path': path, 'sha256': hashlib.sha256(data).hexdigest()}
+        if systems := declared_checks(data):
+            provenance = {**provenance, 'declares_checks': systems, 'source': f'{revision}:{path}'}
+        macros.append((provenance, data))
     return macros
+
+
+MACROSETS = Path(__file__).with_name('macrosets')
+
+
+def provider_packages():
+    return sorted(p.name for p in MACROSETS.iterdir() if p.is_dir())
+
+
+def provider_macros(repo, *, revision, git):
+    inputs = []
+    for package in provider_packages():
+        tree, error = _git_text(['-C', repo, 'rev-parse', '--verify', f'{revision}:SPECS/{package}'], git)
+        if error or not tree or not re.fullmatch('[0-9a-f]{40,64}', tree.strip()):
+            continue
+        pinned = MACROSETS / package / tree.strip()
+        files = {p.name: p.read_bytes() for p in sorted(pinned.glob('macros.*'))}
+        if not files:
+            continue
+        origin = (pinned / 'SOURCE').read_text().strip()
+        declarations = {name: declared_checks(data) for name, data in files.items()}
+        systems = sorted({system for group in declarations.values() for system in group})
+        for name, data in files.items():
+            inputs.append(({'path': f'{package}/{tree.strip()}/{name}', 'check_systems': systems,
+                            'declares_checks': declarations[name], 'source': origin,
+                            'sha256': hashlib.sha256(data).hexdigest()}, data))
+    return inputs
 
 
 def macro_packages(spec):

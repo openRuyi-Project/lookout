@@ -1,0 +1,14 @@
+%rustcrates_dynspec_helper %{_rpmconfigdir}/rust-rpm-macros/rustcrates-gen-feature-specparts.sh
+
+# Example buildsystem for rust crates
+%buildsystem_rustcrates_prep() %{expand:\
+  %autosetup -C -p1 %* \
+}
+%buildsystem_rustcrates_conf() %nil
+%buildsystem_rustcrates_build() %{expand:\
+  %{rustcrates_dynspec_helper} "%{_sourcedir}" \
+}
+%buildsystem_rustcrates_install() %{expand:\
+  %{rust_install_crate} \
+}
+%buildsystem_rustcrates_check() %nil

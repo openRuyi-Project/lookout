@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import re
 import selectors
 import signal
 import socket
@@ -17,7 +18,7 @@ from urllib.parse import quote
 
 from tracker.state import usable_version
 
-RESOLVER = 11  # cache epoch for parser and runtime macro changes
+RESOLVER = 14  # cache epoch for parser and runtime macro changes
 _SIZE_LIMIT = 1024 * 1024
 MACRO_FILE_LIMIT = 64
 MACRO_BYTES_LIMIT = 4 * 1024 * 1024
@@ -36,6 +37,8 @@ def runtime_identity():
         digest = hashlib.sha256(b'\n'.join(sorted(packages.splitlines())))
         roots = (Path('/usr/lib/rpm'), Path('/etc/rpm'))
         files = [path for root in roots if root.exists() for path in root.rglob('*') if path.is_file()]
+        files.extend(path for path in Path(__file__).with_name('macrosets').rglob('*')
+                     if path.is_file() and path.name != 'LICENSE')
         files.extend(Path(__file__).with_name(name) for name in ('rpm.py', 'spec_worker.py', 'spec_sandbox.py'))
         for path in sorted(files):
             digest.update(str(path).encode() + b'\0')
@@ -132,7 +135,7 @@ def _run(inputs, work, target):
                     raise ValueError('unexpected metadata')
                 if not all(v is None or isinstance(v, str) for k, v in values.items() if k != 'sources'):
                     raise ValueError('non-string metadata')
-                if (values['check_state'] not in ((None,) if target is None else ('absent', 'empty', 'comments', 'nonempty'))
+                if (values['check_state'] not in ((None,) if target is None else ('absent', 'empty', 'comments', 'nonempty', 'unresolved'))
                         or (target and context['target'] != target)
                         or (values['check_excerpt'] is not None and
                             (values['check_state'] != 'comments' or len(values['check_excerpt']) > 4112))):
@@ -207,7 +210,12 @@ def _parse(spec, macros, local_sources=(), *, target=None):
         (inputs / 'package.spec').write_bytes(spec)
         for provenance, data in local_sources:
             (work / provenance['name']).write_bytes(data)
-        for index, (_, data) in enumerate(macros):
+        for index, (provenance, data) in enumerate(macros):
+            # RPM propagates the marker only when the SPEC inherits the bootstrap
+            # stage. A real provider or a replacement %check supersedes it.
+            if target is not None and Path(provenance.get('path', '')).name.startswith('macros.aaa-'):
+                data = re.sub(rb'(?m)^(%buildsystem_\w+_check\([^\n)]*\)[ \t]+)%nil[ \t]*$',
+                              rb'\1: __lookout_unresolved_check__', data)
             (inputs / f'macros.{index:02}').write_bytes(data)
         result, error = _run(inputs, work, target)
         if result and isinstance(result.get('context'), dict):
@@ -225,15 +233,33 @@ def query(spec, macros=()):
 
 
 def _target_check(target, value, context, spec, macros, local_sources):
-    if context['target'] != target:
+    if context['target'] != target or any('check_systems' in p for p, _ in macros):
         value, error, _ = _parse(spec, macros, local_sources, target=target)
         if not value:
             return {'error': error}
     return {'state': value['check_state'], 'excerpt': value['check_excerpt']}
 
 
+def _check_probes(spec, has_provider):
+    # Keep the body, guards and options intact. RPM decides which lines apply.
+    headers = re.finditer(rb'(?m)^%check(?=[ \t\r\n]|$)[^\n]*', spec)
+    header = next(headers, None)
+    if has_provider and header and header.group().rstrip() == b'%check' and next(headers, None) is None:
+        end = header.start() + len(b'%check')
+        yield spec[:end] + b' -a' + spec[end:], {'line': spec.count(b'\n', 0, end) + 1}
+    # Only probe one unambiguous, literal opt-in. A name alone proves nothing.
+    switches = re.finditer(rb'(?m)^%(?:bcond[ \t]+(tests?|checks?|run_tests?)[ \t]+0|'
+                           rb'bcond_with[ \t]+(tests?|checks?|run_tests?))[ \t]*\r?$', spec)
+    switch = next(switches, None)
+    if switch and next(switches, None) is None:
+        name = switch[1] or switch[2]
+        yield (spec[:switch.start()] + b'%bcond ' + name + b' 1' + spec[switch.end():],
+               {'line': spec.count(b'\n', 0, switch.start()) + 1, 'option': name.decode()})
+
+
 def describe(spec, macros=(), *, local_sources=()):
-    value, error, context = _parse(spec, macros, local_sources, target='')
+    base = [item for item in macros if 'check_systems' not in item[0]]
+    value, error, context = _parse(spec, base, local_sources, target='')
     metadata = None
     if value and value['name']:
         metadata = {name: value[name] or None for name in ('name', 'version', 'summary', 'license', 'url')}
@@ -241,9 +267,30 @@ def describe(spec, macros=(), *, local_sources=()):
         metadata['sources'] = value['sources']
         metadata['go_module'] = value['go_module']
         metadata['buildsystem'] = value['buildsystem']
+        overlays = [item for item in macros if value['buildsystem'] in item[0].get('check_systems', ())]
+        if overlays:
+            macros = base + overlays
+            context = {**context, 'additional_macros': [p for p, _ in macros]}
+        else:
+            macros = base
+        for provenance, _ in reversed(macros):
+            if value['buildsystem'] in provenance.get('declares_checks', ()):
+                if not Path(provenance['path']).name.startswith('macros.aaa-'):
+                    metadata['check_provider'] = {k: provenance[k] for k in ('path', 'source', 'sha256')}
+                break
         checks = metadata['target_checks'] = {}
         riscv = checks['riscv64'] = _target_check('riscv64', value, context, spec, macros, local_sources)
         if riscv.get('state') in ('absent', 'empty', 'comments'):
+            for amended, action in _check_probes(spec, bool(metadata.get('check_provider'))):
+                restored, probe_error, _ = _parse(amended, macros, local_sources, target='riscv64')
+                if (restored and restored['check_state'] == 'nonempty'
+                        and (restored['name'], restored['version'], restored['buildsystem'])
+                        == (value['name'], value['version'], value['buildsystem'])):
+                    riscv['disabled_by'] = action
+                    break
+                if probe_error:
+                    riscv['error'] = probe_error
+                    break
             reference = _target_check('x86_64', value, context, spec, macros, local_sources)
             checks['x86_64'] = {k: v for k, v in reference.items() if k != 'excerpt'}
     return {'metadata': metadata,

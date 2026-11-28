@@ -1,0 +1,18 @@
+# Example buildsystem for perl packages
+%buildsystem_perlbuild_prep() %{expand:\
+  %autosetup -C -p1 %* \
+}
+%buildsystem_perlbuild_conf() %nil
+%buildsystem_perlbuild_build() %{expand:\
+  perl Build.PL %* \
+  ./Build \
+}
+%buildsystem_perlbuild_install() %{expand:\
+  ./Build install %*  \
+  find %{buildroot} -type f -name '*.bs' -size 0 -exec rm -f {} \\;  \
+  %perl_process_packlist  \
+  %perl_gen_filelist  \
+}
+%buildsystem_perlbuild_check() %{expand:\
+  ./Build test %* \
+}

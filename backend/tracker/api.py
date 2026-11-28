@@ -167,14 +167,23 @@ class SourceSummary(BaseModel):
     buildsystem_status: Literal['declared', 'not_declared', 'unknown']
 
 
-class TestMissEvidence(BaseModel):
+class TestsDisabledEvidence(BaseModel):
+    option: str | None = None
+    line: int = Field(ge=1)
     reason: Literal['absent', 'empty', 'comments']
     excerpt: str | None
-    x86_64: Literal['absent', 'empty', 'comments', 'nonempty'] | None
+    x86_64: Literal['absent', 'empty', 'comments', 'nonempty', 'unresolved'] | None
+
+
+class CheckProvider(BaseModel):
+    path: str
+    source: str
+    sha256: str
 
 
 class SourceObservation(SourceSummary, Spec):
-    test_miss: TestMissEvidence | None = None
+    check_provider: CheckProvider | None = None
+    tests_disabled: TestsDisabledEvidence | None = None
     revision: str | None
     obs: dict
 

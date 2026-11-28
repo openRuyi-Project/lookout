@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: (C) 2026 Institute of Software, Chinese Academy of Sciences (ISCAS)
+# SPDX-FileCopyrightText: (C) 2026 openRuyi Project Contributors
+#
+# SPDX-License-Identifier: MIT
+
+# Example buildsystem for go modules
+%buildsystem_golangmodules_conf() %nil
+%buildsystem_golangmodules_build() %nil
+%buildsystem_golangmodules_install() %{expand:\\\
+  %__install -d %{buildroot}%{go_sys_gopath}/%{go_import_path} ; \\\
+  %__cp -a . %{buildroot}%{go_sys_gopath}/%{go_import_path} ; \\\
+  %go_generate_provides -i %{go_import_path} -v %{version} \\\
+}
+%buildsystem_golangmodules_check(-) %{expand:\\\
+  %{go_common} \\\
+  %__mkdir -p %{_builddir}/go/src/%{go_import_path} ; \\\
+  %__cp -a . %{_builddir}/go/src/%{go_import_path} ; \\\
+  cd %{_builddir}/go/src/%{go_import_path} ; \\\
+  \\\
+  # How to include go modules (whitelist): \\\
+  # Exact package inclusions: %{?go_test_include} (space-separated list of packages) \\\
+  # Glob-based inclusions: set the GO_TEST_INCLUDE_GLOB environment variable or use %{?go_test_include_glob} \\\
+  # Note: If include list is set, only matching packages will be tested. \\\
+  # \\\
+  # How to exclude go modules: \\\
+  # Exact package exclusions: %{?go_test_exclude} (space-separated list of packages) \\\
+  # Glob-based exclusions: set the GO_TEST_EXCLUDE_GLOB environment variable or use %{?go_test_exclude_glob} \\\
+  # Note: Exclusions are applied after inclusions. \\\
+  _go_in_list="%{shrink:%{?go_test_include}}" ; \\\
+  if [ -n "${GO_TEST_INCLUDE_GLOB:-}" ]; then \\\
+    _go_in_glob="${GO_TEST_INCLUDE_GLOB}" ; \\\
+  else \\\
+    _go_in_glob="%{shrink:%{?go_test_include_glob}}" ; \\\
+  fi ; \\\
+  _go_ex_list="%{shrink:%{?go_test_exclude}}" ; \\\
+  if [ -n "${GO_TEST_EXCLUDE_GLOB:-}" ]; then \\\
+    _go_ex_glob="${GO_TEST_EXCLUDE_GLOB}" ; \\\
+  else \\\
+    _go_ex_glob="%{shrink:%{?go_test_exclude_glob}}" ; \\\
+  fi ; \\\
+  \\\
+  # List all packages (allow errors but keep listing) \\\
+  set +e ; \\\
+  _go_all_pkgs="$(
+    %__go list -e -f '{{.ImportPath}}' ./...
+  )" ; \\\
+  _go_list_rc=$? ; \\\
+  set -e ; \\\
+  \\\
+  # If go list totally failed and produced nothing, fallback to ./... \\\
+  if [ -z "$_go_all_pkgs" ]; then \\\
+    if [ "$_go_list_rc" -ne 0 ]; then \\\
+      echo "go list failed (rc=$_go_list_rc). Missing build deps? Add BuildRequires or set go_test_exclude(_glob)." ; \\\
+      exit "$_go_list_rc" ; \\\
+    fi ; \\\
+    _go_all_pkgs="./..." ; \\\
+  fi ; \\\
+  \\\
+  _go_pkgs="" ; \\\
+  set -f ; \\\
+  while IFS= read -r _pkg; do \\\
+    [ -z "$_pkg" ] && continue ; \\\
+    _skip=0 ; \\\
+    # Exact inclusions (whitelist) - if set, package must match \\\
+    if [ -n "$_go_in_list" ] || [ -n "$_go_in_glob" ]; then \\\
+      _included=0 ; \\\
+      for _in in $_go_in_list; do \\\
+        [ -n "$_in" ] && [ "$_pkg" = "$_in" ] && _included=1 && break ; \\\
+      done ; \\\
+      if [ "$_included" -eq 0 ] && [ -n "$_go_in_glob" ]; then \\\
+        for _pat in $_go_in_glob; do \\\
+          case "$_pkg" in \\\
+            $_pat) _included=1; break ;; \\\
+          esac ; \\\
+        done ; \\\
+      fi ; \\\
+      [ "$_included" -eq 0 ] && _skip=1 ; \\\
+    fi ; \\\
+    # Exact exclusions \\\
+    if [ "$_skip" -eq 0 ]; then \\\
+      for _ex in $_go_ex_list; do \\\
+        [ -n "$_ex" ] && [ "$_pkg" = "$_ex" ] && _skip=1 && break ; \\\
+      done ; \\\
+    fi ; \\\
+    # Glob exclusions \\\
+    if [ "$_skip" -eq 0 ] && [ -n "$_go_ex_glob" ]; then \\\
+      for _pat in $_go_ex_glob; do \\\
+        case "$_pkg" in \\\
+          $_pat) _skip=1; break ;; \\\
+        esac ; \\\
+      done ; \\\
+    fi ; \\\
+    [ "$_skip" -eq 0 ] && _go_pkgs="$_go_pkgs $_pkg" ; \\\
+  done <<< "$_go_all_pkgs" ; \\\
+  set +f ; \\\
+  \\\
+  # What if we have no tests? \\\
+  if [ -z "$_go_pkgs" ]; then \\\
+    echo "go test: no packages to test after exclusions" ; \\\
+    exit 0 ; \\\
+  fi ; \\\
+  \\\
+  set -- %** ; \\\
+  [ "$1" = "--" ] && shift ; \\\
+  \\\
+  # Ignore Tests failed: Define %{go_test_ignore_failure} or export GO_TEST_IGNORE_FAILURE=1 \\\
+  if [ -n "%{?go_test_ignore_failure}" ] || [ -n "${GO_TEST_IGNORE_FAILURE:-}" ]; then \\\
+    %__go test %{go_test_flags_default} "$@" $_go_pkgs || : ; \\\
+  else \\\
+    %__go test %{go_test_flags_default} "$@" $_go_pkgs ; \\\
+  fi \\\
+}

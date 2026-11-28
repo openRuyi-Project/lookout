@@ -252,6 +252,8 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
         return old_specs
     macros = [item for package in spec_git.macro_packages(spec)
               for item in spec_git.read_macros(repo, package, git=git, revision=tree_head or 'HEAD')]
+    if spec.get('macro_package'):
+        macros.extend(spec_git.provider_macros(repo, revision=tree_head or 'HEAD', git=git))
     native_spec.validate_macros(macros)
     runtime = native_spec.runtime_identity()
     origin = {k: spec.get(k) for k in ('url', 'branch', 'source_url_template')}
@@ -368,7 +370,7 @@ def check_specs(config, db, describe=native_spec.describe):
                     changed, error = spec_git.changed_packages(repo, prior['head'], head, git)
                     logs, history_error = spec_git.changelogs(repo, spec['changelog_limit'], git=git,
                                                              since=prior['head'], revision=head)
-                if incremental and any(package in changed for package in spec_git.macro_packages(spec)):
+                if incremental and changed.intersection(spec_git.macro_packages(spec) + spec_git.provider_packages()):
                     incremental = False
                 if not error and not incremental:
                     logs, history_error = spec_git.changelogs(repo, spec['changelog_limit'], git=git, revision=head)

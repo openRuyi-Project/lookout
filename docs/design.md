@@ -118,6 +118,19 @@ full-list and batch limits bound response work. Request and response models gene
 ### Queries
 
 `readmodel/query.py` evaluates indexed package sets within the search scope.
+TestsDisabled identifies a packaging action that removes riscv64 check commands. For one plain `%check` header and a known provider, RPM parses a second
+copy with `%check -a` on that line. If this restores commands to an absent,
+empty or comment-only stage, the detail records the original line. A single literal opt-in test switch can
+also establish the cause if enabling it restores commands for the same package,
+version and BuildSystem. Neither an
+empty default nor a difference from x86_64 proves that packaging disabled tests.
+This compares expanded scripts, not test execution or maintainer intent.
+For macros shipped outside the SPEC tree, `monitors/source/macrosets/<package>/<git-tree>/`
+holds the reviewed provider files and their upstream revision. A changed provider
+tree cannot reuse those files. Other SPEC metadata does not use these overlays. In the package detail API,
+`source.data.check_provider` identifies the file that supplies the default,
+its digest and its source. It does not claim that the SPEC used the default.
+
 Finding filters count distinct matching package IDs before pagination. Two advisories
 on one package count as one package.
 

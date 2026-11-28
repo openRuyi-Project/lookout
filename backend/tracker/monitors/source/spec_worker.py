@@ -23,7 +23,10 @@ def check_section(script):
         return 'absent', None
     if not script.strip():
         return 'empty', None
-    if all(not line or line.startswith('#') for line in map(str.lstrip, script.split('\n'))):
+    commands = [line for raw in script.splitlines() if (line := raw.strip()) and not line.startswith('#')]
+    if commands and all(line == ': __lookout_unresolved_check__' for line in commands):
+        return 'unresolved', None
+    if not commands:
         return 'comments', script[:4096] + ('\n… [truncated]' if len(script) > 4096 else '')
     return 'nonempty', None
 

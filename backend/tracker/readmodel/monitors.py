@@ -177,15 +177,20 @@ def source(context):
         check['note'] = 'Repository refresh: ' + refresh_error
     check['failures'] = list(dict.fromkeys(str(current[k]) for k in ('error', 'version_error') if current.get(k)))
     dimensions = {'buildsystem': [system or '_not_detected']}
+    if metadata and not spec.get('error') and metadata.get('check_provider'):
+        data['check_provider'] = metadata['check_provider']
     targets = (metadata or {}).get('target_checks', {}) if not spec.get('error') else {}
     for target, evidence in targets.items():
         if error := evidence.get('error'):
             check['failures'].append(f'{target} %check: {error}')
+        if evidence.get('state') == 'unresolved':
+            note = f'{target} %check: final BuildSystem macro unavailable'
+            check['note'] = '; '.join(filter(None, (check.get('note'), note)))
     riscv = targets.get('riscv64', {})
-    if riscv.get('state') in ('absent', 'empty', 'comments'):
-        data['test_miss'] = dict(reason=riscv['state'], excerpt=riscv.get('excerpt'),
-                                 x86_64=targets.get('x86_64', {}).get('state'))
-        dimensions['maintenance'] = [Issue.TEST_MISS]
+    if riscv.get('state') in ('absent', 'empty', 'comments') and riscv.get('disabled_by'):
+        data['tests_disabled'] = dict(reason=riscv['state'], excerpt=riscv.get('excerpt'),
+                                 **riscv['disabled_by'], x86_64=targets.get('x86_64', {}).get('state'))
+        dimensions['maintenance'] = [Issue.TESTS_DISABLED]
     return dict(check=check, data=data, dimensions=dimensions)
 
 

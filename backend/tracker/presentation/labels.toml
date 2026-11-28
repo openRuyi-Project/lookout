@@ -42,7 +42,7 @@ style = "important"
 [labels."EOL"]
 style = "important"
 
-[labels."TestMiss"]
+[labels."TestsDisabled"]
 style = "warning"
 
 [labels."Out of date"]

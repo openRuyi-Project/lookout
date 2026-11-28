@@ -1,0 +1,83 @@
+#
+# Rust macros
+#
+
+# Install a crate to system cargo registry
+%rust_install_crate \
+  %__install -d %{buildroot}%{_datadir}/cargo/registry/%{crate_name}-%{version} \
+  %__cp -a . %{buildroot}%{_datadir}/cargo/registry/%{crate_name}-%{version}/ \
+  %__rm -f %{buildroot}%{_datadir}/cargo/registry/%{crate_name}-%{version}/*checksum.json \
+  echo '{"files":{},"package":null}' > %{buildroot}%{_datadir}/cargo/registry/%{crate_name}-%{version}/.cargo-checksum.json \
+%{nil}
+
+# Configure cargo to use system registry
+%rust_setup_registry() %{expand:\
+  mkdir -p ~/.cargo \
+  cat > ~/.cargo/config.toml <<EOF\
+[source.crates-io]\
+replace-with = "system-registry"\
+\
+[source.system-registry]\
+directory = "/usr/share/cargo/registry"\
+EOF\
+}
+
+%rust_build_release() %{expand:\
+  CARGO=${CARGO:-cargo} \
+  RUST_CARGO_FLAGS=${RUST_CARGO_FLAGS:---offline} \
+  RUST_BUILD_FLAGS=${RUST_BUILD_FLAGS:---release} \
+  RUST_BUILD_ARGS=${RUST_BUILD_ARGS:-} \
+  RUST_LOCK_POLICY=${RUST_LOCK_POLICY:-refresh} \
+  lock_flags="" \
+  case "$RUST_LOCK_POLICY" in \
+    refresh) \
+      if [ -f Cargo.lock ]; then \
+        cp Cargo.lock Cargo.lock.orig; \
+        sed -i '/^checksum = /d' Cargo.lock; \
+        $CARGO update $RUST_CARGO_FLAGS; \
+      fi; \
+      ;; \
+    locked) \
+      if [ ! -f Cargo.lock ]; then \
+        echo "error: RUST_LOCK_POLICY=locked but Cargo.lock is missing" >&2; \
+        exit 1; \
+      fi; \
+      lock_flags="--locked"; \
+      ;; \
+    frozen) \
+      if [ ! -f Cargo.lock ]; then \
+        echo "error: RUST_LOCK_POLICY=frozen but Cargo.lock is missing" >&2; \
+        exit 1; \
+      fi; \
+      lock_flags="--frozen"; \
+      ;; \
+    ignore) \
+      rm -f Cargo.lock; \
+      ;; \
+    unlocked) \
+      ;; \
+    auto) \
+      if [ -f Cargo.lock ]; then \
+        lock_flags="--locked"; \
+      fi; \
+      ;; \
+    *) \
+      echo "error: unknown RUST_LOCK_POLICY=$RUST_LOCK_POLICY" >&2; \
+      exit 1; \
+      ;; \
+  esac; \
+  $CARGO build $RUST_BUILD_FLAGS $lock_flags $RUST_CARGO_FLAGS $RUST_BUILD_ARGS \
+}
+
+%rust_test %{expand:\
+  CARGO=${CARGO:-cargo} \
+  RUST_CARGO_FLAGS=${RUST_CARGO_FLAGS:---offline} \
+  RUST_TEST_FLAGS=${RUST_TEST_FLAGS:-} \
+  RUST_TEST_ARGS=${RUST_TEST_ARGS:-} \
+  if [ -n "$RUST_TEST_ARGS" ]; then \
+    $CARGO test $RUST_TEST_FLAGS $RUST_CARGO_FLAGS -- $RUST_TEST_ARGS; \
+  else \
+    $CARGO test $RUST_TEST_FLAGS $RUST_CARGO_FLAGS; \
+  fi \
+}
+

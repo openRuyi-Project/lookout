@@ -65,7 +65,7 @@ const packages = [
   }]}),
   makePackage('success', {buildsystem: 'custom', buildsystem_status: 'declared', maintenance: [{label:'NewSignal', count:2, stale:false}],
     activity: [{label:'PR', count:2, stale:false}, {label:'Issue', count:1, stale:false}],
-    spec: {...makePackage('success').spec, test_miss: {reason: 'comments', x86_64: 'nonempty', excerpt: '# <fixture>\n'}, metadata: {summary: 'Fixture package',
+    spec: {...makePackage('success').spec, tests_disabled: {line: 42, reason: 'comments', x86_64: 'nonempty', excerpt: '# <fixture>\n'}, metadata: {summary: 'Fixture package',
       url: 'https://example.org/upstream', license: 'MIT', description: 'Fixture source description'}}}),
   makePackage('watch-preview', {watch: [
     {id:'widget@preview',version:'2.2rc1',error:null,stale:false},
@@ -167,7 +167,7 @@ function monitored(pkg, detail = true, focus = '') {
   const monitors = Object.fromEntries(catalog.map(m => [m.id, {id: m.id, title: m.title, check: {...check},
     data: data[m.id] || {kind: 'evidence', labels: m.id === 'yanked' ? pkg.maintenance : [],
       findings: pkg.maintenance_findings.filter(f => f.monitor === m.id)}}]));
-  if (pkg.spec.test_miss) monitors.source.dimensions = {maintenance: ['TestMiss']};
+  if (pkg.spec.tests_disabled) monitors.source.dimensions = {maintenance: ['TestsDisabled']};
   monitors.version.dimensions = {view: !pkg.track ? ['untracked'] : ['outdated', 'changed'].includes(pkg.relation) ? ['updates'] : []};
   monitors.version.dimensions.maintenance = monitors.version.dimensions.view.map(value =>
     ({untracked: 'Untracked', updates: 'Outdated'})[value]);
@@ -653,7 +653,7 @@ try {
   assert.doesNotMatch(listing, / style=/);
   const sourceContext = await read('/packages/success');
   assert.match(sourceContext, /Fixture package/);
-  assert.ok(sourceContext.includes('href="#test-miss"'));
+  assert.ok(sourceContext.includes('href="#tests-disabled"'));
   assert.ok(sourceContext.includes('<code># &lt;fixture&gt;\n</code>'));
   assert.equal((sourceContext.match(/Fixture source description/g) || []).length, 1);
   assert.ok(sourceContext.indexOf('aria-label="Page sections"') < sourceContext.indexOf('class="detail-overview"'));

@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: (C) 2026 Institute of Software, Chinese Academy of Sciences (ISCAS)
+# SPDX-FileCopyrightText: (C) 2026 openRuyi Project Contributors
+#
+# SPDX-License-Identifier: MIT
+
+%buildsystem_golang_conf() %nil
+%buildsystem_golang_prep() %{expand:\\\
+  %autosetup -C -p1 %* ; \\\
+  %{go_prep}
+}
+%buildsystem_golang_build() %{expand:\\\
+  %{go_common} \\\
+  export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw" ; \\\
+  %__go build %{shrink:%{go_build_flags_default} %*} -o %{_name} . \\\
+}
+%buildsystem_golang_install() %{expand:\\\
+  %__install -D -m 0755 %{_name} %{buildroot}%{_bindir}/%{_name} \\\
+}
+%buildsystem_golang_check() %{expand:\\\
+  %{go_common} \\\
+  cd %{_builddir}/go/src/%{go_import_path} ; \\\
+  %__go test %{shrink:%{go_test_flags_default} %*} ./... \\\
+}

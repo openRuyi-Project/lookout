@@ -10,7 +10,7 @@ class Issue(StrEnum):
     DEP_MISMATCH = 'DepMismatch'
     ADVISORY = 'Advisory'
     YANKED = 'Yanked'
-    TEST_MISS = 'TestMiss'
+    TESTS_DISABLED = 'TestsDisabled'
 
 
 VERSION_ISSUES = {'updates': Issue.OUTDATED, 'untracked': Issue.UNTRACKED}

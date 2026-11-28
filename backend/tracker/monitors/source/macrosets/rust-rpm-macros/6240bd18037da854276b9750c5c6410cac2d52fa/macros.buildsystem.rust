@@ -1,0 +1,31 @@
+
+# Example buildsystem for rust crates
+%buildsystem_rust_prep() %{expand:\
+  %autosetup -C -p1 %* \
+  %rust_setup_registry \
+}
+%buildsystem_rust_conf() %nil
+
+%buildsystem_rust_build() %{expand:\
+  RUST_BUILD_ARGS="%*" \
+  if [ "$RUST_BUILD_ARGS" = "--" ]; then \
+    RUST_BUILD_ARGS="" ; \
+  elif [ "${RUST_BUILD_ARGS#-- }" != "$RUST_BUILD_ARGS" ]; then \
+    RUST_BUILD_ARGS="${RUST_BUILD_ARGS#-- }" ; \
+  fi \
+  export RUST_BUILD_ARGS \
+  %rust_build_release \
+}
+
+%buildsystem_rust_install() %nil
+
+%buildsystem_rust_check() %{expand:\
+  RUST_TEST_ARGS="%*" \
+  if [ "$RUST_TEST_ARGS" = "--" ]; then \
+    RUST_TEST_ARGS="" ; \
+  elif [ "${RUST_TEST_ARGS#-- }" != "$RUST_TEST_ARGS" ]; then \
+    RUST_TEST_ARGS="${RUST_TEST_ARGS#-- }" ; \
+  fi \
+  export RUST_TEST_ARGS \
+  %rust_test \
+}

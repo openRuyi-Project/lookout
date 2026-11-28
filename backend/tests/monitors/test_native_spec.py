@@ -422,3 +422,43 @@ def test_target_check_observes_generated_buildsystem_script(section, state):
     result = native_spec.describe(spec + section.encode(), macros=[(
         {'path': 'fixture/macros', 'sha256': hashlib.sha256(macros).hexdigest()}, macros)])
     assert result['metadata']['target_checks']['riscv64']['state'] == state, result
+
+
+@pytest.mark.parametrize(('implementation', 'section', 'state'), [
+    (None, '', 'unresolved'), (None, '%check\n# explicitly disabled\n', 'comments'),
+    (None, '%check -a\necho additional\n', 'nonempty'),
+    (b'%nil', '', 'empty'), (b'%nil', '%check\n# no commands\n', 'comments'),
+    (b'echo tested', '', 'nonempty'), (b'echo tested', '%check\n# disabled\n', 'comments'),
+    (b'echo tested', '%check\n%ifnarch riscv64\necho tested\n%endif\n', 'empty'),
+])
+def test_target_check_requires_final_provider(implementation, section, state):
+    def macro(path, data):
+        return {'path': path, 'sha256': hashlib.sha256(data).hexdigest()}, data
+    macros = [macro('macros.aaa-buildsystem.fixture',
+                    b'%buildsystem_fixture_conf() %nil\n%buildsystem_fixture_build() %nil\n'
+                    b'%buildsystem_fixture_install() %nil\n%buildsystem_fixture_check() %nil\n')]
+    if implementation:
+        origin, data = macro('macros.buildsystem.fixture', b'%buildsystem_fixture_check() ' + implementation + b'\n')
+        macros.append(({**origin, 'source': 'fixture', 'declares_checks': ['fixture']}, data))
+    spec = (b'Name: fixture\nVersion: 1\nRelease: 1\nSummary: fixture\nLicense: MIT\n'
+            b'Source0: fixture.tar.gz\nBuildSystem: fixture\n%description\nfixture\n' + section.encode())
+    checks = native_spec.describe(spec, macros)['metadata']['target_checks']
+    assert checks['riscv64']['state'] == state
+    disabled = implementation == b'echo tested' and section.startswith('%check\n')
+    assert ('disabled_by' in checks['riscv64']) is disabled
+    if disabled:
+        assert spec.splitlines()[checks['riscv64']['disabled_by']['line'] - 1] == b'%check'
+    if 'ifnarch' in section:
+        assert checks['x86_64']['state'] == 'nonempty'
+
+
+@pytest.mark.parametrize('declaration, guard, disabled', [
+    ('%bcond tests 0', '%if %{with tests}', True),
+    ('%bcond_with check', '%if %{with check}', True),
+    ('%bcond tests 0', '%ifnarch riscv64', False),
+])
+def test_opt_in_requires_restored_riscv_commands(declaration, guard, disabled):
+    spec = (f'{declaration}\nName: fixture\nVersion: 1\nRelease: 1\nSummary: fixture\n'
+            f'License: MIT\n%description\nfixture\n%check\n{guard}\necho tested\n%endif\n')
+    observed = native_spec.describe(spec.encode())['metadata']['target_checks']['riscv64']
+    assert observed.get('disabled_by') == ({'line': 1, 'option': declaration.split()[1]} if disabled else None)

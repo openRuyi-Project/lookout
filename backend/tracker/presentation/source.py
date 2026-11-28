@@ -1,7 +1,6 @@
 """Source for reading documents; no collection or persistence."""
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from tracker.monitors.issues import Issue
 from tracker.presentation.labels import caption
 from tracker.presentation.model import Entry, Section
 from tracker.presentation.values import field, stamp, text
@@ -17,18 +16,19 @@ def source_sections(result, links):
     description = meta.get('description')
     notes = [description] if description and description != meta.get('summary') else []
     sections = [Section(placement='lead', id=result['id'], title='', fields=fields, notes=notes)] if fields or notes else []
-    if evidence := data.get('test_miss'):
+    if evidence := data.get('tests_disabled'):
         reason = {
             'absent': 'No %check stage for riscv64.',
             'empty': 'The riscv64 %check section is empty after expansion.',
             'comments': 'The riscv64 %check section contains only comments.',
         }[evidence['reason']]
-        reference = evidence.get('x86_64')
-        if reference == 'nonempty':
+        if option := evidence.get('option'):
+            reason += f" Enabling {option} at SPEC line {evidence['line']} restores commands."
+        else:
+            reason += f" The %check replacement at SPEC line {evidence['line']} suppresses the BuildSystem check."
+        if evidence.get('x86_64') == 'nonempty':
             reason += ' The x86_64 section contains commands.'
-        elif reference:
-            reason += ' No %check commands for x86_64 either.'
-        sections.append(Section(id='test-miss', title=Issue.TEST_MISS, notes=[reason], excerpt=evidence.get('excerpt')))
+        sections.append(Section(id='tests-disabled', title='Packaging tests', notes=[reason], excerpt=evidence.get('excerpt')))
     return sections
 
 

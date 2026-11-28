@@ -77,3 +77,21 @@ def test_spec_input_errors_are_distinct_from_shared_macro_errors(spec, sources, 
     with pytest.raises(rpm.SpecInputError, match=message) as failure:
         rpm._parse(spec, (), sources)
     assert not isinstance(failure.value, rpm.MacroInputError)
+
+
+def test_provider_macros_do_not_carry_forward_to_another_tree(tmp_path, monkeypatch):
+    from tracker.monitors.source import git
+
+    tree = '1' * 40
+    pinned = tmp_path / 'provider' / tree
+    pinned.mkdir(parents=True)
+    (pinned / 'SOURCE').write_text('https://example.org/source/v1')
+    (pinned / 'macros.fixture').write_bytes(b'%buildsystem_fixture_check() %nil\n')
+    monkeypatch.setattr(git, 'MACROSETS', tmp_path)
+    revisions = iter([tree, '2' * 40])
+    monkeypatch.setattr(git, '_git_text', lambda args, git: (next(revisions), None))
+    [(source, data)] = git.provider_macros('repo', revision='HEAD', git='git')
+    assert source['declares_checks'] == source['check_systems'] == ['fixture']
+    assert source['source'] == 'https://example.org/source/v1'
+    assert source['sha256'] == hashlib.sha256(data).hexdigest()
+    assert git.provider_macros('repo', revision='HEAD', git='git') == []

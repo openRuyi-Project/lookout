@@ -205,7 +205,7 @@ def detail_signals(pkg, sections):
         for label in result.get('dimensions', {}).get('maintenance', []):
             if label == Issue.CHECK_FAILED:
                 continue
-            anchor = ('test-miss' if label == Issue.TEST_MISS else
+            anchor = ('tests-disabled' if label == Issue.TESTS_DISABLED else
                       'check-' + owner if label == Issue.UNTRACKED else owner)
             add(label, anchor)
 
