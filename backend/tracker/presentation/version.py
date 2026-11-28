@@ -41,6 +41,10 @@ def version_sections(result, links):
 
 
 def version_annotations(pkg, links=None):
+    return [value for _, value in labeled_annotations(pkg, links)]
+
+
+def labeled_annotations(pkg, links=None):
     """Compact related evidence; expanded facts stay in their owning section."""
     result = module(pkg, 'version')
     if not result:
@@ -61,8 +65,8 @@ def version_annotations(pkg, links=None):
             title += '; upstream advisory matches, local patches not evaluated'
         href = (links.condition('version_signal', annotation['monitor'], monitor='version', section='results')
                 if links else '#' + annotation['monitor'])
-        values.append(text(label, kind='tag', href=href, title=title, appearance=appearance(annotation['label']),
-                           tone='notice' if annotation['stale'] else 'normal'))
+        values.append((annotation['label'], text(label, kind='tag', href=href, title=title, appearance=appearance(annotation['label']),
+                           tone='notice' if annotation['stale'] else 'normal')))
     return values
 
 

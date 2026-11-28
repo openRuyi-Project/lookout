@@ -301,7 +301,7 @@ def test_listing_and_detail_share_the_version_pair(client):
         values = next(f['values'] for f in section['fields'] if f['label'] == 'Current → Candidate')
         compact = row['cells'][1]['lines'][0]
         assert [(v['text'], v['kind'], v['tone']) for v in values] == [
-            (v['text'], v['kind'], v['tone']) for v in compact]
+            (v['text'], v['kind'], v['tone']) for v in compact if v['text'] not in ('Untracked', 'CheckFailed')]
         assert sum(v['text'] == '→' for v in values) <= 1
         for i, value in enumerate(values):
             if value['text'] == '→':

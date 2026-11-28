@@ -122,10 +122,11 @@ def test_multiple_failed_monitors_count_once_and_checks_keep_each_error(snapshot
     detail = client.get('/api/ui/packages/foo3').json()
     checks = next(s for s in detail['sections'] if s['id'] == 'checks')['table']['rows']
     errors = [row for row in checks if any(v['text'] == 'CheckFailed' for v in values(row, 1))]
+    assert [v['href'] for v in detail['signals'] if v['text'] == 'CheckFailed'] == ['#checks']
     assert {row['id'] for row in errors} == {'check-version', 'check-build'}
 
 
-def test_detail_keeps_version_status_after_current(client):
+def test_detail_moves_version_issues_to_local_signals(client):
     for name, label, current in [('untracked', 'Untracked', '1.0'), ('foo3', 'CheckFailed', '3.10.0')]:
         detail = client.get('/api/ui/packages/' + name).json()
         version = next(section for section in detail['sections'] if section['id'] == 'version')
@@ -133,7 +134,9 @@ def test_detail_keeps_version_status_after_current(client):
         version_values = fields['Current → Candidate']
         assert version_values[0]['text'] == current
         assert version_values[0]['kind'] == 'code'
-        assert label in [value['text'] for value in version_values[1:]]
+        assert label not in [value['text'] for value in version_values[1:]]
+        signal, = [v for v in detail['signals'] if v['text'] == label]
+        assert signal['href'] == '#check-version'
         assert not any(value['text'] == label for value in detail['identity'])
 
 
@@ -157,3 +160,12 @@ def test_watch_failure_keeps_the_successful_candidate(snapshot, tmp_path, monkey
     assert candidate['href'] == '/packages/foo3#version'
     badge = values(row, 1)[3]
     assert badge['href'] == '/packages/foo3#check-version'
+
+
+def test_detail_badge_without_evidence_has_no_link():
+    from tracker.presentation.pages import detail_signals
+    pkg = {'monitors': {'review': {'id': 'review', 'data': {'kind': 'evidence', 'labels': [
+        {'label': 'ReviewNeeded', 'count': 2, 'stale': False}]}, 'check': {'status': 'ok'},
+        'dimensions': {'maintenance': ['ReviewNeeded']}}}}
+    badge, = detail_signals(pkg, [])
+    assert (badge.text, badge.href) == ('ReviewNeeded 2', None)

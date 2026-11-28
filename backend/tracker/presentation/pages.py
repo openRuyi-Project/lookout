@@ -41,7 +41,7 @@ from tracker.presentation.values import (
     text,
     version_value,
 )
-from tracker.presentation.version import version_annotations
+from tracker.presentation.version import labeled_annotations
 
 
 def collection_meta(collection):
@@ -184,19 +184,51 @@ def _result_row(pkg, descriptors, aggregate, links):
     return Row(key=pkg['name'], cells=cells, notes=notes)
 
 
+def detail_signals(pkg, sections):
+    anchors = {section.id for section in sections}
+    anchors.update(row.id for section in sections if section.table for row in section.table.rows)
+    signals = {}
+
+    def add(label, anchor, value=None):
+        if label not in signals:
+            signals[label] = value or text(caption(label), kind='tag', appearance=appearance(label))
+            signals[label].href = '#' + anchor if anchor in anchors else None
+
+    for result in pkg['monitors'].values():
+        data, owner = result['data'], result['id']
+        if data['kind'] == 'activity':
+            continue  # PRs and issues are repository activity, not maintenance findings.
+        for item in data.get('labels', []):
+            label = item['label']
+            add(label, owner, text(f"{caption(label)} {item['count']}", kind='tag',
+                appearance=appearance(label), tone='notice' if item['stale'] else 'normal'))
+        for label in result.get('dimensions', {}).get('maintenance', []):
+            if label == Issue.CHECK_FAILED:
+                continue
+            anchor = ('test-miss' if label == Issue.TEST_MISS else
+                      'check-' + owner if label == Issue.UNTRACKED else owner)
+            add(label, anchor)
+
+    for label, annotation in labeled_annotations(pkg):
+        anchor = (annotation.href or '').removeprefix('#')
+        if label not in signals:
+            add(label, anchor, annotation)
+        elif signals[label].text == caption(label) or signals[label].text == annotation.text:
+            annotation.href = signals[label].href
+            signals[label] = annotation
+
+    failed = [m['id'] for m in pkg['monitors'].values() if check_failed(m['check'])]
+    if failed:
+        add(Issue.CHECK_FAILED, 'check-' + failed[0] if len(failed) == 1 else 'checks')
+    return sorted(signals.values(), key=lambda value: priority(value.appearance))
+
+
 def detail(pkg, collection=None, *, presentation=None):
     links = Links()
     source = module(pkg, 'source')
     data = source['data'] if source else {}
     meta = data.get('metadata') or {}
     identity = [buildsystem(data['buildsystem'], links)] if data.get('buildsystem') else []
-    signals = version_annotations(pkg) + check_failed_label(pkg, exclude_kind='version')
-    if data.get('test_miss'):
-        signals.append(text(Issue.TEST_MISS, kind='tag', appearance=appearance(Issue.TEST_MISS), href='#test-miss'))
-    requirements = module(pkg, 'requires')
-    if requirements:
-        signals.extend(evidence_labels(requirements, links, counts=True))
-    signals.sort(key=lambda value: priority(value.appearance))
     shortcuts = [text('/' + data['source_path'], href=data.get('source_url'))] if data.get('source_path') else []
     if meta.get('url'):
         shortcuts.append(text(meta['url'], href=meta['url']))
@@ -209,7 +241,7 @@ def detail(pkg, collection=None, *, presentation=None):
         destination = sections if adapter.has_results else context
         rendered = adapter.sections(result, links)
         if kind == 'version':
-            fields = [field('Current → Candidate', *version_value(pkg))]
+            fields = [field('Current → Candidate', *version_value(pkg, include_issues=False))]
             if not rendered:
                 rendered = [Section(id=result['id'], title='')]
             rendered[0].placement = 'lead'
@@ -235,7 +267,7 @@ def detail(pkg, collection=None, *, presentation=None):
     context = []
     sections.append(Section(id='checks', title='Checks', collapsible=True, table=Table(label='Collection checks', columns=[
         Column(title='Monitor'), Column(title='Observation'), Column(title='Last checked')], rows=checks)))
-    return DetailDocument(theme_revision=theme(presentation or {})['revision'], title=pkg['name'], subtitle=meta.get('summary'), identity=identity, signals=signals,
+    return DetailDocument(theme_revision=theme(presentation or {})['revision'], title=pkg['name'], subtitle=meta.get('summary'), identity=identity, signals=detail_signals(pkg, sections),
                           links=shortcuts, context=context, sections=sections)
 
 

@@ -167,6 +167,7 @@ function monitored(pkg, detail = true, focus = '') {
   const monitors = Object.fromEntries(catalog.map(m => [m.id, {id: m.id, title: m.title, check: {...check},
     data: data[m.id] || {kind: 'evidence', labels: m.id === 'yanked' ? pkg.maintenance : [],
       findings: pkg.maintenance_findings.filter(f => f.monitor === m.id)}}]));
+  if (pkg.spec.test_miss) monitors.source.dimensions = {maintenance: ['TestMiss']};
   monitors.version.dimensions = {view: !pkg.track ? ['untracked'] : ['outdated', 'changed'].includes(pkg.relation) ? ['updates'] : []};
   monitors.version.dimensions.maintenance = monitors.version.dimensions.view.map(value =>
     ({untracked: 'Untracked', updates: 'Outdated'})[value]);

@@ -59,7 +59,7 @@ def dated_commit(value, date, other=None):
     return prefix + short_commit(value, other)
 
 
-def version_parts(pkg, *, compact=True, links=None):
+def version_parts(pkg, *, compact=True, links=None, include_issues=True):
     result = module(pkg, 'version')
     if not result:
         return [], [], []
@@ -74,13 +74,13 @@ def version_parts(pkg, *, compact=True, links=None):
     annotation = ([text(Issue.UNTRACKED, kind='tag', appearance=appearance(Issue.UNTRACKED),
                         title='No upstream version track configured',
                         href=links.condition('maintenance', Issue.UNTRACKED) if links else None)]
-                  if untracked else [])
+                  if include_issues and untracked else [])
     check = result.get('check', {'status': 'pending'})
     check_url = pkg.get('detail_url', '') + '#check-' + result.get('id', 'version')
-    if check_failed(check):
+    if include_issues and check_failed(check):
         annotation.append(text(Issue.CHECK_FAILED, kind='tag', appearance=appearance(Issue.CHECK_FAILED),
                                title=check.get('error') or 'Version checks failed', href=check_url))
-    elif value.get('stale'):
+    elif value.get('stale') and not check_failed(check):
         annotation.append(retained_marker(check_url))
     revision = value.get('revision')
     if revision:
@@ -108,8 +108,8 @@ def version_parts(pkg, *, compact=True, links=None):
     return values, candidate, annotation
 
 
-def version_value(pkg, *, compact=True, links=None):
-    current, candidate, annotations = version_parts(pkg, compact=compact, links=links)
+def version_value(pkg, *, compact=True, links=None, include_issues=True):
+    current, candidate, annotations = version_parts(pkg, compact=compact, links=links, include_issues=include_issues)
     if candidate:
         result = module(pkg, 'version')
         assert result is not None
