@@ -18,7 +18,7 @@ __all__ = ['TITLE', 'VERSION', 'HOSTS', 'inputs', 'check', 'refresh', 'query_sub
 
 
 TITLE = Issue.ADVISORY
-VERSION = 8
+VERSION = 9
 HOSTS = {"api.osv.dev", "services.nvd.nist.gov", "www.cisa.gov", "api.first.org"}
 CVE = re.compile(r"CVE-\d{4}-\d{4,}")
 
@@ -90,6 +90,15 @@ def query(subject, settings):
     return {'package': {key: settings[key] for key in ('ecosystem', 'name')}, 'version': version}
 
 
+def osv_page(response):
+    if not isinstance(response, dict) or response.keys() - {'vulns', 'next_page_token'}:
+        raise ValueError('Invalid OSV query result')
+    rows, token = response.get('vulns', []), response.get('next_page_token')
+    if not isinstance(rows, list) or token is not None and not isinstance(token, str):
+        raise ValueError('Invalid OSV pagination')
+    return rows, token
+
+
 def osv(subject, settings, io):
     request = query(subject, settings)
     if request is None:
@@ -97,11 +106,7 @@ def osv(subject, settings, io):
     entries, token, seen = [], None, set()
     for _ in range(20):
         response = io.json('POST', 'https://api.osv.dev/v1/query', {**request, **({'page_token': token} if token else {})})
-        if not isinstance(response, dict):
-            raise ValueError('OSV returned an invalid query response')
-        rows, token = response.get('vulns', []), response.get('next_page_token')
-        if not isinstance(rows, list) or token is not None and not isinstance(token, str):
-            raise ValueError('OSV returned invalid results or pagination')
+        rows, token = osv_page(response)
         for item in rows:
             if 'affected' not in item:
                 item = io.json('GET', 'https://api.osv.dev/v1/vulns/' + quote(item['id'], safe=''))
@@ -131,11 +136,7 @@ def osv_batch(requests, io, detail):
             raise ValueError('OSV batch response does not match the queries')
         next_page = {}
         for index, result in zip(pending, results, strict=True):
-            if not isinstance(result, dict) or result.keys() - {'vulns', 'next_page_token'}:
-                raise ValueError('Invalid OSV batch result')
-            rows, token = result.get('vulns', []), result.get('next_page_token')
-            if not isinstance(rows, list) or token is not None and not isinstance(token, str):
-                raise ValueError('Invalid OSV batch pagination')
+            rows, token = osv_page(result)
             for row in rows:
                 identity, modified = row['id'], row['modified']
                 if not isinstance(identity, str) or not identity or not isinstance(modified, str) or not modified:

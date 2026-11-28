@@ -10,7 +10,7 @@ from tracker.monitors.security import monitor
 
 
 @pytest.mark.parametrize('payload', [
-    [], None, {'vulns': {}}, {'vulns': ''}, {'vulns': None},
+    [], None, {'error': 'upstream unavailable'}, {'vulns': {}}, {'vulns': ''}, {'vulns': None},
     {'next_page_token': 0}, {'next_page_token': False}, {'next_page_token': []},
 ])
 def test_invalid_osv_response_remains_failed_in_storage_and_documents(config, snapshot, tmp_path, payload):
