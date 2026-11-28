@@ -169,3 +169,31 @@ def test_detail_badge_without_evidence_has_no_link():
         'dimensions': {'maintenance': ['ReviewNeeded']}}}}
     badge, = detail_signals(pkg, [])
     assert (badge.text, badge.href) == ('ReviewNeeded 2', None)
+
+
+def test_advisory_filter_counts_packages_but_detail_keeps_each_association(snapshot, tmp_path):
+    by_package = {'binutils': {'shared', 'binutils-only'}, 'foo3': {'shared', 'foo3-only'}}
+    snapshot['monitor_catalog'] = {'security': {'title': 'Security'}}
+    snapshot['monitors'] = {name: {'security': {
+        'subject': model.subject(snapshot, name), 'status': 'ok', 'checked_at': state.utcnow(),
+        'findings': [model.finding(key, 'Advisory', key, [], 'https://example.org/')
+                     for key in sorted(ids)],
+    }} for name, ids in by_package.items()}
+    client, _ = client_for(snapshot, tmp_path)
+    seen = []
+    for page in range(1, len(by_package) + 1):
+        params = dict(conjunction({'maintenance': 'Advisory'}).parameters(), page=page, per_page=1)
+        response = client.get('/api/v2/packages', params=params)
+        assert response.status_code == 200
+        listing = response.json()
+        assert listing['counts']['all'] == listing['total'] == len(by_package)
+        item, = listing['items']
+        row, = document(client, params)['table']['rows']
+        name = item['name']
+        assert row['key'] == name
+        seen.append(name)
+        detail = client.get(f'/api/v2/packages/{name}')
+        assert detail.status_code == 200
+        findings = detail.json()['monitors']['security']['data']['findings']
+        assert sorted(f['id'] for f in findings) == sorted(f'security:{key}' for key in by_package[name])
+    assert sorted(seen) == sorted(by_package)

@@ -26,7 +26,6 @@ Adapters register in `monitors/registry.py`. Readers use the saved catalog. Pack
 initializers do not run collection or registration. `scripts/check-architecture.py` and
 Import Linter enforce import boundaries. `scripts/api-types.py --check` checks generated
 types against OpenAPI. [Porting](monitor-porting.md) describes extension contracts.
-[Configuration](../config/README.md) explains editing and promotion.
 
 ## Persistence and publication
 
@@ -61,9 +60,10 @@ heartbeat. Heartbeat writes use the same compare-and-swap check. A commit withou
 a base can only initialize a database. Imports get a new storage identity even
 when content is unchanged.
 
-A complete successful OBS poll with unchanged facts updates `snapshot_clock`, not
-content generation or every build row. Partial or failed polls cannot refresh
-missing observations this way. Other phase merges preserve the latest clock.
+OBS coverage uses the inventory and targets at commit time. A package added during
+a poll stays unknown until observed. Missing results keep their last successful
+timestamps. Partial coverage keeps the normal poll interval. No usable status triggers backoff. Only a complete, unchanged poll updates `snapshot_clock`
+instead of the build rows. Other phases preserve that clock.
 
 `state.read_cached` reads the header, clock and row revisions in one transaction.
 It decodes changed JSON after the transaction. Reused nested data is read-only.
@@ -118,17 +118,16 @@ full-list and batch limits bound response work. Request and response models gene
 ### Queries
 
 `readmodel/query.py` evaluates indexed package sets within the search scope.
-Each package counts once. Pagination follows selection.
+Finding filters count distinct matching package IDs before pagination. Two advisories
+on one package count as one package.
 
 An empty query returns all packages. Each selected value is a positive predicate:
 values within a facet form a union. Different facets intersect. Removing the last
 value removes that facet. Counts apply the search text and every other facet.
 Prefix/suffix intersections compute these scopes once per request.
 
-Maintenance filters select observed findings. Collection checks are independent:
-a failed refresh can coexist with retained findings, and an empty finding list
-does not prove a successful check. Data status links to each monitor's coverage,
-including failed, unsupported, pending and stale observations.
+Finding filters can include retained findings from a failed refresh.
+Data status shows failed, unsupported, pending and stale checks.
 
 Selected filters remain visible and removable even when their counts reach zero.
 Menu selections also appear above the table. The website's `/api` page defines the
@@ -179,17 +178,16 @@ across a pass. Historical `last_known_relation` is evidence, not permission to r
 upgrade checks. Upgrade-only adapters need a confirmed comparable newer release.
 Current-version security checks do not.
 
-The runner schedules and stores checks. Adapters define inputs and interpretation.
-Query identity excludes file paths and image revisions. Unrelated catalog changes
-preserve evidence. Changed fingerprints queue work. Unchanged inputs wait for their
-refresh interval. The refresh policy bounds retries and HTTP cache age.
+The adapter defines which inputs identify its query. A changed input fingerprint
+queues work. Unrelated catalog changes do not. The refresh policy bounds retries
+and HTTP cache age.
 A heartbeat writes only changed observations, eligibility, settings or catalog data.
 
-A failed replacement retains one `last_result`, not a history chain. Only evidence for
-the same query can reappear. Incompatible interpretations remain stale. A completed
-result, including empty success, replaces the saved result. Combined release scopes
-reuse each exact release independently. Revision-sensitive checks cannot use this reuse
-path. The [adapter contract](monitor-porting.md#module-contract) defines scope.
+On failure, only dated evidence for the same query can reappear. The runner keeps
+one `last_result`. An older interpretation stays stale. A valid,
+complete query with no matches replaces earlier findings. If the primary query
+succeeds but enrichment fails, its new findings remain visible. Combined checks
+apply retention [per release scope](monitor-porting.md#module-contract).
 
 | Field | Meaning |
 |---|---|
@@ -215,8 +213,7 @@ revise evidence, not advisory identity. Identical error messages do not establis
 | Upstream EOL | Distribution support commitment |
 | Same-project SPDX difference | Legal assessment or a comparison with RPM's aggregate License |
 
-Security merges advisory aliases. Failed enrichment preserves base advisories, not
-invented KEV/EPSS values. Missing comparable license metadata is unsupported, not
+Security merges advisory aliases. Missing comparable license metadata is unsupported, not
 unchanged. ABI comparison is absent. Reviewed CPE part/vendor/product mappings query
 NVD's CVE API with the current source version. NVD matches version ranges. Git archive
 tags come only from confined Source0 evidence consistent with RPM Version. Floating
@@ -308,5 +305,5 @@ not construct a second full response model in memory. A serialization or transpo
 failure terminates the download. Consumers must reject incomplete JSON. Export is
 not a database backup.
 
-List `total` and `counts.all` both report the selected result count. Other entries
-in `counts` are view alternatives that exclude the view selection itself.
+List `total` and `counts.all` report the [selected package count](#queries).
+Other entries in `counts` exclude the current view selection.

@@ -2,6 +2,7 @@
 import json
 
 import httpx
+import pytest
 
 from tracker.monitors.schedule import Schedule
 from tracker.monitors.security import monitor
@@ -86,3 +87,38 @@ def test_batch_keeps_completed_rows_when_a_sibling_cannot_finish():
         result = monitor.osv_batch([{}, {}, {}], SimpleNamespace(json=lambda *_: next(pages)), None)
         assert result[0] == []
         assert all(isinstance(error, Exception) for error in result[1:])
+
+
+def test_batch_and_single_agree_after_compacting_pending_queries():
+    from types import SimpleNamespace
+
+    advisory = {'id': 'OSV-fixture', 'modified': '2025-01-01T00:00:00Z', 'affected': []}
+    settings = {'ecosystem': 'PyPI', 'name': 'widget'}
+    subjects = [{'version': str(n)} for n in (1, 2, 3)]
+
+    def page(query, *, batched):
+        if query['version'] == '1':
+            return {}
+        if query['version'] == '2':
+            return {'error': 'invalid row'}
+        if 'page_token' not in query:
+            return {'next_page_token': 'more'}
+        assert query['page_token'] == 'more'
+        return {'vulns': [{k: advisory[k] for k in ('id', 'modified')} if batched else advisory]}
+
+    def read(method, url, body):
+        if url.endswith('/querybatch'):
+            return {'results': [page(q, batched=True) for q in body['queries']]}
+        return page(body, batched=False)
+
+    io = SimpleNamespace(json=read)
+    def detail(identity, modified):
+        assert (identity, modified) == (advisory['id'], advisory['modified'])
+        return advisory
+
+    batched = monitor.osv_batch([monitor.query(s, settings) for s in subjects], io, detail)
+    for index, expected in ((0, []), (2, [advisory])):
+        assert monitor.osv(subjects[index], settings, io) == batched[index] == expected
+    with pytest.raises(ValueError):
+        monitor.osv(subjects[1], settings, io)
+    assert isinstance(batched[1], ValueError)

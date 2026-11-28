@@ -15,9 +15,7 @@ Use [EOL](../backend/tracker/monitors/eol.py) for current-release evidence,
 [License](../backend/tracker/monitors/license.py) for upgrade evidence, or
 [Yanked](../backend/tracker/monitors/yanked.py) for registry reuse.
 
-The adapter resolves identity and returns facts. The runner schedules checks and
-saves results. Readers build API responses, filters and detail views from those
-saved facts. Standard findings need no adapter-specific storage or frontend code.
+Standard findings need no adapter-specific storage or frontend code.
 
 ## Add an evidence adapter
 
@@ -43,13 +41,15 @@ It mocks HTTP and checks runner → SQLite → API, including catalog, projectio
 
 | Fixture | Required result |
 |---|---|
-| Valid response, with/without a finding | Attributed fact / completed empty result |
+| Valid response with a finding | Preserve the provider identity and evidence |
+| Empty page with a continuation | Read the next page. Report no matches only if every page succeeds and none contains a match |
 | Missing identity, unsupported metadata, timeout | Distinct states. Another package still progresses |
-| Same query and facts | Check time advances, evidence revision stays stable |
+| Same query and facts, served from cache | Preserve the observation time and evidence revision |
 | New query or in-flight source change | Old evidence cannot become a fresh result for another subject |
-| Retry/refresh boundary and cached bytes | Effective schedule and original evidence age preserved |
+| Retry or refresh deadline | Respect the configured schedule |
 | Stale or changed upgrade target | No new upgrade check or misplaced finding |
-| Partial scope/provider failure | CheckFailed membership agrees with per-monitor filtering and detail Checks |
+| Primary result succeeds, enrichment fails | Show the new findings and the failed subcheck |
+| Batched queries, one malformed row | Each completed query matches its standalone result. If rows do not identify their queries, fail only unresolved queries |
 
 Inspect offline, then check against a snapshot copy (network allowed, no snapshot
 or disk-cache writes):
@@ -138,7 +138,6 @@ Operators set overrides in `[monitors.refresh.ID]`. Staleness must exceed the no
 Keep periodic refresh enabled: vulnerabilities can appear without version changes.
 Scheduling, retries and cache-age rules are in [Design](design.md#observation-identity-and-time).
 
-Query fingerprints omit `VERSION`, allowing reinterpretation to retain dated evidence for the same query.
 Do not bump `VERSION` for layout-only changes or unrelated backends. Narrow subject
 identity only when the omitted field cannot affect a query or its meaning:
 
@@ -220,4 +219,4 @@ not a duplicate Version table. Collectors never emit HTML or component names.
 
 Aggregate `preview` shows all matching items, folding identical assertions only.
 RuntimeDeps shows mismatches, plus changes when selected. Conditions stay in detail.
-Build reasons appear beneath their target statuses. The backend supplies filter links and counts. Astro submits GET queries and renders the returned document.
+Build reasons appear beneath their target statuses. Astro uses the filter links and counts from the backend.
