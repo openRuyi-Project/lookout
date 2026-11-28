@@ -2,6 +2,9 @@
 import os
 from pathlib import Path
 import subprocess
+import shutil
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -16,15 +19,16 @@ inspect)
 manifest-digest) cat "$2" ;;
 copy)
   echo "${3##*@}" > "$RUNNER_TEMP/${4##*:}"
-  if test "${4##*:}" = main && test ! -e "$RUNNER_TEMP/cut"; then
-    touch "$RUNNER_TEMP/cut"; exit 1
+  if test "${4##*:}" = "$CUT"; then
+    exit 97
   fi ;;
 *) exit 2 ;;
 esac
 """
 
 
-def test_publish_resumes_without_replacing_version_or_rebuilding(tmp_path):
+@pytest.mark.parametrize('cut', ['sha', 'receipt', 'v1.0.1', 'main', 'latest', 'public'])
+def test_publish_resumes_without_replacing_version_or_rebuilding(tmp_path, cut):
     def git(*args):
         return subprocess.check_output(['git', *args], cwd=tmp_path, text=True).strip()
 
@@ -36,17 +40,21 @@ def test_publish_resumes_without_replacing_version_or_rebuilding(tmp_path):
     sha = git('rev-parse', 'HEAD')
     digest = 'sha256:' + 'a' * 64
     env = dict(os.environ, RUNNER_TEMP=str(tmp_path), VERSION='1.0.1', ORIGINAL='42',
-               BUMP='patch', GITHUB_SHA=sha, GITHUB_SERVER_URL='https://github.com',
+               CUT=cut, REAL_GIT=shutil.which('git'), BUMP='patch', GITHUB_SHA=sha, GITHUB_SERVER_URL='https://github.com',
                GITHUB_REPOSITORY='owner/repo', ID=digest,
                PATH=str(tmp_path) + os.pathsep + os.environ['PATH'])
-    doubles = {'skopeo': REGISTRY, 'jq': '#!/bin/sh\necho "$ID"\n',
+    doubles = {'git': """#!/bin/sh
+set -e
+"$REAL_GIT" "$@"
+if test "$1" = push && test "$CUT" = receipt; then exit 97; fi
+""", 'skopeo': REGISTRY, 'jq': '#!/bin/sh\necho "$ID"\n',
                'docker': '''#!/bin/sh
 case "$*" in
   *org.opencontainers.image.revision*) echo "$GITHUB_SHA" ;;
   *org.opencontainers.image.version*) echo "$VERSION" ;;
   *org.opencontainers.image.source*) echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" ;;
   *'{{.Id}}'*) echo "$ID" ;;
-  push*) echo "$ID" > "$RUNNER_TEMP/sha-$GITHUB_SHA" ;;
+  push*) echo "$ID" > "$RUNNER_TEMP/sha-$GITHUB_SHA"; if test "$CUT" = sha; then exit 97; fi ;;
   load*|tag*) ;;
   *) exit 2 ;;
 esac
@@ -54,7 +62,7 @@ esac
                'gh': '''#!/bin/sh
 case "$1 $2" in
   "api --paginate") if test -f "$RUNNER_TEMP/public"; then echo public; fi ;;
-  "release create") test ! -f "$RUNNER_TEMP/public" && touch "$RUNNER_TEMP/public" ;;
+  "release create") test ! -f "$RUNNER_TEMP/public" && touch "$RUNNER_TEMP/public" || exit 1; if test "$CUT" = public; then exit 97; fi ;;
   *) exit 2 ;;
 esac
 '''}
@@ -67,9 +75,11 @@ esac
         return subprocess.run(['bash', ROOT / 'scripts/publish-release.sh'],
                               cwd=tmp_path, env=env, capture_output=True, text=True)
 
-    assert publish().returncode != 0
-    assert (tmp_path / 'main').read_text().strip() == digest
-    assert not (tmp_path / 'latest').exists()
+    assert publish().returncode == 97
+    env['CUT'] = ''
+    # A retry must discover the receipt from the remote, not a prior local tag.
+    if cut != 'sha':
+        git('tag', '-d', 'v1.0.1')
     for _ in range(2):
         retry = publish()
         assert retry.returncode == 0, retry.stderr
