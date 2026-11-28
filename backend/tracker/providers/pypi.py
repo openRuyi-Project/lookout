@@ -134,7 +134,7 @@ def metadata(settings, version, io):
         # valid SPDX; no classifier guessing or natural-language conversion.
         expression, field = info.get('license'), 'license'
     if expression is not None and not isinstance(expression, str):
-        raise ValueError('PyPI license declaration is not text')
+        expression = None
     yanked, reason = info.get('yanked'), info.get('yanked_reason')
     if yanked is True and reason is not None and not isinstance(reason, str):
         raise ValueError('Registry yanked reason is not text')

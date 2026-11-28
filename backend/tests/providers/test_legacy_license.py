@@ -26,3 +26,11 @@ def test_invalid_modern_metadata_does_not_fall_back_to_legacy_or_classifiers():
                  {'classifiers': ['License :: OSI Approved :: MIT License']}):
         result = monitor.check({'version': '1', 'target_version': '2'}, {'pypi': 'fixture'}, IO(info, {'license': 'MIT'}))
         assert result['status'] == 'unsupported' and result['findings'] == []
+
+
+def test_invalid_license_does_not_hide_independent_withdrawal():
+    from tracker.providers import pypi
+
+    result = pypi.metadata({'pypi': 'fixture'}, '1',
+                           IO({'license_expression': ['MIT'], 'license': 'BSD', 'yanked': True}, {}))
+    assert result.license_expression is None and result.yanked is True
