@@ -48,12 +48,23 @@ def next_version(bump, project_version, tags, current_tags):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('bump', choices=('patch', 'minor', 'major'))
+    parser.add_argument('--resume', action='store_true')
     args = parser.parse_args()
     tags = subprocess.check_output(['git', 'tag', '--list'], text=True).splitlines()
     project = Path(__file__).resolve().parents[1] / 'backend/pyproject.toml'
     project_version = tomllib.loads(project.read_text())['project']['version']
     current = subprocess.check_output(['git', 'tag', '--points-at', 'HEAD'], text=True).splitlines()
     try:
+        if args.resume:
+            for tag in current:
+                if tag.startswith('v') and list(release_versions([tag])):
+                    receipt = subprocess.check_output(
+                        ['git', 'tag', '-l', '--format=%(contents:subject)', tag], text=True).strip()
+                    if re.fullmatch(rf'Lookout {args.bump} run [1-9][0-9]* image sha256:[0-9a-f]{{64}}', receipt):
+                        if version(tag[1:]) != max(release_versions(tags)):
+                            raise ValueError('A newer release exists')
+                        print(tag[1:])
+                        return 0
         selected = next_version(args.bump, project_version, tags, current)
     except ValueError as error:
         print(str(error), file=sys.stderr)

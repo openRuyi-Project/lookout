@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       version: ${{ steps.version.outputs.version }}
+      original: ${{ steps.version.outputs.original }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -35,10 +36,15 @@ jobs:
         run: |
           set -eu
           test "$GITHUB_REF" = refs/heads/main
-          VERSION=$(python3 scripts/release-version.py "$BUMP")
+          VERSION=$(python3 scripts/release-version.py --resume "$BUMP")
+          if git show-ref --verify --quiet "refs/tags/v$VERSION"; then
+            ORIGINAL=$(git tag -l --format='%(contents:subject)' "v$VERSION" | cut -d' ' -f4)
+            echo "original=$ORIGINAL" >> "$GITHUB_OUTPUT"
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           printf '### Release v%s\n' "$VERSION" >> "$GITHUB_STEP_SUMMARY"
       - name: Generate release notes
+        if: steps.version.outputs.original == ''
         uses: orhun/git-cliff-action@a9a95522b26fe6403f7bb24031f21fb573d0f5ff # v4
         with:
           version: v2.14.2
@@ -47,8 +53,10 @@ jobs:
           RELEASE_REPOSITORY_URL: ${{ github.server_url }}/${{ github.repository }}
           OUTPUT: release-notes.md
       - name: Check release notes
+        if: steps.version.outputs.original == ''
         run: python3 scripts/check-release-notes.py "$RUNNER_TEMP/git-cliff/bin/git-cliff"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+      - if: steps.version.outputs.original == ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           path: release-notes.md
           archive: false
@@ -56,6 +64,7 @@ jobs:
           retention-days: 7
   verify:
     needs: prepare
+    if: needs.prepare.outputs.original == ''
     # GitHub validates permissions even for the skipped coverage-upload job.
     permissions:
       contents: read
@@ -67,41 +76,48 @@ jobs:
   publish:
     name: Release new ${{ inputs.bump }} version ${{ needs.prepare.outputs.version }}
     needs: [prepare, verify]
+    if: >-
+      !cancelled() && needs.prepare.result == 'success' &&
+      (needs.verify.result == 'success' || (needs.prepare.outputs.original != '' && needs.verify.result == 'skipped'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
+      actions: read
       contents: write
       packages: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: Validate original release run
+        if: needs.prepare.outputs.original != ''
+        env:
+          ORIGINAL: ${{ needs.prepare.outputs.original }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ORIGINAL" | jq -e --arg sha "$GITHUB_SHA" '
+            .head_sha == $sha and .head_branch == "main" and .event == "workflow_dispatch"
+            and .path == ".github/workflows/checks.yml"'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.prepare.outputs.original || github.run_id }}
           name: tested-image.tar
           skip-decompress: true
           digest-mismatch: error
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
         with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.prepare.outputs.original || github.run_id }}
           name: release-notes.md
           skip-decompress: true
           digest-mismatch: error
       - name: Publish the tested image and release
         env:
+          ORIGINAL: ${{ needs.prepare.outputs.original || github.run_id }}
+          BUMP: ${{ inputs.bump }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          set -eu
-          docker load --input tested-image.tar
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' openruyi-lookout:test)" = "$GITHUB_SHA"
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' openruyi-lookout:test)" = "$VERSION"
-          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.source" }}' openruyi-lookout:test)" = "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
-          IMAGE="ghcr.io/$(printf '%s' "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
           printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --draft --title "v$VERSION" --notes-file release-notes.md
-          docker tag openruyi-lookout:test "$IMAGE:sha-$GITHUB_SHA"
-          docker push "$IMAGE:sha-$GITHUB_SHA"
-          docker tag openruyi-lookout:test "$IMAGE:v$VERSION"
-          docker push "$IMAGE:v$VERSION"
-          gh release edit "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft=false --latest
-          for CHANNEL in main latest; do
-            docker tag openruyi-lookout:test "$IMAGE:$CHANNEL"
-            docker push "$IMAGE:$CHANNEL"
-          done
+          bash scripts/publish-release.sh

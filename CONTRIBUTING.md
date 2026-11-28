@@ -194,6 +194,10 @@ Published images target linux/amd64. Each additional architecture needs native
 and entrypoint checks. Package owners must make GHCR packages Public for
 anonymous pulls.
 
-A failed run does not authorize an automatic upgrade. Inspect its logs and any
-draft release before retrying. Do not move a published version tag or reuse its
-version. Use a new version and commit for corrections.
+A failed release does not authorize an automatic upgrade. Re-run its failed
+jobs to finish publication with the original tested image. Once the workflow
+creates the annotated version tag, dispatching the same increment at the same
+commit also resumes the release. The tag records the original run and image
+digest. Recovery needs its artifacts (retained for seven days). If they expired
+or the recorded identities conflict, stop; do not move the tag. Publish a
+correction from a new commit with a new version.

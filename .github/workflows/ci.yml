@@ -127,7 +127,7 @@ jobs:
           path: /tmp/tested-image.tar
           archive: false
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
   upload-coverage-python:
     needs: native
     if: ${{ !cancelled() && needs.native.result == 'success' && !inputs.release && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}

@@ -111,3 +111,14 @@ def test_cli_rejects_invalid_input(release_repository, args):
                             cwd=root, capture_output=True, text=True)
     assert result.returncode == 2
     assert result.stdout == ''
+
+
+def test_resume_only_matching_bump_and_receipt(release_repository):
+    import subprocess
+    import sys
+
+    root, git = release_repository
+    git('tag', '-a', 'v2.9.10', '-m', 'Lookout patch run 42 image sha256:' + 'a' * 64)
+    command = [sys.executable, 'scripts/release-version.py', '--resume']
+    assert subprocess.check_output([*command, 'patch'], cwd=root, text=True).strip() == '2.9.10'
+    assert subprocess.run([*command, 'major'], cwd=root).returncode == 2
