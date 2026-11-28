@@ -77,3 +77,12 @@ def test_epss_batches_respect_encoded_list_limit():
     assert [cve for batch in batches for cve in batch] == ids
     assert len(batches) > 1
     assert all(len(','.join(batch)) <= 2000 and len(batch) <= 100 for batch in batches)
+
+
+def test_batch_keeps_completed_rows_when_a_sibling_cannot_finish():
+    from types import SimpleNamespace
+    for tail in ({'error': 'failed'}, {'results': [{'next_page_token': 'p'}]}, {'results': []}):
+        pages = iter([{'results': [{}, {'next_page_token': 'p'}, {'error': 'invalid row'}]}, tail])
+        result = monitor.osv_batch([{}, {}, {}], SimpleNamespace(json=lambda *_: next(pages)), None)
+        assert result[0] == []
+        assert all(isinstance(error, Exception) for error in result[1:])

@@ -128,31 +128,43 @@ OSV_URL = 'https://api.osv.dev/v1/'
 def osv_batch(requests, io, detail):
     """Keep pagination and errors attached to the original query index."""
     entries, seen = [[] for _ in requests], [set() for _ in requests]
+    errors = {}
     pending = dict(enumerate(requests))
     for _ in range(20):
-        response = io.json('POST', OSV_URL + 'querybatch', {'queries': list(pending.values())})
-        results = response['results']
-        if not isinstance(results, list) or len(results) != len(pending):
-            raise ValueError('OSV batch response does not match the queries')
+        try:
+            response = io.json('POST', OSV_URL + 'querybatch', {'queries': list(pending.values())})
+            results = response['results']
+            if not isinstance(results, list) or len(results) != len(pending):
+                raise ValueError('OSV batch response does not match the queries')
+        except Exception as error:
+            for index in pending:
+                errors[index] = error
+            break
         next_page = {}
         for index, result in zip(pending, results, strict=True):
-            rows, token = osv_page(result)
-            for row in rows:
-                identity, modified = row['id'], row['modified']
-                if not isinstance(identity, str) or not identity or not isinstance(modified, str) or not modified:
-                    raise ValueError('Invalid OSV advisory identity')
-                item = detail(identity, modified)
-                if not item.get('withdrawn'):
-                    entries[index].append(item)
-            if token:
-                if token in seen[index]:
-                    raise ValueError('Repeated OSV page token')
-                seen[index].add(token)
-                next_page[index] = {**requests[index], 'page_token': token}
-        if not next_page:
-            return entries
+            try:
+                rows, token = osv_page(result)
+                for row in rows:
+                    identity, modified = row['id'], row['modified']
+                    if not isinstance(identity, str) or not identity or not isinstance(modified, str) or not modified:
+                        raise ValueError('Invalid OSV advisory identity')
+                    item = detail(identity, modified)
+                    if not item.get('withdrawn'):
+                        entries[index].append(item)
+                if token:
+                    if token in seen[index]:
+                        raise ValueError('Repeated OSV page token')
+                    seen[index].add(token)
+                    next_page[index] = {**requests[index], 'page_token': token}
+            except Exception as error:
+                errors[index] = error
         pending = next_page
-    raise ValueError('OSV batch pagination exceeds budget')
+        if not pending:
+            break
+    else:
+        for index in pending:
+            errors[index] = ValueError('OSV batch pagination exceeds budget')
+    return [errors.get(index, rows) for index, rows in enumerate(entries)]
 
 
 def prepare(jobs, owner):
@@ -195,10 +207,7 @@ def prepare(jobs, owner):
                 scoped.observed.extend(times)
                 return item
 
-            try:
-                results = osv_batch([json.loads(key) for key in chunk], scoped, detail)
-            except Exception as error:
-                results = [error] * len(chunk)
+            results = osv_batch([json.loads(key) for key in chunk], scoped, detail)
             for key, result in zip(chunk, results, strict=True):
                 for name in identities[key]:
                     prepared[name] = (result, tuple(scoped.observed))
