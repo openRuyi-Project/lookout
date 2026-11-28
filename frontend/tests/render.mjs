@@ -65,7 +65,7 @@ const packages = [
   }]}),
   makePackage('success', {buildsystem: 'custom', buildsystem_status: 'declared', maintenance: [{label:'NewSignal', count:2, stale:false}],
     activity: [{label:'PR', count:2, stale:false}, {label:'Issue', count:1, stale:false}],
-    spec: {...makePackage('success').spec, metadata: {summary: 'Fixture package',
+    spec: {...makePackage('success').spec, test_miss: {reason: 'comments', x86_64: 'nonempty', excerpt: '# <fixture>\n'}, metadata: {summary: 'Fixture package',
       url: 'https://example.org/upstream', license: 'MIT', description: 'Fixture source description'}}}),
   makePackage('watch-preview', {watch: [
     {id:'widget@preview',version:'2.2rc1',error:null,stale:false},
@@ -652,6 +652,8 @@ try {
   assert.doesNotMatch(listing, / style=/);
   const sourceContext = await read('/packages/success');
   assert.match(sourceContext, /Fixture package/);
+  assert.ok(sourceContext.includes('href="#test-miss"'));
+  assert.ok(sourceContext.includes('<code># &lt;fixture&gt;\n</code>'));
   assert.equal((sourceContext.match(/Fixture source description/g) || []).length, 1);
   assert.ok(sourceContext.indexOf('aria-label="Page sections"') < sourceContext.indexOf('class="detail-overview"'));
   assert.match(sourceContext, /Current → Candidate/);

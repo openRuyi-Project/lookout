@@ -555,3 +555,24 @@ def test_eol_official_purl_mapping_requires_unique_product_and_cycle():
     requests.clear()
     assert monitor_eol.check({'version': '1.2.1'}, settings, io)['status'] == 'unsupported'
     assert requests == [monitor_eol.MAPPING_URL]
+
+
+def test_test_miss_facet_and_source_evidence(snapshot, tmp_path):
+    from tests.conftest import ProjectedClient
+    from tracker.api import create_app
+
+    excerpt = '  # <test>\n'
+    snapshot['specs']['binutils'] = {'metadata': {'name': 'binutils', 'target_checks': {
+        'riscv64': {'state': 'comments', 'excerpt': excerpt}, 'x86_64': {'state': 'nonempty'}}}}
+    db = tmp_path / 'state.db'
+    state.commit(db, snapshot, previous=state.read_cached(db))
+    client = ProjectedClient(create_app(db))
+    rows = client.get(query_url('/api/v2/packages', {'maintenance': 'TestMiss'})).json()
+    assert rows['total'] == rows['maintenance_labels']['TestMiss'] == 1
+    assert rows['items'][0]['name'] == 'binutils'
+    assert excerpt not in str(rows['items'])
+    doc = client.get('/api/ui/packages/binutils').json()
+    tag, = (signal for signal in doc['signals'] if signal['text'] == 'TestMiss')
+    section, = (s for s in doc['sections'] if '#' + s['id'] == tag['href'])
+    assert section['excerpt'] == excerpt
+    assert section['notes'] == ['The riscv64 %check section contains only comments. The x86_64 section contains commands.']

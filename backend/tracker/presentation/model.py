@@ -103,6 +103,7 @@ class Section(DocumentModel):
     table: Table | None = None
     entries: list[Entry] = []
     notes: list[str] = []
+    excerpt: str | None = None
 
 
 class Parameter(DocumentModel):

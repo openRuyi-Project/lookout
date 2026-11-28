@@ -167,7 +167,14 @@ class SourceSummary(BaseModel):
     buildsystem_status: Literal['declared', 'not_declared', 'unknown']
 
 
+class TestMissEvidence(BaseModel):
+    reason: Literal['absent', 'empty', 'comments']
+    excerpt: str | None
+    x86_64: Literal['absent', 'empty', 'comments', 'nonempty'] | None
+
+
 class SourceObservation(SourceSummary, Spec):
+    test_miss: TestMissEvidence | None = None
     revision: str | None
     obs: dict
 

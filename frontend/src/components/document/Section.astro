@@ -12,6 +12,7 @@ const Heading = section.collapsible ? 'summary' : 'h2';
   {(section.title || section.collapsible) && <Heading>{section.title}</Heading>}
   <Fields fields={section.fields} compact/>
   {section.notes.map(note => <p class="section-note">{note}</p>)}
+  {section.excerpt && <pre class="section-excerpt"><code>{section.excerpt}</code></pre>}
   {section.table && <Table table={section.table}/>}
   <div class="section-entries">
     <Entries section={section}/>

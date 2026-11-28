@@ -294,6 +294,8 @@ export interface components {
              * @default []
              */
             notes: string[];
+            /** Excerpt */
+            excerpt: string | null;
         };
         /** Table */
         Table: {

@@ -587,6 +587,7 @@ a.value-tag {
 .document-section:not([open]) > summary {
   margin-bottom: 0;
 }
+.section-excerpt { max-width: 100%; overflow-x: auto; }
 .section-note {
   color: var(--muted);
   font-size: 13px;

@@ -191,6 +191,8 @@ def detail(pkg, collection=None, *, presentation=None):
     meta = data.get('metadata') or {}
     identity = [buildsystem(data['buildsystem'], links)] if data.get('buildsystem') else []
     signals = version_annotations(pkg) + check_failed_label(pkg, exclude_kind='version')
+    if data.get('test_miss'):
+        signals.append(text(Issue.TEST_MISS, kind='tag', appearance=appearance(Issue.TEST_MISS), href='#test-miss'))
     requirements = module(pkg, 'requires')
     if requirements:
         signals.extend(evidence_labels(requirements, links, counts=True))

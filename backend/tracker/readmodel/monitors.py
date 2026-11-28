@@ -176,8 +176,17 @@ def source(context):
     if refresh_error := snapshot.get('components', {}).get('spec_git', {}).get('error'):
         check['note'] = 'Repository refresh: ' + refresh_error
     check['failures'] = list(dict.fromkeys(str(current[k]) for k in ('error', 'version_error') if current.get(k)))
-    return dict(check=check,
-                data=data, dimensions={'buildsystem': [system or '_not_detected']})
+    dimensions = {'buildsystem': [system or '_not_detected']}
+    targets = (metadata or {}).get('target_checks', {}) if not spec.get('error') else {}
+    for target, evidence in targets.items():
+        if error := evidence.get('error'):
+            check['failures'].append(f'{target} %check: {error}')
+    riscv = targets.get('riscv64', {})
+    if riscv.get('state') in ('absent', 'empty', 'comments'):
+        data['test_miss'] = dict(reason=riscv['state'], excerpt=riscv.get('excerpt'),
+                                 x86_64=targets.get('x86_64', {}).get('state'))
+        dimensions['maintenance'] = [Issue.TEST_MISS]
+    return dict(check=check, data=data, dimensions=dimensions)
 
 
 def version(context):
