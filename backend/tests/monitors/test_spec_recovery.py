@@ -216,3 +216,18 @@ def test_unreadable_runtime_retains_successful_metadata(repository, monkeypatch)
     after = collector.check_specs(config, db, describe)
     assert after['specs'] == before['specs']
     assert after['components']['spec_git']['error'] == 'Native parser runtime identity unavailable'
+
+
+def test_partial_check_retried_at_same_head(repository):
+    config, db, _, _ = repository
+    def observe(*args, **kwargs):
+        record = describe(*args, **kwargs)
+        record['metadata']['target_checks'] = {'riscv64': {'state': 'absent'}, 'x86_64': next(reference)}
+        return record
+    reference = iter([{'error': 'native SPEC timeout'}, {'state': 'nonempty'}])
+    first = collector.check_specs(config, db, observe)['specs']['widget']
+    assert first['metadata']['version'] == '1' and not first.get('error')
+    second = collector.check_specs(config, db, observe)['specs']['widget']
+    assert second['head'] == first['head']
+    assert second['metadata']['target_checks']['x86_64'] == {'state': 'nonempty'}
+    collector.check_specs(config, db, observe)  # No third parse.

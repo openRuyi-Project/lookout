@@ -17,7 +17,7 @@ from urllib.parse import quote
 
 from tracker.state import usable_version
 
-RESOLVER = 10  # cache epoch for parser and runtime macro changes
+RESOLVER = 11  # cache epoch for parser and runtime macro changes
 _SIZE_LIMIT = 1024 * 1024
 MACRO_FILE_LIMIT = 64
 MACRO_BYTES_LIMIT = 4 * 1024 * 1024
@@ -63,7 +63,7 @@ def _kill_group(process):
     process.wait()
 
 
-def _run(inputs, work):
+def _run(inputs, work, target):
     reader, writer = socket.socketpair()
     write_fd = writer.fileno()
     process = None
@@ -72,7 +72,7 @@ def _run(inputs, work):
                        'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8', 'TZ': 'UTC',
                        'PYTHONDONTWRITEBYTECODE': '1'}
         process = subprocess.Popen([sys.executable, '-I', str(Path(__file__).with_name('spec_worker.py')),
-                                    str(inputs), str(work), str(write_fd)], cwd=work,
+                                    str(inputs), str(work), str(write_fd), target or '', 'version' if target is None else 'describe'], cwd=work,
                                    env=environment, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                    pass_fds=(write_fd,), close_fds=True, start_new_session=True)
@@ -128,10 +128,15 @@ def _run(inputs, work):
                     raise ValueError('unconfined result')
             if result['error'] is None:
                 values = result['values']
-                if context is None or set(values) != {'name', 'version', 'summary', 'license', 'url', 'description', 'sources', 'go_module', 'buildsystem'}:
+                if context is None or set(values) != {'name', 'version', 'summary', 'license', 'url', 'description', 'sources', 'go_module', 'buildsystem', 'check_state', 'check_excerpt'}:
                     raise ValueError('unexpected metadata')
                 if not all(v is None or isinstance(v, str) for k, v in values.items() if k != 'sources'):
                     raise ValueError('non-string metadata')
+                if (values['check_state'] not in ((None,) if target is None else ('absent', 'empty', 'comments', 'nonempty'))
+                        or (target and context['target'] != target)
+                        or (values['check_excerpt'] is not None and
+                            (values['check_state'] != 'comments' or len(values['check_excerpt']) > 4112))):
+                    raise ValueError('invalid check evidence')
                 if (not isinstance(values['sources'], list) or len(values['sources']) > 4096
                         or any(not isinstance(v, dict) or set(v) != {'number', 'url'}
                                or type(v['number']) is not int or v['number'] < 0
@@ -175,7 +180,7 @@ def validate_macros(macros):
             raise MacroInputError('native macro content does not match its pinned hash')
 
 
-def _parse(spec, macros, local_sources=()):
+def _parse(spec, macros, local_sources=(), *, target=None):
     if len(spec) > _SIZE_LIMIT:
         raise SpecInputError('SPEC exceeds size limit')
     validate_macros(macros)
@@ -204,7 +209,7 @@ def _parse(spec, macros, local_sources=()):
             (work / provenance['name']).write_bytes(data)
         for index, (_, data) in enumerate(macros):
             (inputs / f'macros.{index:02}').write_bytes(data)
-        result, error = _run(inputs, work)
+        result, error = _run(inputs, work, target)
         if result and isinstance(result.get('context'), dict):
             context.update(result['context'])
         return (result.get('values') if result else None), error, context
@@ -219,8 +224,16 @@ def query(spec, macros=()):
             'version_error': None if valid else (error or 'native rpmspec could not establish VERSION')}
 
 
+def _target_check(target, value, context, spec, macros, local_sources):
+    if context['target'] != target:
+        value, error, _ = _parse(spec, macros, local_sources, target=target)
+        if not value:
+            return {'error': error}
+    return {'state': value['check_state'], 'excerpt': value['check_excerpt']}
+
+
 def describe(spec, macros=(), *, local_sources=()):
-    value, error, context = _parse(spec, macros, local_sources)
+    value, error, context = _parse(spec, macros, local_sources, target='')
     metadata = None
     if value and value['name']:
         metadata = {name: value[name] or None for name in ('name', 'version', 'summary', 'license', 'url')}
@@ -228,6 +241,11 @@ def describe(spec, macros=(), *, local_sources=()):
         metadata['sources'] = value['sources']
         metadata['go_module'] = value['go_module']
         metadata['buildsystem'] = value['buildsystem']
+        checks = metadata['target_checks'] = {}
+        riscv = checks['riscv64'] = _target_check('riscv64', value, context, spec, macros, local_sources)
+        if riscv.get('state') in ('absent', 'empty', 'comments'):
+            reference = _target_check('x86_64', value, context, spec, macros, local_sources)
+            checks['x86_64'] = {k: v for k, v in reference.items() if k != 'excerpt'}
     return {'metadata': metadata,
             'native_query': {'context': context, 'spec_sha256': hashlib.sha256(spec).hexdigest(), 'error': error},
             'metadata_error': None if metadata else (error or 'native rpmspec could not parse SPEC metadata')}

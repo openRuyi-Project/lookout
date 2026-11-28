@@ -232,6 +232,11 @@ def merge_upstreams(config, latest, tracks, error, now, selected=None):
     return state.merge(latest, 'upstreams', fields, components)
 
 
+def _check_retry(fact):
+    checks = (fact.get('metadata') or {}).get('target_checks', {})
+    return any(check.get('error') for check in checks.values())
+
+
 def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.describe, *, observed_at=None, tree_head=None):
     """Parse pinned inputs; cache identity is independent of display history."""
     spec = config['spec']
@@ -264,7 +269,7 @@ def refresh_specs(config, old_specs, names, logs, now, describe=native_spec.desc
                 'local_sources': [provenance for provenance, _ in inputs.get('local_sources', [])],
             })
             if (data is not None and previous.get('input_fingerprint') == input_fingerprint
-                    and previous.get('metadata') is not None and not previous.get('error')):
+                    and previous.get('metadata') is not None and not previous.get('error') and not _check_retry(previous)):
                 result[name] = state.success(previous, {'head': head, 'changelog': entries,
                                                          'source_origin': origin}, observed_at)
                 result[name]['attempted_at'] = now
@@ -364,7 +369,7 @@ def check_specs(config, db, describe=native_spec.describe):
                 else:
                     added = set(names) - specs.keys()
                     retry = {name for name, fact in specs.items()
-                             if fact.get('error') or fact.get('metadata') is None} & set(names)
+                             if fact.get('error') or fact.get('metadata') is None or _check_retry(fact)} & set(names)
                     if (added or retry) and not error and not history_error:
                         history_names = added | retry
                         history, history_error = spec_git.changelogs(

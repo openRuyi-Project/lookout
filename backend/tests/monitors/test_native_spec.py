@@ -393,3 +393,32 @@ def test_buildsystem_is_expanded_main_preamble(declaration, tail, expected):
     result = native_spec.describe(spec, macros=[(provenance, macro)])
     assert result['metadata_error'] is None
     assert result['metadata']['buildsystem'] == expected
+
+
+@pytest.mark.parametrize(('section', 'reason'), [
+    ('', 'absent'), ('%check\n\n', 'empty'), ('%check\n  # first\n# second\n', 'comments'),
+    ('%check\n%ifnarch riscv64\necho test\n%endif\n', 'empty'), ('%check\n:\n', 'nonempty'),
+])
+def test_describe_target_checks(section, reason):
+    spec = b'Name: sample\nVersion: 1\nRelease: 1\nSummary: Fixture\nLicense: MIT\n%description\nFixture\n'
+    checks = native_spec.describe(spec + section.encode())['metadata']['target_checks']
+    assert checks['riscv64']['state'] == reason
+    assert bool(checks['riscv64']['excerpt']) == (reason == 'comments')
+    if 'ifnarch' in section:
+        assert checks['x86_64'] == {'state': 'nonempty'}
+    else:
+        assert ('x86_64' in checks) == (reason != 'nonempty')
+
+
+@pytest.mark.parametrize(('section', 'state'), [
+    ('', 'nonempty'), ('%check\n# overridden\n', 'comments'),
+    ('%check -a\n# appended\n', 'nonempty'), ('%check -p\n# prepended\n', 'nonempty'),
+])
+def test_target_check_observes_generated_buildsystem_script(section, state):
+    macros = (b'%buildsystem_fixture_conf() %nil\n%buildsystem_fixture_build() %nil\n'
+              b'%buildsystem_fixture_install() %nil\n%buildsystem_fixture_check() echo inherited\n')
+    spec = (b'Name: sample\nVersion: 1\nRelease: 1\nSummary: Fixture\nLicense: MIT\n'
+            b'Source0: fixture.tar.gz\nBuildSystem: fixture\n%description\nFixture\n')
+    result = native_spec.describe(spec + section.encode(), macros=[(
+        {'path': 'fixture/macros', 'sha256': hashlib.sha256(macros).hexdigest()}, macros)])
+    assert result['metadata']['target_checks']['riscv64']['state'] == state, result

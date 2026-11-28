@@ -17,7 +17,7 @@ def test_macro_set_larger_than_sixteen_reaches_worker(monkeypatch):
     macros = [macro(f'%fixture_{i} {i}\n'.encode()) for i in range(17)]
     seen = []
 
-    def run(inputs, work):
+    def run(inputs, work, target):
         seen.extend(path.read_bytes() for path in sorted(inputs.glob('macros.*')))
         return None, 'native SPEC parse failed'
 

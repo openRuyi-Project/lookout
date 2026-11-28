@@ -18,6 +18,16 @@ confine = _sandbox.confine
 _LOCK = threading.Lock()
 
 
+def check_section(script):
+    if script is None:
+        return 'absent', None
+    if not script.strip():
+        return 'empty', None
+    if all(not line or line.startswith('#') for line in map(str.lstrip, script.split('\n'))):
+        return 'comments', script[:4096] + ('\n… [truncated]' if len(script) > 4096 else '')
+    return 'nonempty', None
+
+
 def main():
     inputs, work, result_fd = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3])
     # Result IPC is a socket, not a pipe (proc-fd reopening of pipes bypasses
@@ -31,7 +41,11 @@ def main():
         sandbox = confine(inputs, work)
         ready = True
         with _LOCK:
-            rpm.reloadConfig()
+            target = sys.argv[4]
+            if target:
+                rpm.reloadConfig(target + '-linux')
+            else:
+                rpm.reloadConfig()
             try:
                 rpm.addMacro('_sourcedir', str(work))
                 for macro in sorted(inputs.glob('macros.*')):
@@ -52,6 +66,8 @@ def main():
                     values[name] = value.decode(errors='replace') if isinstance(value, bytes) else str(value) if value is not None else None
                 # One native parse owns both metadata and source identity. No
                 # second text/macro interpreter in discovery. Keep Source numbers.
+                values['check_state'], values['check_excerpt'] = (check_section(parsed.check)
+                                                                  if sys.argv[5] == 'describe' else (None, None))
                 values['sources'] = [{'number': number, 'url': url}
                                      for url, number, flags in parsed.sources
                                      if flags & rpm.RPMBUILD_ISSOURCE]
