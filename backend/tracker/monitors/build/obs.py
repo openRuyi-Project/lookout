@@ -11,6 +11,7 @@ from tracker.monitors.schedule import Schedule
 from tracker.providers.http import USER_AGENT, read_response
 from tracker.state import usable_version
 
+PARTIAL_COVERAGE_EXIT = 3
 MAX_XML = 20 * 1024 * 1024
 
 

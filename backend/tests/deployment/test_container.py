@@ -136,7 +136,7 @@ class ContainerTests(unittest.TestCase):
 
     def test_build_poll_backoff_is_bounded_and_recovers_without_overlap(self):
         waits = []
-        results = iter([2, 2, 2, 2, 2, 0, 75, 0])
+        results = iter([2, 2, 2, 2, 2, entrypoint.obs.PARTIAL_COVERAGE_EXIT, 75, 0])
         def wait(delay):
             waits.append(delay)
             if len(waits) == 8:

@@ -178,3 +178,15 @@ def test_unrelated_provider_failure_does_not_back_off_obs(config, snapshot, tmp_
     monkeypatch.setattr(sys, 'argv', ['collector', '--config', 'unused', '--db', str(tmp_path/'db'), '--only', 'builds'])
     assert collector.main() == 0
     assert json.loads(capsys.readouterr().out)['errors'] == []
+
+
+@pytest.mark.parametrize('names,expected', [(('binutils',), obs.PARTIAL_COVERAGE_EXIT), ((), 2)])
+def test_build_exit_distinguishes_partial_from_no_usable_status(config, snapshot, monkeypatch, names, expected):
+    import sys
+    update = collector.refresh_builds(config, snapshot, FakeOBS(config, names=names))
+    snapshot['components'].update(update['components'])
+    monkeypatch.setattr(collector.cfg, 'load', lambda _: config)
+    monkeypatch.setattr(collector, 'collect_builds', lambda *_: snapshot)
+    monkeypatch.setattr(sys, 'argv', ['collector', '--config', 'cfg', '--db', 'db', '--only', 'builds'])
+    assert collector.main() == expected
+    assert snapshot['components']['builds']['error']

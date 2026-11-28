@@ -85,7 +85,8 @@ def periodic(phase, schedule):
         except OSError as error:
             log(f"collect {phase}: {type(error).__name__}: {error}")
             result = 1
-        failures = 0 if result in (0, 75) else failures + 1
+        partial = phase == 'builds' and result == obs.PARTIAL_COVERAGE_EXIT
+        failures = 0 if partial or result in (0, 75) else failures + 1
         _stop.wait(schedule.delay(failures))
 
 

@@ -146,6 +146,16 @@ def collect(config, old, client, now, source_limit=None):
         refresh_success_versions(config, new, client, now)
     return new
 
+def build_coverage(previous, covered, expected, error, now):
+    previous = {k: v for k, v in previous.items() if k != 'partial_coverage'}
+    if error is None and covered == expected:
+        return state.success(previous, {}, now)
+    component = state.failure(previous, error or 'OBS target/package result unavailable', now)
+    if covered:
+        component['partial_coverage'] = True
+    return component
+
+
 def refresh_builds(config, old, client, now=None):
     """Return only status-owned patches from one project-wide request."""
     builds = {name: {} for name in old['inventory']}
@@ -157,7 +167,7 @@ def refresh_builds(config, old, client, now=None):
         results, error = None, 'OBS build result unavailable: ' + type(exc).__name__
     # Timestamp the response, not the start of a potentially slow request.
     now = now or state.utcnow()
-    complete = results is not None
+    covered = 0
     for target in config['targets']:
         tid = target['id']
         values = results.get(tid) if results is not None else None
@@ -165,16 +175,13 @@ def refresh_builds(config, old, client, now=None):
             previous = {key: value for key, value in old['builds'].get(name, {}).get(tid, {}).items()
                         if key in state.BUILD_FIELDS['builds']}
             if values is not None and name in values:
+                covered += 1
                 builds[name][tid] = state.success(previous, values[name], now)
             else:
-                complete = False
                 builds[name][tid] = state.failure(
                     previous, error or 'OBS target/package result unavailable', now)
-        if values is None:
-            complete = False
-    prior = old['components'].get('builds', {})
-    component = (state.success(prior, {}, now) if complete else
-        state.failure(prior, error or 'OBS target/package result unavailable', now))
+    component = build_coverage(old['components'].get('builds', {}), covered,
+                               len(builds) * len(config['targets']), error, now)
     return {'builds': builds, 'components': {'builds': component}}
 
 
@@ -603,6 +610,8 @@ def main():
     if collection_errors != errors:
         result['collection_errors'] = collection_errors
     print(json.dumps(result, ensure_ascii=False))
+    if args.only == 'builds' and errors and snapshot['components']['builds'].get('partial_coverage'):
+        return obs.PARTIAL_COVERAGE_EXIT
     return 2 if errors else 0
 
 if __name__ == '__main__':
