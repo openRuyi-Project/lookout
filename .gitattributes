@@ -1,0 +1,2 @@
+# Preserve the upstream macro bytes used for source attribution.
+backend/tracker/monitors/source/macrosets/rust-rpm-macros/6240bd18037da854276b9750c5c6410cac2d52fa/macros.rust whitespace=blank-at-eol,space-before-tab,-blank-at-eof
