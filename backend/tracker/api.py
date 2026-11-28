@@ -340,6 +340,7 @@ class MonitoredDetail(MonitoredObservation):
 
 
 class MonitoredList(BaseModel):
+    pagination_version: str = Field(description='Version of this ordered result. Send it unchanged on subsequent pages.')
     items: list[MonitoredPackage | MonitoredObservation]
     monitors: list[MonitorDescription]
     total: int
@@ -414,6 +415,8 @@ class MonitorSelection(BaseModel):
 
 
 class PackageQuery(ListingQuery, MonitorSelection):
+    pagination_version: str | None = Field(None, pattern=r'^[0-9a-f]{64}$',
+        description='Version from the first page. If the ordered result changed, the server returns 409.')
     search: Literal['name', 'observations'] = Field('name',
         description='Case-insensitive substring search. observations searches values in the focused monitor, or all monitors when unfocused; package names always match.')
     detail: Literal['summary', 'full'] = Field('summary',
@@ -511,7 +514,7 @@ def create_app(db=None):
         if found is None:
             raise HTTPException(404, 'Package not found')
         return found
-    def select_monitored(filters, *, document=False, search='name'):
+    def select_monitored(filters, *, document=False, search='name', pagination_scope=None):
         snap, index, collection = data()
         catalog = [module.describe() for module in monitor_views.registry(snap)]
         if filters.monitor and filters.monitor not in {m['id'] for m in catalog}:
@@ -525,6 +528,7 @@ def create_app(db=None):
             result = index.select(query=filters.q, monitor=monitor, filters=filters.filters,
                 page=filters.page, per_page=filters.per_page,
                 search=search,
+                pagination_scope=(snap['generation'], pagination_scope) if pagination_scope is not None else None,
                 findings_only=bool(focused and focused['kind'] in ('evidence', 'requires') and section == 'results'))
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
@@ -537,12 +541,17 @@ def create_app(db=None):
                 'monitors': catalog, 'targets': snap.get('targets', []), 'collection': collection,
                 'presentation': snap.get('presentation', {})}
 
-    @app.get('/api/v2/packages', response_model=MonitoredList, openapi_extra=query_schema(PackageQuery))
+    @app.get('/api/v2/packages', response_model=MonitoredList, openapi_extra=query_schema(PackageQuery),
+             responses={409: {'description': 'Pagination version no longer matches. Restart at page 1.'}})
     def monitor_packages(filters: Annotated[PackageQuery, Depends(package_parameters)]):
         if filters.detail == 'full' and filters.per_page > FULL_PAGE_LIMIT:
             raise HTTPException(422, f'Full observations require per_page <= {FULL_PAGE_LIMIT}')
-        result = select_monitored(filters, search=filters.search)
+        scope = filters.model_dump(mode='json', exclude={'page', 'pagination_version', 'include'})
+        scope['include'] = sorted(set(filters.include))
+        result = select_monitored(filters, search=filters.search, pagination_scope=scope)
         included = selected_monitors(filters.include, result['monitors'])
+        if filters.pagination_version is not None and filters.pagination_version != result['pagination_version']:
+            raise HTTPException(409, 'Package pagination version changed. Restart at page 1.')
         return {**result, 'items': [package_response(row, included,
             full=filters.detail == 'full', focus=filters.monitor) for row in result['items']]}
 

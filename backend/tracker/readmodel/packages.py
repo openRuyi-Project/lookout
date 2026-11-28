@@ -77,7 +77,7 @@ class PackageList:
         } for dimension, options in self.index.items() if dimension.startswith('check:')}
 
     def select(self, *, filters=FilterQuery(), page=1, per_page=100,
-               query=None, monitor=None, findings_only=False, search='name'):
+               query=None, monitor=None, findings_only=False, search='name', pagination_scope=None):
         query = (self.query if query is None else query).strip().casefold()
         monitor = self.monitor if monitor is None else monitor
         scope = {number for number, name in enumerate(self.names) if query in name} if query else self.all
@@ -91,6 +91,9 @@ class PackageList:
                      if findings_only else coverage)
         selected = sorted(selection.matches)
         total = len(selected)
+        # Freshness transitions can change selected rows without advancing the snapshot generation.
+        version = (monitor_model.fingerprint([pagination_scope, [self.rows[n]['name'] for n in selected]])
+                   if pagination_scope is not None else None)
         pages = max(1, (total + per_page - 1) // per_page)
         page = min(page, pages)
 
@@ -111,6 +114,7 @@ class PackageList:
         checks = counts('check:' + monitor, monitor_model.CHECK_GROUPS, evaluation=coverage) if monitor else {}
         return {
             'filters': filters,
+            'pagination_version': version,
             'items': [self.rows[number] for number in selected[(page - 1) * per_page:page * per_page]],
             'total': total, 'page': page, 'per_page': per_page, 'pages': pages,
             'counts': {**counts('view', required=VIEWS), 'all': total},

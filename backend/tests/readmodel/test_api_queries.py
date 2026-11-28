@@ -160,3 +160,34 @@ def test_openapi_describes_response_shapes_and_bounds(query_client):
     assert {'MonitoredPackage', 'MonitoredObservation'} == {
         variant['$ref'].rsplit('/', 1)[-1]
         for variant in spec['components']['schemas']['MonitoredList']['properties']['items']['items']['anyOf']}
+
+
+def test_versioned_pagination_rejects_deleted_preceding_row_at_same_generation(query_client, monkeypatch):
+    client, rows, _ = query_client
+    first = client.get('/api/v2/packages?per_page=1').json()
+    token = first['pagination_version']
+    page = {'per_page': 1, 'page': 2, 'pagination_version': token}
+    second = client.get('/api/v2/packages', params=page).json()
+    assert second['pagination_version'] == token
+    assert second['items'][0]['name'] == rows[1]['name']
+
+    projection = client.app.state.projection
+    snapshot, _, collection = projection.read()
+    index = PackageList(rows[1:], snapshot['targets'])
+    monkeypatch.setattr(projection, 'read', lambda: (snapshot, index, collection))
+    assert client.get('/api/v2/packages', params=page).status_code == 409
+    unversioned = client.get('/api/v2/packages?per_page=1&page=2').json()
+    assert unversioned['collection']['generation'] == first['collection']['generation']
+    assert unversioned['items'][0]['name'] == rows[2]['name']
+    assert unversioned['pagination_version'] != token
+
+
+def test_pagination_version_binds_query_and_page_size(query_client):
+    client, _, _ = query_client
+    first = client.get('/api/v2/packages?per_page=1').json()
+    params = {'per_page': 1, 'page': 2, 'pagination_version': first['pagination_version']}
+    assert client.get('/api/v2/packages', params={**params, 'per_page': 2}).status_code == 409
+    assert client.get('/api/v2/packages', params={**params, 'q': 'foo3'}).status_code == 409
+    assert client.get('/api/v2/packages', params={**params, 'pagination_version': 'invalid'}).status_code == 422
+    spec = client.get('/openapi.json').json()
+    assert '409' in spec['paths']['/api/v2/packages']['get']['responses']
