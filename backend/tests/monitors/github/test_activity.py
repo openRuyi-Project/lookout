@@ -763,3 +763,32 @@ def test_history_cursor_rejects_association_changes(snapshot):
     snapshot['github_links']['foo3']['1']['evidence'] = [{'kind': 'title', 'value': 'foo3'}]
     with pytest.raises(activity.ActivityChanged):
         activity.page(snapshot, 'foo3', 'issue', first['next_cursor'], per_page=1)
+
+
+def test_not_due_replay_keeps_snapshot_revision(tmp_path):
+    db = tmp_path / 'db'
+    snapshot = state.empty()
+    snapshot.update(github_items={}, github_links={}, github_repositories=[REPO])
+    snapshot['components']['github:' + REPO] = {'next_poll_at': '2026-01-02T00:00:00+00:00'}
+    state.commit(db, snapshot)
+    previous = state.read_cached(db)[1].token
+    client = Client([])
+    for _ in range(2):
+        assert collect({'github': {'repositories': {REPO: {}}}, 'input_hashes': {}},
+                       db, now=NOW, client=client) == snapshot
+    assert not client.calls and state.read_cached(db)[1].token == previous
+
+
+def test_alias_change_relinks_stored_item_before_next_poll(config, snapshot, tmp_path, monkeypatch):
+    db = tmp_path / 'db'
+    config['github'] = {'repositories': {REPO: {}}}
+    monkeypatch.setattr('tracker.config.require_unchanged', lambda _: None)
+    items = [raw(title='other-name: upstream issue')]
+    state.commit(db, snapshot)
+    first = collect(config, db, client=Client([items, items]), now=NOW)
+    assert 'foo3' not in first['github_links']
+    config['github']['repositories'][REPO]['aliases'] = {'foo3': ['other-name']}
+    client = Client([])
+    second = collect(config, db, client=client, now=NOW)
+    assert not client.calls and 'foo3' in second['github_links']
+    assert second['generation'] == first['generation'] + 1

@@ -243,8 +243,12 @@ def collect(config, db, *, client=None, now=None):
                     for name, evidence in matcher.match(item).items():
                         associations.setdefault(name, {})[repo + '#' + identity] = {
                             'repository': repo, 'id': identity, 'evidence': evidence}
-            snapshot = state.merge(latest, 'github', {'github_items': records, 'github_links': associations,
-                'github_repositories': list(options.repositories)}, components)
+            fields = {'github_items': records, 'github_links': associations,
+                      'github_repositories': list(options.repositories)}
+            previous_components = {k: v for k, v in latest['components'].items() if state.owns_component('github', k)}
+            if components == previous_components and all(latest.get(k) == v for k, v in fields.items()):
+                return latest
+            snapshot = state.merge(latest, 'github', fields, components)
             for key in list(snapshot['components']):
                 if key.startswith('github:') and key.removeprefix('github:') not in options.repositories:
                     del snapshot['components'][key]
