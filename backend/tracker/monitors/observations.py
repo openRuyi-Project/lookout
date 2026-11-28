@@ -1,9 +1,18 @@
 """Keep the last completed evidence separate from the next check's state."""
 
 
+def has_primary_result(observation):
+    # Scoped checks resolve evidence per release. An unscoped partial result
+    # already owns the primary findings; only enrichment was incomplete.
+    return (observation.get('status') == 'partial' and observation.get('checked_at')
+            and not observation.get('scope_checks'))
+
+
 def last_result(observation):
     if not observation:
         return None
+    if has_primary_result(observation):
+        return {k: v for k, v in observation.items() if k != 'last_result'}
     if observation.get('last_result'):
         return observation['last_result']
     if observation.get('checked_at') or observation.get('findings'):
@@ -23,7 +32,7 @@ def visible(observation):
     its own fingerprint, interpretation version and observation timestamps.
     """
     saved = observation.get('last_result')
-    if not saved or not observation.get('query_fingerprint'):
+    if not saved or has_primary_result(observation) or not observation.get('query_fingerprint'):
         return observation
     if saved.get('query_fingerprint') != observation['query_fingerprint']:
         return observation

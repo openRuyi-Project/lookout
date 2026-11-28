@@ -52,3 +52,31 @@ def test_osv_empty_page_with_token_continues_query():
                           SimpleNamespace(json=read))
     assert [entry['id'] for entry in entries] == ['GHSA-fixture']
     assert calls[1]['page_token'] == 'second-page'
+
+
+@pytest.mark.parametrize('prior', [[], [{'id': 'GHSA-old', 'affected': []}]])
+def test_enrichment_failure_preserves_new_primary_evidence(config, snapshot, tmp_path, prior):
+    config['packages']['binutils'] = {'monitors': {'security': {'ecosystem': 'PyPI', 'name': 'widget'}}}
+    proposal = runner.plan(config, snapshot, 'binutils', 'security')
+
+    def run(rows, previous=None):
+        def read(method, *args, **kwargs):
+            if method == 'GET':
+                raise OSError('enrichment unavailable')
+            return {'vulns': rows}
+        scoped = SimpleNamespace(json=read, observed_at=state.utcnow())
+        return runner.execute('security', proposal, SimpleNamespace(for_hosts=lambda *args, **kw: scoped), previous)
+
+    old = run(prior)
+    current = run([{'id': 'CVE-2025-12345', 'affected': []}], old)
+    assert current['status'] == 'partial'
+    # Already persisted by older collectors: read it without requiring a rescan.
+    current['last_result'] = old
+    snapshot['monitor_catalog'] = {'security': {'title': 'Security'}}
+    snapshot['monitors'] = {'binutils': {'security': current}}
+    client, _ = client_for(snapshot, tmp_path)
+    response = client.get('/api/ui/packages/binutils')
+    assert response.status_code == 200
+    assert 'CVE-2025-12345' in response.text and 'GHSA-old' not in response.text
+    from tracker.monitors.observations import last_result
+    assert [f['id'] for f in last_result(current)['findings']] == ['CVE-2025-12345']

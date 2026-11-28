@@ -295,7 +295,7 @@ def execute(provider, proposed, io, previous=None, *, schedule=None, prepared=No
                 'failures': old.get('failures', 0) + 1 if output['status'] in ('partial', 'error') else 0,
                 'evidence_revision': revision,
                 'changed_at': old.get('changed_at') if unchanged else attempted_at}
-        if output['status'] in ('error', 'partial', 'unsupported'):
+        if output['status'] in ('error', 'partial', 'unsupported') and not history.has_primary_result(result):
             return history.retain(result, previous)
         return result
     except Exception as error:
