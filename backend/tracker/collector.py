@@ -541,6 +541,13 @@ def collect_builds(config, db):
             patches = {name: facts for name, facts in observed['builds'].items()
                        if name in latest['inventory']}
             component = observed['components']['builds']
+            if old['inventory'].keys() != latest['inventory'].keys():
+                # The response was checked against the inventory at request start.
+                covered = sum(not fact.get('error') for targets in patches.values() for fact in targets.values())
+                error = component.get('error') if not component.get('partial_coverage') else None
+                component = build_coverage(latest['components'].get('builds', {}), covered,
+                                           len(latest['inventory']) * len(latest['targets']),
+                                           error, component['attempted_at'])
             if state.commit_build_heartbeat(db, latest, patches, component, revision=previous[1]):
                 snapshot = state.read(db)
             else:

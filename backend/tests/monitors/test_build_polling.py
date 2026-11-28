@@ -190,3 +190,34 @@ def test_build_exit_distinguishes_partial_from_no_usable_status(config, snapshot
     monkeypatch.setattr(sys, 'argv', ['collector', '--config', 'cfg', '--db', 'db', '--only', 'builds'])
     assert collector.main() == expected
     assert snapshot['components']['builds']['error']
+
+
+@pytest.mark.parametrize('add', [True, False])
+def test_coverage_uses_inventory_at_publication(config, snapshot, tmp_path, monkeypatch, add):
+    db = tmp_path / 'state.db'
+    state.commit(db, snapshot)
+    names = tuple(snapshot['inventory']) if add else tuple(n for n in snapshot['inventory'] if n != 'unknown')
+    class Client(FakeOBS):
+        def __init__(self, config, **kwargs):
+            super().__init__(config, names=names)
+        def get(self, path):
+            with state.writer_lock(db):
+                previous = state.read_cached(db)
+                inventory = dict(previous[0]['inventory'])
+                if add:
+                    inventory['new'] = 'new'
+                else:
+                    del inventory['unknown']
+                state.commit(db, state.merge(previous[0], 'obs', {'inventory': inventory}), previous=previous)
+            return super().get(path)
+        def close(self):
+            pass
+    monkeypatch.setattr(obs, 'Client', Client)
+    result = collector.collect_builds(config, db)
+    component = result['components']['builds']
+    assert bool(component['error']) == add
+    assert bool(component.get('partial_coverage')) == add
+    assert result['builds']['binutils']['rva23']['raw_status'] == 'succeeded'
+    if add:
+        assert component['fetched_at'] == snapshot['components']['builds']['fetched_at']
+        assert 'new' not in result['builds']
