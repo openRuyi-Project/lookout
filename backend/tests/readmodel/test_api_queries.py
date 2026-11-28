@@ -191,3 +191,25 @@ def test_pagination_version_binds_query_and_page_size(query_client):
     assert client.get('/api/v2/packages', params={**params, 'pagination_version': 'invalid'}).status_code == 422
     spec = client.get('/openapi.json').json()
     assert '409' in spec['paths']['/api/v2/packages']['get']['responses']
+
+
+@pytest.mark.parametrize('path', ['/api/v2/packages', '/api/ui/packages'])
+@pytest.mark.parametrize('params', [
+    [('q', 'foo3'), ('q', 'foo4')],
+    [('page', '1'), ('page', '1')],
+])
+def test_listings_reject_repeated_scalars(query_client, path, params):
+    client, _, calls = query_client
+    response = client.get(path, params=params)
+    assert response.status_code == 422
+    assert 'must not be repeated' in response.json()['detail']
+    assert not calls
+
+
+@pytest.mark.parametrize('path', ['/api/v2/packages', '/api/ui/packages'])
+def test_repeated_select_still_unions_values(query_client, path):
+    client, _, _ = query_client
+    result = client.get(path, params=[
+        ('select', 'build:rva23=succeeded'), ('select', 'build:rva23=disabled')])
+    assert result.status_code == 200
+    assert result.json()['total'] == client.get(path).json()['total']

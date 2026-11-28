@@ -16,7 +16,8 @@ const batch = '/api/v2/packages:batchGet?names=bash&names=openssl&include=versio
           <td>Summaries + filter counts. <code>per_page</code>: default 100, max 200.
             <code>detail=full</code> adds evidence and requires <code>per_page≤20</code>.
             For consistent traversal, send the first response’s <code>pagination_version</code> on subsequent pages.
-            On <code>409</code>, restart at page 1.</td></tr>
+            On <code>409</code>, restart at page 1.
+            Repeat <code>select</code> or <code>include</code> for multiple values; repeated scalar parameters return <code>422</code>.</td></tr>
         <tr><td><a href="/api/v2/packages/bash"><code>/packages/{'{name}'}</code></a></td>
           <td>Full package observations.</td></tr>
         <tr><td><code>/packages:batchGet</code></td>

@@ -397,6 +397,8 @@ class ListingQuery(BaseModel):
                 raise ValueError('Use repeated select=FACET=VALUE parameters')
             if name in arrays:
                 values.setdefault(name, []).append(value)
+            elif name in values:
+                raise ValueError('A scalar query parameter must not be repeated')
             else:
                 values[name] = value
         parsed = cls.model_validate(values)
@@ -459,7 +461,8 @@ def query_schema(model):
         'description': f'Repeat select=FACET=VALUE. Values in one facet are OR; facets are AND. '
             f'Omitted facets are unrestricted. Empty values are invalid. Maximum {MAX_QUERY_NODES} selections, including repeats. '
             'Counts apply every other facet and the search text. Example: select=maintenance=Advisory&select=build:rva23=failed.'})
-    return {'parameters': parameters, 'responses': {422: {'description': 'Invalid query'}}}
+    return {'parameters': parameters, 'responses': {
+        422: {'description': 'Invalid query, including repeated scalar parameters.'}}}
 
 
 def selected_monitors(requested, catalog):
